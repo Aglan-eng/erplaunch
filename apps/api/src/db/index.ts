@@ -5,6 +5,7 @@
 import { createClient, type Client } from '@libsql/client';
 import { createId } from '@paralleldrive/cuid2';
 import crypto from 'crypto';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -23,6 +24,11 @@ export function getDb(): Client {
 
 export async function initDb() {
   const dbFile = process.env.DATABASE_URL?.replace('file:', '') ?? path.join(__dirname, '../../dev.db');
+
+  // Ensure the parent directory exists — when Render mounts a persistent disk
+  // at /data, any directories baked into the image are overlaid, so we must
+  // create them at runtime before libSQL tries to open the file.
+  fs.mkdirSync(path.dirname(dbFile), { recursive: true });
 
   _client = createClient({ url: `file:${dbFile}` });
 
