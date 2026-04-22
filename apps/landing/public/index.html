@@ -1,0 +1,604 @@
+<!doctype html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#020617" />
+
+  <!-- Primary SEO -->
+  <title>ERPLaunch — AI-native platform for ERP implementation</title>
+  <meta name="description" content="The AI-native implementation platform for consulting firms running SAP, NetSuite, Oracle, Microsoft Dynamics, Odoo, ERPNext — or their own custom software. Collapse months of discovery, configuration, and handoff into days." />
+  <meta name="keywords" content="ERP implementation platform, ERP consulting software, SAP implementation tools, NetSuite implementation, Oracle Fusion implementation, Microsoft Dynamics 365 implementation, Odoo implementation, ERPNext, ERP project management, AI ERP consulting, implementation accelerator" />
+  <meta name="author" content="ERPLaunch" />
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
+  <link rel="canonical" href="https://erplaunch.app/" />
+  <link rel="alternate" hreflang="en" href="https://erplaunch.app/" />
+  <link rel="alternate" hreflang="x-default" href="https://erplaunch.app/" />
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="ERPLaunch" />
+  <meta property="og:title" content="ERPLaunch — AI-native platform for ERP implementation" />
+  <meta property="og:description" content="Consulting firms collapse months of ERP implementation into days. SAP, NetSuite, Oracle, MS Dynamics, Odoo — or your own custom software." />
+  <meta property="og:url" content="https://erplaunch.app/" />
+  <meta property="og:image" content="https://erplaunch.app/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="ERPLaunch — AI-native ERP implementation platform" />
+  <meta property="og:locale" content="en_US" />
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="ERPLaunch — AI-native platform for ERP implementation" />
+  <meta name="twitter:description" content="The implementation layer for every ERP. Adaptor SDK for SAP, NetSuite, Oracle, MS Dynamics, Odoo. Industry verticals. Client portal. Email + WhatsApp intake." />
+  <meta name="twitter:image" content="https://erplaunch.app/og-image.png" />
+  <meta name="twitter:image:alt" content="ERPLaunch — AI-native ERP implementation platform" />
+
+  <!-- Favicons -->
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+  <!-- Fonts: preconnect first to cut handshake latency, then preload critical weights -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="/styles.css" />
+
+  <!-- JSON-LD: Organization -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": "ERPLaunch",
+    "url": "https://erplaunch.app",
+    "logo": "https://erplaunch.app/logo.svg",
+    "description": "AI-native implementation platform for consulting firms running ERP and custom-software projects.",
+    "sameAs": []
+  }
+  </script>
+
+  <!-- JSON-LD: SoftwareApplication -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "ERPLaunch",
+    "operatingSystem": "Web",
+    "applicationCategory": "BusinessApplication",
+    "description": "Run ERP implementations end-to-end — discovery, configuration, training, UAT, go-live — from a single AI-native platform. Supports SAP, NetSuite, Oracle Fusion, MS Dynamics, Odoo, ERPNext, and custom software.",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD", "availability": "https://schema.org/InStock" }
+  }
+  </script>
+
+  <!-- JSON-LD: FAQPage -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Which ERPs does ERPLaunch support?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "ERPLaunch ships first-party adaptors for NetSuite, SAP S/4HANA, Oracle Fusion, Microsoft Dynamics 365, Odoo, and ERPNext. A no-code Custom Adaptor wizard lets firms stand up any in-house or legacy system by uploading its analysis questionnaire and output templates."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Does ERPLaunch replace our implementation methodology?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "No. Each ERP adaptor ships with its vendor-standard methodology (SAP Activate, SuiteSuccess, Oracle True Cloud Method, Microsoft's Implementation Guide, Odoo's, ERPNext playbook). Consulting firms fork the standard and author their own practice; individual engagements tweak further. Everything carries provenance so you always see which layer produced which element."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Can clients participate without logging into yet another app?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. Clients answer wizard questions, upload files, and approve decisions by replying to email or WhatsApp. ERPLaunch extracts structured answers with AI and applies them with confidence scoring and human-in-the-loop confirmation."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Is it white-label?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Every consulting firm operates ERPLaunch under their own brand. The consultant workspace and the client portal render with your company name, logo, colors, and sending domain by default."
+        }
+      }
+    ]
+  }
+  </script>
+
+  <!-- Prefetch the app route users click through to -->
+  <link rel="dns-prefetch" href="https://app.erplaunch.app" />
+</head>
+
+<body class="bg-ink-950 text-ink-100 font-sans antialiased">
+
+  <!-- Skip to main content for a11y -->
+  <a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-brand-500 focus:text-white focus:rounded">
+    Skip to main content
+  </a>
+
+  <!-- ─── Nav ─────────────────────────────────────────────────────── -->
+  <header class="fixed top-0 left-0 right-0 z-40 backdrop-blur-lg bg-ink-950/60 border-b border-white/5">
+    <nav class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between" aria-label="Primary">
+      <a href="/" class="flex items-center gap-2 font-display font-semibold text-lg tracking-tight text-white" aria-label="ERPLaunch home">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M12 2L4 7v10l8 5 8-5V7l-8-5z" stroke="url(#lg)" stroke-width="2" stroke-linejoin="round"/>
+          <path d="M12 22V12M4 7l8 5 8-5" stroke="url(#lg)" stroke-width="2" stroke-linejoin="round"/>
+          <defs>
+            <linearGradient id="lg" x1="0" y1="0" x2="24" y2="24">
+              <stop stop-color="#818cf8"/>
+              <stop offset="1" stop-color="#4f46e5"/>
+            </linearGradient>
+          </defs>
+        </svg>
+        ERPLaunch
+      </a>
+      <ul class="hidden md:flex items-center gap-8 text-sm text-ink-300">
+        <li><a href="#platform" class="hover:text-white transition-colors">Platform</a></li>
+        <li><a href="#how" class="hover:text-white transition-colors">How it works</a></li>
+        <li><a href="#verticals" class="hover:text-white transition-colors">Verticals</a></li>
+        <li><a href="#faq" class="hover:text-white transition-colors">FAQ</a></li>
+      </ul>
+      <div class="flex items-center gap-3">
+        <a href="https://app.erplaunch.app/login" class="hidden sm:inline text-sm text-ink-300 hover:text-white transition-colors">Sign in</a>
+        <a href="https://app.erplaunch.app/signup" class="btn-primary text-sm px-5 py-2.5">
+          Start free
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14m0 0l-6-6m6 6l-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+      </div>
+    </nav>
+  </header>
+
+  <main id="main">
+
+    <!-- ─── Hero ────────────────────────────────────────────────────── -->
+    <section class="relative gradient-hero min-h-screen flex items-center pt-24 pb-section overflow-hidden">
+      <div class="absolute inset-0 grid-lines pointer-events-none" aria-hidden="true"></div>
+
+      <div class="relative max-w-7xl mx-auto px-6 w-full">
+        <div class="max-w-4xl animate-fade-up">
+          <p class="chip mb-8">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-blink"></span>
+            Phase 1 live · SAP, NetSuite, Odoo adaptors shipping Q2
+          </p>
+
+          <h1 class="font-display text-display-xl text-white">
+            Ship ERP implementations
+            <span class="gradient-text">in days</span>,
+            not months.
+          </h1>
+
+          <p class="mt-8 text-xl md:text-2xl text-ink-300 max-w-2xl leading-relaxed">
+            The AI-native platform consulting firms use to run
+            <strong class="text-white font-medium">SAP, NetSuite, Oracle, Dynamics, Odoo, ERPNext</strong> — or
+            their own custom software — end-to-end. Discovery, configuration, training, UAT, go-live.
+            <span class="text-ink-400">Clients answer by email or WhatsApp. AI does the rest.</span>
+          </p>
+
+          <div class="mt-10 flex flex-col sm:flex-row gap-4">
+            <a href="https://app.erplaunch.app/signup" class="btn-primary text-base">
+              Start free — no card
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14m0 0l-6-6m6 6l-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </a>
+            <a href="#how" class="btn-ghost text-base">
+              See how it works
+            </a>
+          </div>
+
+          <dl class="mt-16 grid grid-cols-3 gap-8 max-w-xl">
+            <div>
+              <dt class="text-xs font-medium tracking-widest uppercase text-ink-500">Avg. cycle</dt>
+              <dd class="mt-1 font-display text-2xl md:text-3xl text-white">−72%</dd>
+            </div>
+            <div>
+              <dt class="text-xs font-medium tracking-widest uppercase text-ink-500">Firm setup</dt>
+              <dd class="mt-1 font-display text-2xl md:text-3xl text-white">1 day</dd>
+            </div>
+            <div>
+              <dt class="text-xs font-medium tracking-widest uppercase text-ink-500">ERPs</dt>
+              <dd class="mt-1 font-display text-2xl md:text-3xl text-white">6+</dd>
+            </div>
+          </dl>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── Logo strip ─────────────────────────────────────────────── -->
+    <section class="border-y border-white/5 bg-ink-950" aria-label="Supported ERP platforms">
+      <div class="max-w-7xl mx-auto px-6 py-12">
+        <p class="text-center text-xs font-medium tracking-[0.2em] uppercase text-ink-500 mb-8">
+          One platform. Every ERP. Any methodology.
+        </p>
+        <ul class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4" role="list">
+          <li class="logo-cell">NetSuite</li>
+          <li class="logo-cell">SAP S/4HANA</li>
+          <li class="logo-cell">Oracle Fusion</li>
+          <li class="logo-cell">Dynamics 365</li>
+          <li class="logo-cell">Odoo</li>
+          <li class="logo-cell">ERPNext</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ─── Platform / Features ────────────────────────────────────── -->
+    <section id="platform" class="py-section">
+      <div class="max-w-7xl mx-auto px-6">
+        <div class="max-w-3xl mb-20">
+          <p class="chip mb-6">Platform</p>
+          <h2 class="font-display text-display-lg text-white">
+            Three plugin seams. <br/>
+            <span class="text-ink-400">One coherent implementation layer.</span>
+          </h2>
+        </div>
+
+        <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+
+          <article class="card">
+            <div class="w-10 h-10 rounded-lg bg-brand-500/15 text-brand-300 flex items-center justify-center mb-5" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            </div>
+            <h3 class="font-display text-xl text-white mb-2">Platform Adaptors</h3>
+            <p class="text-ink-400 leading-relaxed">First-class adaptors for every major ERP. Each ships with vendor-standard methodology baked in — SAP Activate, SuiteSuccess, Oracle TCM, D365 Guide, Odoo, ERPNext.</p>
+          </article>
+
+          <article class="card">
+            <div class="w-10 h-10 rounded-lg bg-brand-500/15 text-brand-300 flex items-center justify-center mb-5" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+            </div>
+            <h3 class="font-display text-xl text-white mb-2">Industry Verticals</h3>
+            <p class="text-ink-400 leading-relaxed">Healthcare, contracting, F&amp;B, retail. Stack verticals on top of any base ERP. Questions, rules, templates, workflows — layered, not forked.</p>
+          </article>
+
+          <article class="card">
+            <div class="w-10 h-10 rounded-lg bg-brand-500/15 text-brand-300 flex items-center justify-center mb-5" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <h3 class="font-display text-xl text-white mb-2">Your Methodology</h3>
+            <p class="text-ink-400 leading-relaxed">Fork the vendor standard into your practice. Add phases, gates, RACI, deliverables. Engagements tweak further. Every change carries provenance.</p>
+          </article>
+
+          <article class="card">
+            <div class="w-10 h-10 rounded-lg bg-brand-500/15 text-brand-300 flex items-center justify-center mb-5" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 2a10 10 0 00-7.07 17.07L3 21l2.07-2.07A10 10 0 1012 2z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+            </div>
+            <h3 class="font-display text-xl text-white mb-2">Email + WhatsApp intake</h3>
+            <p class="text-ink-400 leading-relaxed">Clients answer questions by replying to messages they already read. AI extracts structured answers; consultants review and accept. Voice notes transcribed.</p>
+          </article>
+
+          <article class="card">
+            <div class="w-10 h-10 rounded-lg bg-brand-500/15 text-brand-300 flex items-center justify-center mb-5" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4 6h16v12H4zM4 10h16M8 14h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <h3 class="font-display text-xl text-white mb-2">White-label portal</h3>
+            <p class="text-ink-400 leading-relaxed">Every client sees <em>your</em> firm's brand — logo, colors, sending domain. Magic-link auth. They review, upload, approve. You stay in control.</p>
+          </article>
+
+          <article class="card">
+            <div class="w-10 h-10 rounded-lg bg-brand-500/15 text-brand-300 flex items-center justify-center mb-5" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M13 10V3L4 14h7v7l9-11h-7z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+            </div>
+            <h3 class="font-display text-xl text-white mb-2">Generators &amp; push</h3>
+            <p class="text-ink-400 leading-relaxed">Auto-produce BRDs, SuiteScripts, SDF packages, UAT scripts, training manuals, data migration templates. Push configuration directly into the target system on approval.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── How it works ────────────────────────────────────────────── -->
+    <section id="how" class="py-section border-t border-white/5">
+      <div class="max-w-7xl mx-auto px-6">
+        <div class="max-w-3xl mb-20">
+          <p class="chip mb-6">How it works</p>
+          <h2 class="font-display text-display-lg text-white">
+            From kickoff to go-live, <br/>
+            <span class="text-ink-400">all in one workspace.</span>
+          </h2>
+        </div>
+
+        <ol class="grid md:grid-cols-3 gap-6 lg:gap-10" role="list">
+          <li class="card relative overflow-hidden">
+            <span class="absolute -top-6 -right-4 font-display text-[7rem] leading-none text-white/5 font-bold select-none" aria-hidden="true">01</span>
+            <h3 class="font-display text-xl text-white mb-3">Register &amp; brand</h3>
+            <p class="text-ink-400 leading-relaxed">Sign your firm up. Configure your brand, your sending email, pick an ERP — or bring your own custom software.</p>
+          </li>
+          <li class="card relative overflow-hidden">
+            <span class="absolute -top-6 -right-4 font-display text-[7rem] leading-none text-white/5 font-bold select-none" aria-hidden="true">02</span>
+            <h3 class="font-display text-xl text-white mb-3">Run engagements</h3>
+            <p class="text-ink-400 leading-relaxed">Spin up a client engagement. Invite them. They answer questions via email, WhatsApp, or the branded portal. You review AI-extracted inputs.</p>
+          </li>
+          <li class="card relative overflow-hidden">
+            <span class="absolute -top-6 -right-4 font-display text-[7rem] leading-none text-white/5 font-bold select-none" aria-hidden="true">03</span>
+            <h3 class="font-display text-xl text-white mb-3">Generate &amp; deploy</h3>
+            <p class="text-ink-400 leading-relaxed">BRDs, scripts, config, training material — produced from the answers. Approve, then push straight into the target system.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- ─── Verticals strip ────────────────────────────────────────── -->
+    <section id="verticals" class="py-section border-t border-white/5 bg-gradient-to-b from-ink-950 to-ink-900">
+      <div class="max-w-7xl mx-auto px-6">
+        <div class="grid lg:grid-cols-2 gap-16 items-start">
+          <div>
+            <p class="chip mb-6">Verticals</p>
+            <h2 class="font-display text-display-md text-white mb-6">
+              Industry packs on top of any ERP.
+            </h2>
+            <p class="text-lg text-ink-300 leading-relaxed mb-4">
+              Drop a <strong class="text-white font-medium">Healthcare Clinics</strong> vertical on Odoo. A
+              <strong class="text-white font-medium">Contracting</strong> vertical on NetSuite. A
+              <strong class="text-white font-medium">F&amp;B Manufacturing</strong> vertical on SAP.
+            </p>
+            <p class="text-lg text-ink-300 leading-relaxed">
+              Verticals add questions, rules, templates, and workflows — layered, not forked. Upgrade the base adaptor, vertical stays intact. Author your own in the Vertical Studio; keep them private or publish to the marketplace.
+            </p>
+          </div>
+          <ul class="grid grid-cols-2 gap-3" role="list">
+            <li class="card text-center py-8"><span class="font-display text-lg text-white">Healthcare</span></li>
+            <li class="card text-center py-8"><span class="font-display text-lg text-white">Contracting</span></li>
+            <li class="card text-center py-8"><span class="font-display text-lg text-white">F&amp;B Mfg</span></li>
+            <li class="card text-center py-8"><span class="font-display text-lg text-white">Retail</span></li>
+            <li class="card text-center py-8"><span class="font-display text-lg text-white">Field Services</span></li>
+            <li class="card text-center py-8"><span class="font-display text-lg text-white">+ Your pack</span></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── Who for ─────────────────────────────────────────────────── -->
+    <section class="py-section border-t border-white/5">
+      <div class="max-w-7xl mx-auto px-6">
+        <div class="max-w-3xl mb-20">
+          <p class="chip mb-6">Built for</p>
+          <h2 class="font-display text-display-md text-white">
+            Consulting firms and software companies
+            <span class="text-ink-400">that live and breathe implementations.</span>
+          </h2>
+        </div>
+
+        <div class="grid md:grid-cols-3 gap-6">
+          <article class="card">
+            <h3 class="font-display text-xl text-white mb-3">ERP boutiques</h3>
+            <p class="text-ink-400 leading-relaxed">5–50 consultants running SAP, NetSuite, Oracle engagements. Ship faster, onboard juniors who deliver like seniors.</p>
+          </article>
+          <article class="card">
+            <h3 class="font-display text-xl text-white mb-3">Big-4 practices</h3>
+            <p class="text-ink-400 leading-relaxed">Global methodology overlay. Consistency across regions, partners, and industries. Marketplace-published accelerators.</p>
+          </article>
+          <article class="card">
+            <h3 class="font-display text-xl text-white mb-3">Software vendors</h3>
+            <p class="text-ink-400 leading-relaxed">Your product needs implementation. Define a Custom Adaptor once; ship every customer a managed onboarding workflow.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── FAQ ─────────────────────────────────────────────────────── -->
+    <section id="faq" class="py-section border-t border-white/5">
+      <div class="max-w-4xl mx-auto px-6">
+        <p class="chip mb-6">Questions</p>
+        <h2 class="font-display text-display-md text-white mb-16">Answers first. Marketing second.</h2>
+
+        <div class="space-y-3">
+          <details class="card group [&_summary::-webkit-details-marker]:hidden">
+            <summary class="flex items-center justify-between cursor-pointer list-none">
+              <h3 class="font-display text-lg text-white">Which ERPs does ERPLaunch support?</h3>
+              <svg class="w-5 h-5 text-ink-400 transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </summary>
+            <p class="mt-4 text-ink-300 leading-relaxed">First-party adaptors for NetSuite, SAP S/4HANA, Oracle Fusion, Microsoft Dynamics 365, Odoo, and ERPNext. A no-code Custom Adaptor wizard lets firms stand up any in-house or legacy system by uploading its analysis questionnaire and output templates.</p>
+          </details>
+
+          <details class="card group [&_summary::-webkit-details-marker]:hidden">
+            <summary class="flex items-center justify-between cursor-pointer list-none">
+              <h3 class="font-display text-lg text-white">Does ERPLaunch replace our implementation methodology?</h3>
+              <svg class="w-5 h-5 text-ink-400 transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </summary>
+            <p class="mt-4 text-ink-300 leading-relaxed">No. Each ERP adaptor ships with its vendor-standard methodology (SAP Activate, SuiteSuccess, Oracle True Cloud Method, Microsoft's Implementation Guide, Odoo's, ERPNext playbook). Fork it, author your own; engagements tweak further. Provenance follows every element.</p>
+          </details>
+
+          <details class="card group [&_summary::-webkit-details-marker]:hidden">
+            <summary class="flex items-center justify-between cursor-pointer list-none">
+              <h3 class="font-display text-lg text-white">Can clients participate without logging in?</h3>
+              <svg class="w-5 h-5 text-ink-400 transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </summary>
+            <p class="mt-4 text-ink-300 leading-relaxed">Yes. Clients answer wizard questions, upload files, and approve decisions by replying to email or WhatsApp. AI extracts structured answers; consultants review and accept. Voice notes are transcribed.</p>
+          </details>
+
+          <details class="card group [&_summary::-webkit-details-marker]:hidden">
+            <summary class="flex items-center justify-between cursor-pointer list-none">
+              <h3 class="font-display text-lg text-white">Is it white-label?</h3>
+              <svg class="w-5 h-5 text-ink-400 transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </summary>
+            <p class="mt-4 text-ink-300 leading-relaxed">Every consulting firm operates ERPLaunch under their own brand — company name, logo, colors, and sending domain. The consultant workspace and the client portal inherit it.</p>
+          </details>
+
+          <details class="card group [&_summary::-webkit-details-marker]:hidden">
+            <summary class="flex items-center justify-between cursor-pointer list-none">
+              <h3 class="font-display text-lg text-white">What's the pricing?</h3>
+              <svg class="w-5 h-5 text-ink-400 transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </summary>
+            <p class="mt-4 text-ink-300 leading-relaxed">Free during beta. Paid tiers launch with: per-engagement billing, per-consultant seat, and a marketplace revenue share for published verticals.</p>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── Final CTA ─────────────────────────────────────────────── -->
+    <section class="py-section border-t border-white/5">
+      <div class="max-w-4xl mx-auto px-6 text-center">
+        <h2 class="font-display text-display-lg text-white mb-6">
+          Your next implementation <span class="gradient-text">starts here.</span>
+        </h2>
+        <p class="text-xl text-ink-300 max-w-2xl mx-auto mb-10">
+          Set up your firm in under an hour. First engagement live the same day.
+        </p>
+        <div class="flex flex-col sm:flex-row gap-4 justify-center">
+          <a href="https://app.erplaunch.app/signup" class="btn-primary">Start free — no card</a>
+          <a href="mailto:hello@erplaunch.app" class="btn-ghost">Talk to us</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ─── Footer ─────────────────────────────────────────────────── -->
+  <footer class="border-t border-white/5 py-16">
+    <div class="max-w-7xl mx-auto px-6">
+      <div class="grid md:grid-cols-4 gap-10 mb-12">
+        <div class="md:col-span-2">
+          <a href="/" class="flex items-center gap-2 font-display font-semibold text-lg text-white mb-4">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 2L4 7v10l8 5 8-5V7l-8-5z" stroke="url(#lg2)" stroke-width="2" stroke-linejoin="round"/><path d="M12 22V12M4 7l8 5 8-5" stroke="url(#lg2)" stroke-width="2" stroke-linejoin="round"/><defs><linearGradient id="lg2" x1="0" y1="0" x2="24" y2="24"><stop stop-color="#818cf8"/><stop offset="1" stop-color="#4f46e5"/></linearGradient></defs></svg>
+            ERPLaunch
+          </a>
+          <p class="text-ink-400 max-w-md leading-relaxed">The AI-native implementation platform for every ERP.</p>
+        </div>
+        <div>
+          <h4 class="text-xs font-semibold tracking-widest uppercase text-ink-500 mb-4">Product</h4>
+          <ul class="space-y-2 text-ink-300">
+            <li><a href="#platform" class="hover:text-white transition-colors">Platform</a></li>
+            <li><a href="#how" class="hover:text-white transition-colors">How it works</a></li>
+            <li><a href="#verticals" class="hover:text-white transition-colors">Verticals</a></li>
+            <li><a href="#faq" class="hover:text-white transition-colors">FAQ</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4 class="text-xs font-semibold tracking-widest uppercase text-ink-500 mb-4">Company</h4>
+          <ul class="space-y-2 text-ink-300">
+            <li><a href="mailto:hello@erplaunch.app" class="hover:text-white transition-colors">Contact</a></li>
+            <li><a href="/privacy" class="hover:text-white transition-colors">Privacy</a></li>
+            <li><a href="/terms" class="hover:text-white transition-colors">Terms</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="flex flex-col md:flex-row items-center justify-between gap-4 pt-8 border-t border-white/5">
+        <p class="text-sm text-ink-500">© 2026 ERPLaunch. All rights reserved.</p>
+        <p class="text-sm text-ink-500">Built for consulting firms, everywhere.</p>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ─── Chatbot ────────────────────────────────────────────────── -->
+  <!-- Floating launcher -->
+  <button
+    id="chat-fab"
+    type="button"
+    aria-expanded="false"
+    aria-controls="chat-panel"
+    aria-label="Open ERPLaunch chat assistant"
+    class="fixed bottom-5 right-5 z-50 h-14 w-14 rounded-full bg-brand-500 text-white shadow-[0_10px_40px_-10px_rgba(99,102,241,0.7)]
+           hover:bg-brand-400 hover:-translate-y-0.5 transition-all duration-200
+           flex items-center justify-center
+           focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-400/40">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2v10z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="8.5" cy="10" r="1" fill="currentColor"/>
+      <circle cx="12" cy="10" r="1" fill="currentColor"/>
+      <circle cx="15.5" cy="10" r="1" fill="currentColor"/>
+    </svg>
+  </button>
+
+  <!-- Panel -->
+  <aside
+    id="chat-panel"
+    role="dialog"
+    aria-modal="false"
+    aria-label="ERPLaunch chat assistant"
+    aria-hidden="true"
+    class="fixed bottom-0 right-0 md:bottom-24 md:right-5 z-50
+           w-full md:w-[400px] h-[85vh] md:h-[600px] max-h-screen
+           bg-ink-900 ring-1 ring-white/10 md:rounded-2xl shadow-2xl
+           flex flex-col
+           translate-y-full opacity-0 pointer-events-none
+           transition-all duration-300 ease-out">
+
+    <!-- Header -->
+    <header class="flex items-center justify-between px-5 py-4 border-b border-white/5">
+      <div class="flex items-center gap-3">
+        <div class="relative w-9 h-9 rounded-full bg-gradient-to-br from-brand-400 to-brand-700 flex items-center justify-center">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" class="text-white" aria-hidden="true">
+            <path d="M12 2L4 7v10l8 5 8-5V7l-8-5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M12 22V12M4 7l8 5 8-5" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+          </svg>
+          <span class="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-ink-900" aria-label="Online"></span>
+        </div>
+        <div>
+          <p class="text-sm font-semibold text-white">ERPLaunch Assistant</p>
+          <p class="text-xs text-ink-400">Usually replies instantly · AI-powered</p>
+        </div>
+      </div>
+      <button
+        id="chat-close"
+        type="button"
+        aria-label="Close chat"
+        class="w-8 h-8 rounded-lg text-ink-400 hover:text-white hover:bg-white/5 flex items-center justify-center transition-colors">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+    </header>
+
+    <!-- Message list -->
+    <div id="chat-messages" class="flex-1 overflow-y-auto px-4 py-5 space-y-3" aria-live="polite" aria-atomic="false">
+      <!-- Welcome / empty state -->
+      <div id="chat-welcome" class="text-center py-6 space-y-5">
+        <div class="mx-auto w-12 h-12 rounded-full bg-brand-500/15 text-brand-300 flex items-center justify-center">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="space-y-1.5 px-6">
+          <p class="text-base font-semibold text-white">Hi — I'm here to help.</p>
+          <p class="text-sm text-ink-400">Ask anything about ERPLaunch: supported ERPs, methodology, verticals, client portal, AI intake, or pricing.</p>
+        </div>
+        <div class="flex flex-wrap gap-2 justify-center px-4 pt-2">
+          <button type="button" data-suggest="Which ERPs do you support?" class="text-xs px-3 py-1.5 rounded-full bg-white/5 ring-1 ring-white/10 text-ink-200 hover:bg-white/10 hover:ring-white/20 transition-colors">
+            Which ERPs?
+          </button>
+          <button type="button" data-suggest="How do verticals work?" class="text-xs px-3 py-1.5 rounded-full bg-white/5 ring-1 ring-white/10 text-ink-200 hover:bg-white/10 hover:ring-white/20 transition-colors">
+            How do verticals work?
+          </button>
+          <button type="button" data-suggest="Can I use my own methodology?" class="text-xs px-3 py-1.5 rounded-full bg-white/5 ring-1 ring-white/10 text-ink-200 hover:bg-white/10 hover:ring-white/20 transition-colors">
+            Own methodology?
+          </button>
+          <button type="button" data-suggest="How does the client portal work?" class="text-xs px-3 py-1.5 rounded-full bg-white/5 ring-1 ring-white/10 text-ink-200 hover:bg-white/10 hover:ring-white/20 transition-colors">
+            Client portal?
+          </button>
+          <button type="button" data-suggest="What does it cost?" class="text-xs px-3 py-1.5 rounded-full bg-white/5 ring-1 ring-white/10 text-ink-200 hover:bg-white/10 hover:ring-white/20 transition-colors">
+            Pricing?
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Input -->
+    <form id="chat-form" class="px-4 py-3 border-t border-white/5" autocomplete="off">
+      <div class="flex items-end gap-2 rounded-xl bg-white/5 ring-1 ring-white/10 focus-within:ring-brand-400/50 focus-within:bg-white/[0.07] transition-all px-3 py-2">
+        <label for="chat-input" class="sr-only">Ask a question</label>
+        <textarea
+          id="chat-input"
+          name="message"
+          rows="1"
+          required
+          maxlength="1000"
+          placeholder="Ask anything…"
+          class="flex-1 bg-transparent text-sm text-white placeholder:text-ink-500 resize-none outline-none max-h-[140px] leading-relaxed"></textarea>
+        <button
+          id="chat-send"
+          type="submit"
+          aria-label="Send message"
+          class="w-9 h-9 flex-shrink-0 rounded-lg bg-brand-500 text-white flex items-center justify-center hover:bg-brand-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12l14-7-7 14-2-5-5-2z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+      <p class="mt-2 text-[10px] text-ink-500 text-center">Powered by Claude · answers may not be exact — verify with <a href="mailto:hello@erplaunch.app" class="underline hover:text-ink-300">hello@erplaunch.app</a></p>
+    </form>
+  </aside>
+
+  <script src="/chat.js" defer></script>
+
+</body>
+</html>
