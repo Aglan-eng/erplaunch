@@ -19,10 +19,10 @@ describe('MFG-001: WIP & Routings requires Work Orders module', () => {
     expect(output.conflicts.some((c) => c.id === 'MFG-001')).toBe(true);
   });
 
-  it('no conflict when productionFlow.type=WIP_ROUTINGS and WORK_ORDERS present', () => {
-    const output = evaluate(makeInput({ 
+  it('no conflict when productionFlow.type=WIP_ROUTINGS and both WORK_ORDERS + WIP_ROUTINGS present', () => {
+    const output = evaluate(makeInput({
       answers: { 'mfg.productionFlow.type': 'WIP_ROUTINGS' },
-      license: { id: 'lic-1', engagementId: 'eng-1', edition: 'MID_MARKET', modules: ['WORK_ORDERS'], updatedAt: new Date() }
+      license: { id: 'lic-1', engagementId: 'eng-1', edition: 'MID_MARKET', modules: ['WORK_ORDERS', 'WIP_ROUTINGS'], updatedAt: new Date() }
     }));
     expect(output.conflicts.some((c) => c.id === 'MFG-001')).toBe(false);
   });
