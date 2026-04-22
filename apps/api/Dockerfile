@@ -19,6 +19,9 @@ COPY apps/api ./apps/api
 COPY packages/shared ./packages/shared
 COPY packages/rule-engine ./packages/rule-engine
 
+# Build workspace packages — api imports from their dist/ outputs
+RUN pnpm --filter @ofoq/shared build && pnpm --filter @ofoq/rule-engine build
+
 # Prepare data dirs (Render mounts the persistent disk here)
 RUN mkdir -p /data/db /data/uploads /data/outputs
 
