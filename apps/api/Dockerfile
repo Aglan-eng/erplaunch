@@ -14,7 +14,8 @@ COPY packages/rule-engine/package.json ./packages/rule-engine/
 
 RUN pnpm install --frozen-lockfile --filter @ofoq/api... --filter @ofoq/shared --filter @ofoq/rule-engine
 
-# Source layer
+# Source layer (include the shared tsconfig the workspace packages extend)
+COPY tsconfig.base.json ./
 COPY apps/api ./apps/api
 COPY packages/shared ./packages/shared
 COPY packages/rule-engine ./packages/rule-engine
