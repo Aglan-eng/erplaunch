@@ -1,0 +1,123 @@
+import Fastify from 'fastify';
+import cors from '@fastify/cors';
+import cookie from '@fastify/cookie';
+import jwt from '@fastify/jwt';
+import staticPlugin from '@fastify/static';
+import multipart from '@fastify/multipart';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+import dbPlugin from './plugins/db.js';
+import redisPlugin from './plugins/redis.js';
+import queuePlugin from './plugins/queue.js';
+import { authRoutes } from './routes/auth.js';
+import { engagementRoutes } from './routes/engagements.js';
+import { riskRoutes } from './routes/risks.js';
+import { issueRoutes } from './routes/issues.js';
+import { decisionRoutes } from './routes/decisions.js';
+import { meetingRoutes } from './routes/meetings.js';
+import { migrationRoutes } from './routes/migration.js';
+import { activityRoutes } from './routes/activity.js';
+import { portalRoutes } from './routes/portal.js';
+import { verticalsRoutes } from './routes/verticals.js';
+import { dataCollectionRoutes } from './routes/dataCollection.js';
+import { exportRoutes } from './routes/export.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+export async function buildServer() {
+  const fastify = Fastify({
+    logger: {
+      level: process.env.LOG_LEVEL || 'info',
+      transport: process.env.NODE_ENV !== 'production'
+        ? { target: 'pino-pretty', options: { colorize: true } }
+        : undefined,
+    },
+  });
+
+  await fastify.register(cors, {
+    origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+    credentials: true,
+  });
+
+  await fastify.register(cookie);
+
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret && process.env.NODE_ENV === 'production') {
+    throw new Error('JWT_SECRET environment variable is required in production');
+  }
+  await fastify.register(jwt, {
+    secret: jwtSecret || 'ofoq-dev-secret-local-only',
+    cookie: { cookieName: 'token', signed: false },
+  });
+
+  await fastify.register(multipart, { limits: { fileSize: 5 * 1024 * 1024 } });
+
+  await fastify.register(dbPlugin);
+  await fastify.register(redisPlugin);
+
+  // Queue plugin must register after Redis — uses its own connection config
+  // Gracefully skips if Redis is unavailable (jobs fall back to setImmediate)
+  try {
+    await fastify.register(queuePlugin);
+  } catch {
+    fastify.log.warn('BullMQ queue unavailable — generation jobs will run inline');
+  }
+
+  const outputDir = path.join(__dirname, '..', 'outputs');
+  fs.mkdirSync(outputDir, { recursive: true });
+  await fastify.register(staticPlugin, {
+    root: outputDir,
+    prefix: '/outputs/',
+    wildcard: true,
+    decorateReply: false,
+  });
+
+  // Uploads directory for section images
+  const uploadsDir = path.join(__dirname, '..', 'uploads');
+  fs.mkdirSync(uploadsDir, { recursive: true });
+  await fastify.register(staticPlugin, {
+    root: uploadsDir,
+    prefix: '/uploads/',
+    wildcard: true,
+    decorateReply: false,
+  });
+
+  await fastify.register(authRoutes, { prefix: '/api/v1' });
+  await fastify.register(engagementRoutes, { prefix: '/api/v1' });
+  await fastify.register(riskRoutes, { prefix: '/api/v1' });
+  await fastify.register(issueRoutes, { prefix: '/api/v1' });
+  await fastify.register(decisionRoutes, { prefix: '/api/v1' });
+  await fastify.register(meetingRoutes, { prefix: '/api/v1' });
+  await fastify.register(migrationRoutes, { prefix: '/api/v1' });
+  await fastify.register(activityRoutes, { prefix: '/api/v1' });
+  await fastify.register(portalRoutes, { prefix: '/api/v1' });
+  await fastify.register(verticalsRoutes, { prefix: '/api/v1' });
+  await fastify.register(dataCollectionRoutes, { prefix: '/api/v1' });
+  await fastify.register(exportRoutes, { prefix: '/api/v1' });
+
+  fastify.get('/health', async () => ({ ok: true, version: '0.2.0' }));
+
+  fastify.setErrorHandler((error, _request, reply) => {
+    fastify.log.error(error);
+    const statusCode = error.statusCode ?? 500;
+    reply.code(statusCode).send({
+      error: { code: 'INTERNAL_ERROR', message: statusCode === 500 ? 'Internal server error' : error.message },
+    });
+  });
+
+  return fastify;
+}
+
+const port = parseInt(process.env.API_PORT || '3000', 10);
+const host = process.env.API_HOST || '0.0.0.0';
+
+const server = await buildServer();
+
+try {
+  await server.listen({ port, host });
+  console.log(`\n🚀 OFOQ API running at http://localhost:${port}\n`);
+} catch (err) {
+  server.log.error(err);
+  process.exit(1);
+}

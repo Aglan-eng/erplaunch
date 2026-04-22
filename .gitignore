@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+.turbo/
+.next/
+out/
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+
+# Databases (dev)
+*.db
+*.db-shm
+*.db-wal
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Runtime artifacts
+uploads/
+outputs/
+tmp/
+.cache/
+
+# CI/Coverage
+coverage/
+.nyc_output/
+
+# Misc temporary setup files
+_tmp_*
+.setup_done
+test_write_access.txt

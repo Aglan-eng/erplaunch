@@ -1,0 +1,81 @@
+# Render blueprint — one api service + one Key Value (Redis) + one persistent disk.
+# Create by pointing Render at this repo: Dashboard → Blueprints → New Blueprint.
+#
+# Env vars marked `sync: false` must be filled in manually from the Render UI.
+# Every secret stays out of git.
+
+services:
+  - type: web
+    name: erplaunch-api
+    runtime: docker
+    region: oregon        # change if you prefer another region
+    plan: starter         # $7/mo; free plan has no persistent disks
+    dockerfilePath: apps/api/Dockerfile
+    dockerContext: .
+    rootDir: ofoq-accelerator
+    healthCheckPath: /health
+    disk:
+      name: erplaunch-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: API_HOST
+        value: 0.0.0.0
+      - key: API_PORT
+        value: 3000
+      - key: DATABASE_URL
+        value: file:/data/db/dev.db
+      # Rotated secrets — paste into Render UI once (sync:false keeps them out of git)
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_REFRESH_SECRET
+        sync: false
+      - key: PORTAL_SESSION_COOKIE_SECRET
+        sync: false
+      - key: ERPLAUNCH_MASTER_KEY
+        sync: false
+      # AI + third parties
+      - key: AI_PROVIDER
+        value: anthropic
+      - key: AI_MODEL
+        value: claude-sonnet-4-20250514
+      - key: AI_API_KEY
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_VERIFY_SERVICE_SID
+        sync: false
+      # Wiring — set CORS_ORIGIN + APP_URL to your Vercel URL after first web deploy
+      - key: CORS_ORIGIN
+        sync: false
+      - key: APP_URL
+        sync: false
+      # Portal tunables (defaults are fine, override if needed)
+      - key: PORTAL_SESSION_TTL_DAYS
+        value: "7"
+      - key: PORTAL_AUTH_RATELIMIT_REQUEST_PER_MIN
+        value: "3"
+      - key: PORTAL_AUTH_RATELIMIT_VERIFY_PER_MIN
+        value: "5"
+      - key: PORTAL_OTP_TTL_MINUTES
+        value: "10"
+      - key: PORTAL_OTP_MAX_ATTEMPTS
+        value: "5"
+      - key: PORTAL_OTP_CODE_LENGTH
+        value: "6"
+      # Redis wired via fromService below
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: erplaunch-redis
+          property: connectionString
+
+  - type: keyvalue
+    name: erplaunch-redis
+    region: oregon
+    plan: free
+    ipAllowList: []       # Render-internal access only

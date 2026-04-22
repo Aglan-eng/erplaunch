@@ -1,0 +1,54 @@
+# ------------------------------------------------------------------------------
+# Dependabot — automated dependency updates
+# ------------------------------------------------------------------------------
+# Groups minor + patch updates into a single PR per ecosystem to keep noise low.
+# Major updates still open individual PRs so they get human review.
+# ------------------------------------------------------------------------------
+
+version: 2
+
+updates:
+  # npm / pnpm — root, apps, packages
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(deps)"
+      include: scope
+    groups:
+      npm-minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # Pin Node major here if needed
+      - dependency-name: "node"
+
+  # GitHub Actions — keep workflow action SHAs/versions fresh
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci(deps)"
+      include: scope
+    groups:
+      gha-minor-and-patch:
+        update-types: [minor, patch]
+
+  # Docker — docker-compose.yml
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(docker)"
+      include: scope

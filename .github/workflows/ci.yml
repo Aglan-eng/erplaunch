@@ -1,0 +1,157 @@
+# ------------------------------------------------------------------------------
+# CI — lint, type-check, unit tests, build
+# ------------------------------------------------------------------------------
+# Runs on every pull request and on pushes to main.
+# Fast gate (< ~5 min target). Heavier work lives in e2e.yml and security.yml.
+# ------------------------------------------------------------------------------
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PNPM_VERSION: "10.28.0"
+  NODE_VERSION: "20"
+  TURBO_TELEMETRY_DISABLED: "1"
+  HUSKY: "0"
+
+jobs:
+  # ----------------------------------------------------------------------------
+  # Lint — ESLint against the repo's root .eslintrc.js
+  # ----------------------------------------------------------------------------
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Honor any package-level `lint` script first (graceful no-op if missing).
+      - name: Run per-package lint scripts
+        run: pnpm -r --if-present run lint
+
+      # Always run ESLint at the repo root against the shared .eslintrc.js.
+      # Uses pnpm dlx so we don't need to add eslint to the root package.json.
+      - name: ESLint (repo root)
+        run: |
+          pnpm dlx \
+            -p eslint@8 \
+            -p @typescript-eslint/parser@^7 \
+            -p @typescript-eslint/eslint-plugin@^7 \
+            eslint "apps/**/*.{ts,tsx,js,jsx}" "packages/**/*.{ts,tsx,js,jsx}" \
+              --ignore-pattern "**/dist/**" \
+              --ignore-pattern "**/node_modules/**" \
+              --max-warnings 0
+
+  # ----------------------------------------------------------------------------
+  # Type-check — tsc --noEmit across the workspace
+  # ----------------------------------------------------------------------------
+  typecheck:
+    name: Type-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: tsc --noEmit
+        run: pnpm -r exec tsc --noEmit
+
+  # ----------------------------------------------------------------------------
+  # Unit tests — vitest (API + any package with a test script)
+  # ----------------------------------------------------------------------------
+  unit-tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Run unit tests
+        env:
+          CI: "true"
+          # Use an in-memory libsql DB for unit tests so no external service is needed.
+          DATABASE_URL: "file::memory:?cache=shared"
+          JWT_SECRET: "ci-unit-jwt-secret"
+          JWT_REFRESH_SECRET: "ci-unit-jwt-refresh-secret"
+          NODE_ENV: "test"
+        run: pnpm -r --if-present run test
+
+  # ----------------------------------------------------------------------------
+  # Build — turbo build across the monorepo; uploads dist as an artifact
+  # so the deploy workflow can reuse it if we choose to.
+  # ----------------------------------------------------------------------------
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [lint, typecheck, unit-tests]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Cache turbo
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            turbo-${{ runner.os }}-
+
+      - name: Build
+        run: pnpm build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ github.sha }}
+          if-no-files-found: ignore
+          retention-days: 7
+          path: |
+            apps/*/dist
+            packages/*/dist

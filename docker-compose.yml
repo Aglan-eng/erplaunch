@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: ofoq-redis
+    ports:
+      - '6379:6379'
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: ofoq-api
+    environment:
+      - DATABASE_URL=file:/app/data/dev.db
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=ofoq-dev-secret
+    ports:
+      - '3000:3000'
+    depends_on:
+      - redis
+    volumes:
+      - ofoq_data:/app/data
+
+volumes:
+  ofoq_data:

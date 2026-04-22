@@ -1,0 +1,130 @@
+# ------------------------------------------------------------------------------
+# Security scanning
+# ------------------------------------------------------------------------------
+# Four layers:
+#   1. CodeQL           — static analysis for JS/TS
+#   2. pnpm audit       — known vulnerable dependencies
+#   3. Gitleaks         — secret scanning across the repo history
+#   4. Trivy            — filesystem + misconfig scan (uploads SARIF)
+# Runs on every PR, on push to main, and on a weekly schedule.
+# ------------------------------------------------------------------------------
+
+name: Security
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    # 03:17 UTC every Monday — offset so we don't stampede on the hour
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+env:
+  PNPM_VERSION: "10.28.0"
+  NODE_VERSION: "20"
+  HUSKY: "0"
+
+jobs:
+  # ----------------------------------------------------------------------------
+  codeql:
+    name: CodeQL (JS/TS)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          queries: security-extended,security-and-quality
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript-typescript"
+
+  # ----------------------------------------------------------------------------
+  dependency-audit:
+    name: Dependency audit (pnpm)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Fail the job if any HIGH or CRITICAL advisory is found.
+      # Moderate and low issues are reported but non-blocking.
+      - name: pnpm audit (high/critical)
+        run: pnpm audit --prod --audit-level=high
+
+      - name: pnpm audit (full report, informational)
+        if: always()
+        run: pnpm audit || true
+
+  # ----------------------------------------------------------------------------
+  secret-scan:
+    name: Secret scan (Gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # GITLEAKS_LICENSE is only required for organization repos on paid plans.
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+  # ----------------------------------------------------------------------------
+  trivy:
+    name: Trivy filesystem scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability + misconfig scan
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy-results.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "0" # upload SARIF first, let Code Scanning gate merges
+          skip-dirs: "node_modules,dist,.turbo,apps/*/node_modules,apps/*/dist,packages/*/node_modules,packages/*/dist"
+
+      - name: Upload Trivy SARIF to Code Scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy

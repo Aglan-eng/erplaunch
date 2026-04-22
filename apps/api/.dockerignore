@@ -1,0 +1,13 @@
+node_modules
+dist
+.turbo
+.env
+.env.*
+!.env.example
+dev.db
+dev.db-shm
+dev.db-wal
+outputs
+uploads
+tests
+*.test.ts

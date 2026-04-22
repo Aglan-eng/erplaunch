@@ -1,0 +1,179 @@
+# ------------------------------------------------------------------------------
+# Deploy — merge to main triggers a production deployment
+# ------------------------------------------------------------------------------
+# Only runs after CI + E2E + Security succeed on the same commit.
+# Primary target: Render (via deploy hook). Vercel / Netlify snippets are
+# included as alternatives — toggle by uncommenting the relevant step and
+# commenting out the Render step.
+#
+# Required secrets:
+#   RENDER_DEPLOY_HOOK_URL   (required)   unique deploy URL from Render dashboard
+#   RENDER_API_KEY           (optional)   enables deploy status polling
+#   RENDER_SERVICE_ID        (optional)   pairs with RENDER_API_KEY for status polling
+#
+# Alternative target secrets (only if you switch to Vercel or Netlify):
+#   VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID
+#   NETLIFY_AUTH_TOKEN, NETLIFY_SITE_ID
+# ------------------------------------------------------------------------------
+
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: ["CI", "E2E", "Security"]
+    branches: [main]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to deploy"
+        required: false
+        default: "main"
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  # ----------------------------------------------------------------------------
+  # Gate — only deploy if every upstream workflow on the same commit succeeded.
+  # ----------------------------------------------------------------------------
+  gate:
+    name: Verify upstream workflows
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+    steps:
+      - id: resolve
+        name: Resolve commit SHA
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Confirm CI, E2E, Security all succeeded on this SHA
+        if: github.event_name != 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ steps.resolve.outputs.sha }}
+        run: |
+          set -euo pipefail
+          for wf in CI E2E Security; do
+            status=$(gh run list \
+              --repo "$GITHUB_REPOSITORY" \
+              --workflow "$wf" \
+              --branch main \
+              --commit "$SHA" \
+              --limit 1 \
+              --json conclusion \
+              --jq '.[0].conclusion // "missing"')
+            echo "$wf → $status"
+            if [ "$status" != "success" ]; then
+              echo "::error::Cannot deploy — $wf did not succeed on $SHA (status: $status)"
+              exit 1
+            fi
+          done
+
+  # ----------------------------------------------------------------------------
+  # Deploy — trigger Render and wait for the resulting deploy to go live.
+  # ----------------------------------------------------------------------------
+  render:
+    name: Deploy to Render
+    runs-on: ubuntu-latest
+    needs: gate
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: ${{ steps.render-trigger.outputs.service_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.gate.outputs.sha }}
+
+      - name: Fail fast if Render deploy hook is missing
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "::error::RENDER_DEPLOY_HOOK_URL is not set. Add it under Settings → Secrets → Actions."
+            exit 1
+          fi
+
+      - id: render-trigger
+        name: Trigger Render deploy
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+          SHA: ${{ needs.gate.outputs.sha }}
+        run: |
+          set -euo pipefail
+          # Render accepts an optional ?ref=<sha> query param — pin to the exact
+          # commit so we always deploy the reviewed SHA.
+          response=$(curl -fsS -X POST "${HOOK}&ref=${SHA}" || curl -fsS -X POST "${HOOK}")
+          echo "Render response: $response"
+          deploy_id=$(echo "$response" | jq -r '.deploy.id // empty')
+          echo "deploy_id=$deploy_id" >> "$GITHUB_OUTPUT"
+          echo "service_url=https://dashboard.render.com/web/${{ secrets.RENDER_SERVICE_ID }}" >> "$GITHUB_OUTPUT"
+
+      - name: Poll Render deploy status
+        if: ${{ secrets.RENDER_API_KEY != '' && secrets.RENDER_SERVICE_ID != '' }}
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+          DEPLOY_ID: ${{ steps.render-trigger.outputs.deploy_id }}
+        run: |
+          set -euo pipefail
+          if [ -z "$DEPLOY_ID" ]; then
+            echo "No deploy id returned — falling back to latest-deploy lookup"
+            DEPLOY_ID=$(curl -fsS \
+              -H "Authorization: Bearer $RENDER_API_KEY" \
+              "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys?limit=1" \
+              | jq -r '.[0].deploy.id')
+          fi
+
+          echo "Watching Render deploy: $DEPLOY_ID"
+          for i in $(seq 1 60); do
+            status=$(curl -fsS \
+              -H "Authorization: Bearer $RENDER_API_KEY" \
+              "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys/$DEPLOY_ID" \
+              | jq -r '.status')
+            echo "[$i/60] status=$status"
+            case "$status" in
+              live)               echo "Deploy succeeded" && exit 0 ;;
+              build_failed|update_failed|canceled|deactivated)
+                                  echo "::error::Deploy failed with status: $status" && exit 1 ;;
+            esac
+            sleep 15
+          done
+          echo "::error::Timed out waiting for Render deploy to finish" && exit 1
+
+      # -------------------------------------------------------------------------
+      # Alternative targets — swap in place of the Render steps above if needed.
+      # -------------------------------------------------------------------------
+      # VERCEL
+      # - name: Deploy to Vercel
+      #   uses: amondnet/vercel-action@v25
+      #   with:
+      #     vercel-token:      ${{ secrets.VERCEL_TOKEN }}
+      #     vercel-org-id:     ${{ secrets.VERCEL_ORG_ID }}
+      #     vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+      #     vercel-args:       '--prod'
+      #
+      # NETLIFY
+      # - name: Deploy to Netlify
+      #   uses: nwtgck/actions-netlify@v3
+      #   with:
+      #     publish-dir: ./apps/web/dist
+      #     production-deploy: true
+      #   env:
+      #     NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+      #     NETLIFY_SITE_ID:    ${{ secrets.NETLIFY_SITE_ID }}

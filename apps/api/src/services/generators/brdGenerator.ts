@@ -1,0 +1,433 @@
+import MarkdownIt from 'markdown-it';
+import { allQuestions } from '@ofoq/shared';
+import type { Question } from '@ofoq/shared';
+
+export interface BRDData {
+  clientName: string;
+  license: {
+    edition: string;
+    modules: string[];
+  };
+  answers: Record<string, any>;
+  comments?: any[];
+  images?: any[];
+  aiAdvice?: any[];
+}
+
+// ─── Section display names ────────────────────────────────────────────────────
+
+const SECTION_LABELS: Record<string, string> = {
+  // R2R
+  entities: 'Legal Entities & Structure',
+  segmentation: 'Segmentation & Dimensions',
+  accountingPeriods: 'Accounting Periods & Fiscal Calendar',
+  currencies: 'Currencies & Exchange Rates',
+  journalEntries: 'Journal Entries',
+  bankTransactions: 'Bank Transactions & Reconciliation',
+  reporting: 'Reporting & Consolidation',
+  tax: 'Tax Configuration',
+  fiscalClose: 'Period-End & Fiscal Close',
+  // P2P
+  purchasing: 'Purchasing & Purchase Orders',
+  receiving: 'Goods Receiving',
+  bills: 'Bills & Payables',
+  payments: 'Payments & Payment Runs',
+  expenses: 'Employee Expenses',
+  vendors: 'Vendor Management',
+  // O2C
+  customers: 'Customer Management',
+  salesOrders: 'Sales Orders & Approvals',
+  pricing: 'Pricing & Discounting',
+  fulfillment: 'Fulfillment & Shipping',
+  invoicing: 'Invoicing & Revenue',
+  collections: 'Collections & Credit',
+  // MFG
+  productionFlow: 'Production Flow',
+  bom: 'Bills of Materials',
+  demand: 'Demand Planning',
+  outsourced: 'Outsourced Manufacturing',
+  // RTN
+  customerReturns: 'Customer Returns (RMA)',
+  vendorReturns: 'Vendor Returns',
+  processing: 'Returns Processing',
+};
+
+// ─── Flow display configuration ──────────────────────────────────────────────
+
+const FLOWS = [
+  { id: 'r2r', label: 'Record to Report (R2R)', description: 'General ledger, chart of accounts, financial reporting, and period management.' },
+  { id: 'p2p', label: 'Procure to Pay (P2P)', description: 'Purchasing, vendor management, bills, and payment processing.' },
+  { id: 'o2c', label: 'Order to Cash (O2C)', description: 'Customer orders, pricing, fulfillment, invoicing, and collections.' },
+  { id: 'mfg', label: 'Manufacturing', description: 'Production flows, bills of materials, work-in-process, and demand planning.' },
+  { id: 'rtn', label: 'Returns', description: 'Customer and vendor returns, RMA workflows, and disposition processing.' },
+] as const;
+
+const EDITION_LABELS: Record<string, string> = {
+  STARTER: 'NetSuite Starter',
+  MID_MARKET: 'NetSuite Mid-Market',
+  ENTERPRISE: 'NetSuite Enterprise',
+};
+
+// ─── Answer formatting helpers ────────────────────────────────────────────────
+
+function formatAnswer(question: Question, rawValue: unknown): string {
+  if (rawValue === undefined || rawValue === null) return '—';
+
+  switch (question.inputType) {
+    case 'BOOLEAN':
+      return rawValue === true ? 'Yes' : rawValue === false ? 'No' : '—';
+
+    case 'SINGLE_SELECT': {
+      if (!question.options) return String(rawValue);
+      const match = question.options.find((o: { value: string; label: string }) => o.value === rawValue);
+      return match ? match.label : String(rawValue);
+    }
+
+    case 'MULTI_SELECT': {
+      if (!Array.isArray(rawValue) || rawValue.length === 0) return 'None selected';
+      if (!question.options) return rawValue.join(', ');
+      const labels = rawValue.map((v) => {
+        const match = question.options!.find((o: { value: string; label: string }) => o.value === v);
+        return match ? match.label : String(v);
+      });
+      return labels.join(', ');
+    }
+
+    case 'TABLE': {
+      if (!Array.isArray(rawValue) || rawValue.length === 0) return 'None configured';
+      const rows = rawValue as string[];
+      return rows.map((r, i) => `${i + 1}. ${r}`).join('\n');
+    }
+
+    case 'NUMBER':
+      return String(rawValue);
+
+    case 'DATE':
+      if (rawValue instanceof Date) return rawValue.toLocaleDateString();
+      return String(rawValue);
+
+    default:
+      return String(rawValue);
+  }
+}
+
+// ─── Build question lookup map ─────────────────────────────────────────────
+
+function buildQuestionMap(): Map<string, Question> {
+  const map = new Map<string, Question>();
+  for (const q of allQuestions) {
+    map.set(q.id, q);
+  }
+  return map;
+}
+
+// ─── Core BRD generation ─────────────────────────────────────────────────────
+
+export function generateBRD(data: BRDData): string {
+  const { clientName, license, answers } = data;
+  const now = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  const questionMap = buildQuestionMap();
+
+  const editionLabel = EDITION_LABELS[license.edition] ?? license.edition;
+
+  let md = '';
+
+  // ── Cover ──
+  md += `# Business Requirements Document\n\n`;
+  md += `| | |\n`;
+  md += `|---|---|\n`;
+  md += `| **Client** | ${clientName} |\n`;
+  md += `| **Date** | ${now} |\n`;
+  md += `| **Status** | Draft |\n`;
+  md += `| **Prepared by** | Ofoq NetSuite Accelerator |\n`;
+  md += `\n---\n\n`;
+
+  // ── Executive Summary ──
+  md += `## 1. Executive Summary\n\n`;
+  md += `This Business Requirements Document captures the functional configuration requirements for the NetSuite implementation at **${clientName}**. `;
+  md += `It is generated from the responses provided in the Ofoq implementation wizard and serves as the primary handover document between the discovery phase and the build phase.\n\n`;
+  md += `The requirements below reflect the client's stated business processes and operational needs. `;
+  md += `Each section maps directly to a NetSuite workstream and should be reviewed with the client before configuration begins.\n\n`;
+
+  // ── License Profile ──
+  md += `## 2. License & Edition Profile\n\n`;
+  md += `**Edition:** ${editionLabel}\n\n`;
+
+  if (license.modules.length > 0) {
+    md += `**Provisioned Modules:**\n\n`;
+    license.modules.forEach((m) => {
+      md += `- ${m}\n`;
+    });
+  } else {
+    md += `No additional modules have been provisioned beyond the base edition.\n`;
+  }
+  md += `\n`;
+
+  // ── Workstream Requirements ──
+  md += `## 3. Workstream Requirements\n\n`;
+
+  let flowIndex = 1;
+
+  for (const flow of FLOWS) {
+    // Collect all answers for this flow
+    const flowAnswerEntries = Object.entries(answers).filter(([key]) => key.startsWith(`${flow.id}.`));
+    if (flowAnswerEntries.length === 0) continue;
+
+    md += `### 3.${flowIndex}. ${flow.label}\n\n`;
+    md += `_${flow.description}_\n\n`;
+    flowIndex++;
+
+    // Group by section (preserving order from question definitions)
+    const sectionMap = new Map<string, Array<{ question: Question; rawValue: unknown }>>();
+
+    for (const [qId, rawValue] of flowAnswerEntries) {
+      const question = questionMap.get(qId);
+      if (!question) continue; // skip orphaned answers
+
+      const sec = question.section;
+      if (!sectionMap.has(sec)) sectionMap.set(sec, []);
+      sectionMap.get(sec)!.push({ question, rawValue });
+    }
+
+    // Sort sections by the minimum order of their questions (preserves wizard order)
+    const sortedSections = [...sectionMap.entries()].sort(([, aItems], [, bItems]) => {
+      const aMin = Math.min(...aItems.map((i) => i.question.order));
+      const bMin = Math.min(...bItems.map((i) => i.question.order));
+      return aMin - bMin;
+    });
+
+    for (const [sectionKey, items] of sortedSections) {
+      const sectionLabel = SECTION_LABELS[sectionKey] ?? titleCase(sectionKey);
+      md += `#### ${sectionLabel}\n\n`;
+
+      // Sort questions within section by order
+      const sorted = [...items].sort((a, b) => a.question.order - b.question.order);
+
+      for (const { question, rawValue } of sorted) {
+        // Skip unanswered optional questions (undefined/null)
+        if (rawValue === undefined || rawValue === null) continue;
+
+        const formattedAnswer = formatAnswer(question, rawValue);
+        const shortLabel = stripTrailingPunctuation(question.label);
+
+        md += `**${shortLabel}**\n`;
+        md += `${formattedAnswer}\n\n`;
+      }
+
+      const fullSectionKey = `${flow.id}.${sectionKey}`;
+
+      // ── Append Consultant Notes (Comments) ──
+      const sectionComment = data.comments?.find((c) => c.sectionKey === fullSectionKey);
+      if (sectionComment?.text) {
+        md += `> **Consultant Notes:**\n> ${sectionComment.text.replace(/\n/g, '\n> ')}\n\n`;
+      }
+
+      // ── Append AI Advice ──
+      const ai = data.aiAdvice?.find((a) => a.sectionKey === fullSectionKey)?.advice;
+      if (ai) {
+        if (ai.warnings?.length > 0) {
+          md += `**⚠️ Implementation Risks:**\n`;
+          ai.warnings.forEach((w: string) => md += `- ${w}\n`);
+          md += `\n`;
+        }
+        if (ai.suggestions?.length > 0) {
+          md += `**🧠 Configuration Recommendations:**\n`;
+          ai.suggestions.forEach((s: any) => md += `- **[${s.priority}]** ${s.title}: ${s.description}\n`);
+          md += `\n`;
+        }
+      }
+
+      // ── Append Images ──
+      const sectionImages = data.images?.filter((img) => img.sectionKey === fullSectionKey);
+      if (sectionImages && sectionImages.length > 0) {
+        md += `**Attachments:**\n\n`;
+        sectionImages.forEach((img) => {
+          md += `![${img.originalName}](/uploads/${img.engagementId}/${img.filename})\n\n`;
+        });
+      }
+    }
+  }
+
+  // ── Next Steps ──
+  md += `## 4. Next Steps\n\n`;
+  md += `1. **Review with client** — walk through this document section-by-section to confirm accuracy and completeness.\n`;
+  md += `2. **Identify gaps** — note any questions that were left blank or answered provisionally; schedule follow-up workshops as needed.\n`;
+  md += `3. **Resolve conflicts** — any blocking configuration conflicts flagged by the Ofoq rule engine must be resolved before configuration begins.\n`;
+  md += `4. **Sign-off** — obtain client sign-off on this BRD as a baseline for scope. Changes after sign-off should go through a formal change request.\n`;
+  md += `5. **Begin configuration** — once approved, proceed to the NetSuite build phase using the SDF deployment package generated by Ofoq.\n\n`;
+
+  // ── Disclaimer ──
+  md += `---\n\n`;
+  md += `_This document was automatically generated by the Ofoq NetSuite Accelerator based on wizard input provided by the implementation team. `;
+  md += `It is intended as a starting point and should be validated by a certified NetSuite consultant before use as a contractual deliverable._\n`;
+
+  return md;
+}
+
+// ─── HTML wrapper ─────────────────────────────────────────────────────────────
+
+const mdRenderer = new MarkdownIt({
+  html: true,
+  linkify: true,
+  typographer: true,
+});
+
+export function generateBRDHtml(data: BRDData): string {
+  const markdown = generateBRD(data);
+  const content = mdRenderer.render(markdown);
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BRD — ${data.clientName}</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      font-size: 14px;
+      line-height: 1.75;
+      color: #1e293b;
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 48px 32px 80px;
+      background: #ffffff;
+    }
+
+    h1 {
+      font-size: 26px;
+      font-weight: 800;
+      color: #0f172a;
+      border-bottom: 3px solid #2563eb;
+      padding-bottom: 12px;
+      margin-bottom: 24px;
+      letter-spacing: -0.4px;
+    }
+
+    h2 {
+      font-size: 18px;
+      font-weight: 700;
+      color: #1e3a8a;
+      margin-top: 48px;
+      margin-bottom: 12px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    h3 {
+      font-size: 15px;
+      font-weight: 700;
+      color: #1e40af;
+      margin-top: 32px;
+      margin-bottom: 8px;
+      padding-left: 12px;
+      border-left: 3px solid #3b82f6;
+    }
+
+    h4 {
+      font-size: 13px;
+      font-weight: 600;
+      color: #475569;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-top: 24px;
+      margin-bottom: 8px;
+    }
+
+    p { margin: 0 0 12px; }
+
+    p strong {
+      color: #0f172a;
+      font-weight: 600;
+    }
+
+    /* Answer value — the line immediately following a bold question label */
+    p + p { color: #334155; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0 24px;
+      font-size: 13px;
+    }
+
+    th {
+      background: #f1f5f9;
+      color: #475569;
+      font-weight: 600;
+      text-align: left;
+      padding: 8px 12px;
+      border: 1px solid #e2e8f0;
+    }
+
+    td {
+      padding: 7px 12px;
+      border: 1px solid #e2e8f0;
+      vertical-align: top;
+    }
+
+    tr:nth-child(even) td { background: #f8fafc; }
+
+    ul, ol {
+      padding-left: 20px;
+      margin: 8px 0 16px;
+    }
+
+    li { margin-bottom: 4px; }
+
+    code {
+      font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+      font-size: 0.875em;
+      background: #f1f5f9;
+      color: #0369a1;
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+
+    em { color: #64748b; }
+
+    hr {
+      border: none;
+      border-top: 1px solid #e2e8f0;
+      margin: 40px 0;
+    }
+
+    .footer {
+      margin-top: 64px;
+      font-size: 11px;
+      color: #94a3b8;
+      border-top: 1px solid #f1f5f9;
+      padding-top: 20px;
+      text-align: center;
+    }
+
+    @media print {
+      body { padding: 0; font-size: 12px; }
+      h2 { page-break-before: always; }
+      h2:first-of-type { page-break-before: avoid; }
+    }
+  </style>
+</head>
+<body>
+  ${content}
+  <div class="footer">
+    Generated by Ofoq NetSuite Accelerator &copy; ${new Date().getFullYear()} &nbsp;|&nbsp; ${new Date().toLocaleString()}
+  </div>
+</body>
+</html>`;
+}
+
+// ─── Utility helpers ──────────────────────────────────────────────────────────
+
+function titleCase(str: string): string {
+  return str
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/^./, (c) => c.toUpperCase())
+    .trim();
+}
+
+function stripTrailingPunctuation(label: string): string {
+  return label.replace(/[?!.]+$/, '').trim();
+}

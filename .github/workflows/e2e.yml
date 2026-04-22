@@ -1,0 +1,129 @@
+# ------------------------------------------------------------------------------
+# Integration / E2E tests
+# ------------------------------------------------------------------------------
+# Boots Postgres + Redis as GitHub service containers and runs any test script
+# named `test:e2e` or `test:integration`. Falls back to the regular `test`
+# script with INTEGRATION=1 so the existing vitest suite can branch on env.
+# ------------------------------------------------------------------------------
+
+name: E2E
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PNPM_VERSION: "10.28.0"
+  NODE_VERSION: "20"
+  HUSKY: "0"
+
+jobs:
+  integration:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ofoq
+          POSTGRES_PASSWORD: ofoq
+          POSTGRES_DB: ofoq_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U ofoq"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      DATABASE_URL: "postgresql://ofoq:ofoq@localhost:5432/ofoq_test"
+      REDIS_URL: "redis://localhost:6379"
+      JWT_SECRET: "ci-e2e-jwt-secret"
+      JWT_REFRESH_SECRET: "ci-e2e-jwt-refresh-secret"
+      JWT_EXPIRES_IN: "15m"
+      JWT_REFRESH_EXPIRES_IN: "7d"
+      API_PORT: "3000"
+      API_HOST: "0.0.0.0"
+      CORS_ORIGIN: "http://localhost:5173"
+      NODE_ENV: "test"
+      CI: "true"
+      INTEGRATION: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build workspace
+        run: pnpm build
+
+      - name: Wait for Postgres
+        run: |
+          for i in {1..30}; do
+            if pg_isready -h localhost -p 5432 -U ofoq; then exit 0; fi
+            sleep 2
+          done
+          echo "Postgres never became ready" && exit 1
+
+      - name: Wait for Redis
+        run: |
+          for i in {1..30}; do
+            if (exec 3<>/dev/tcp/localhost/6379); then exit 0; fi
+            sleep 2
+          done
+          echo "Redis never became ready" && exit 1
+
+      # Run dedicated e2e/integration scripts if present. Falls back to `test`
+      # with INTEGRATION=1 so existing vitest suites can opt in.
+      - name: Run integration tests
+        run: |
+          if pnpm -r --if-present run test:e2e; then
+            echo "Ran test:e2e"
+          elif pnpm -r --if-present run test:integration; then
+            echo "Ran test:integration"
+          else
+            echo "No dedicated e2e script found — running \`test\` with INTEGRATION=1"
+            pnpm -r --if-present run test
+          fi
+
+      - name: Upload test artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-logs-${{ github.sha }}
+          if-no-files-found: ignore
+          retention-days: 7
+          path: |
+            apps/*/test-results/**
+            apps/*/coverage/**
+            apps/*/logs/**

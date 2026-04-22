@@ -1,0 +1,115 @@
+import React from 'react';
+import { r2rQuestions, p2pQuestions, o2cQuestions, mfgQuestions, rtnQuestions } from '@ofoq/shared';
+import type { Question } from '@ofoq/shared';
+import { SectionIntroCard } from '../SectionIntroCard';
+import { QuestionCard } from '../QuestionCard';
+import { SectionSuggestionPanel } from '../SectionSuggestionPanel';
+import { StepComments } from '../StepComments';
+import { ImageUpload } from '../ImageUpload';
+import { AIAdvisorPanel } from '../AIAdvisorPanel';
+import { useWizardProgress } from '@/hooks/useWizardProgress';
+import { useWizardStore } from '@/stores/wizardStore';
+
+// ── All question banks ────────────────────────────────────────────────────────
+const ALL_QUESTIONS: Question[] = [
+  ...r2rQuestions,
+  ...p2pQuestions,
+  ...o2cQuestions,
+  ...mfgQuestions,
+  ...rtnQuestions,
+];
+
+// ── Section metadata ──────────────────────────────────────────────────────────
+const SECTION_META: Record<string, { title: string; description: string }> = {
+  // R2R
+  'r2r.entities':          { title: 'Entities',          description: 'Define the legal entity structure. This determines if OneWorld is required.' },
+  'r2r.segmentation':      { title: 'Segmentation',      description: 'Configure reporting dimensions — departments, classes, and locations.' },
+  'r2r.accountingPeriods': { title: 'Accounting Periods', description: 'Set the fiscal calendar, period locking behaviour, and adjustment period configuration.' },
+  'r2r.currencies':        { title: 'Currencies',        description: 'Configure base currency and multi-currency requirements.' },
+  'r2r.bankTransactions':  { title: 'Bank Transactions', description: 'Define bank accounts, reconciliation frequency, and opening balance requirements.' },
+  'r2r.tax':               { title: 'Tax',               description: 'Configure tax regimes, VAT rates, and registration details.' },
+  'r2r.journalEntries':    { title: 'Journal Entries',   description: 'Define manual journal entry requirements and approval workflows.' },
+  'r2r.fiscalClose':       { title: 'Fiscal Close',      description: 'Configure period close procedures, checklist requirements, and automated locking.' },
+  'r2r.reporting':         { title: 'Reporting',         description: 'Define standard and custom reporting needs and consolidation requirements.' },
+  // P2P
+  'p2p.vendors':    { title: 'Vendors',    description: 'Configure the vendor master, payment terms, withholding tax, and vendor approval controls.' },
+  'p2p.purchasing': { title: 'Purchasing', description: 'Define purchase order workflow, approval thresholds, and budget commitment controls.' },
+  'p2p.receiving':  { title: 'Receiving',  description: 'Configure goods receipt, 3-way matching, and vendor returns processing.' },
+  'p2p.bills':      { title: 'Bills',      description: 'Define vendor bill entry, approval workflows, and recurring billing requirements.' },
+  'p2p.payments':   { title: 'Payments',   description: 'Configure payment methods, payment run frequency, and bank file export requirements.' },
+  'p2p.expenses':   { title: 'Expenses',   description: 'Set up employee expense reports, categories, corporate cards, and reimbursement policies.' },
+  // O2C
+  'o2c.customers':   { title: 'Customers',    description: 'Configure customer master, credit limits, payment terms, and customer onboarding controls.' },
+  'o2c.pricing':     { title: 'Pricing',      description: 'Define price levels, quantity discounts, promotions, and multi-currency pricing.' },
+  'o2c.salesOrders': { title: 'Sales Orders', description: 'Configure sales order workflow, approval thresholds, quotations, and backorder handling.' },
+  'o2c.fulfillment': { title: 'Fulfillment',  description: 'Define warehouse operations, pick-pack-ship process, and multi-location inventory.' },
+  'o2c.invoicing':   { title: 'Invoicing',    description: 'Configure invoice triggers, e-invoicing compliance, credit memos, and revenue recognition.' },
+  'o2c.collections': { title: 'Collections',  description: 'Set up AR aging, dunning procedures, cash application, and bad debt provisioning.' },
+  // MFG
+  'mfg.productionFlow': { title: 'Production Flow', description: 'Define how products are built, tracking requirements for labor and machine time.' },
+  'mfg.bom':            { title: 'BOM Management',  description: 'Configure Bill of Materials structure, revisions, and phantom assembly usage.' },
+  'mfg.outsourced':     { title: 'Outsourced Mfg',  description: 'Set up external manufacturing processes and raw material transfers.' },
+  'mfg.demand':         { title: 'Demand Planning', description: 'Configure forecasting, planning time fences, and automated work order suggestions.' },
+  // RTN
+  'rtn.customerReturns': { title: 'Customer Returns', description: 'Define RMA workflows, refund policies, and customer return authorization.' },
+  'rtn.vendorReturns':   { title: 'Vendor Returns',   description: 'Configure the process for returning faulty materials or stock to suppliers.' },
+  'rtn.processing':      { title: 'Return Processing', description: 'Set up quality inspection, restocking fees, and warehouse receipt flows.' },
+};
+
+interface FlowSectionStepProps {
+  /** Full section key, e.g. "r2r.entities" or "p2p.vendors" */
+  sectionKey: string;
+  engagementId: string;
+}
+
+export function FlowSectionStep({ sectionKey, engagementId }: FlowSectionStepProps) {
+  const answers = useWizardStore((s) => s.answers);
+  const { sectionProgress } = useWizardProgress(answers);
+
+  const meta = SECTION_META[sectionKey] ?? {
+    title: sectionKey,
+    description: '',
+  };
+
+  // Match questions by full "flow.section" id prefix  (e.g. r2r.entities.*)
+  const questions = ALL_QUESTIONS.filter((q) => q.id.startsWith(`${sectionKey}.`));
+  const progress = sectionProgress[sectionKey] ?? 0;
+
+  return (
+    <div className="max-w-2xl mx-auto">
+      <SectionIntroCard
+        title={meta.title}
+        description={meta.description}
+        progress={progress}
+        questionCount={questions.length}
+      />
+
+      {/* AI Suggestion Panel — offer to auto-fill unanswered questions */}
+      <SectionSuggestionPanel
+        engagementId={engagementId}
+        sectionKey={sectionKey}
+        questions={questions}
+      />
+
+      <div className="space-y-4">
+        {questions.map((q) => (
+          <QuestionCard key={q.id} question={q} engagementId={engagementId} />
+        ))}
+
+        {questions.length === 0 && (
+          <div className="rounded-xl border border-dashed border-gray-200 p-8 text-center text-sm text-gray-400">
+            No questions defined for this section yet.
+          </div>
+        )}
+      </div>
+
+      {/* Comments, Images & AI Advisor */}
+      <div className="mt-8 space-y-4">
+        <StepComments engagementId={engagementId} sectionKey={sectionKey} />
+        <ImageUpload engagementId={engagementId} sectionKey={sectionKey} />
+        <AIAdvisorPanel engagementId={engagementId} sectionKey={sectionKey} />
+      </div>
+    </div>
+  );
+}
+
