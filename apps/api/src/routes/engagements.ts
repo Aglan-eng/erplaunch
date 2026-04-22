@@ -162,6 +162,12 @@ export async function engagementRoutes(fastify: FastifyInstance) {
       return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: result.error.message } });
     }
     const license = await db.upsertLicense(id, result.data);
+    // upsertLicense always persists then re-reads, so null here would be a
+    // genuine data-integrity bug worth surfacing loudly rather than papering
+    // over with defaults.
+    if (!license) {
+      return reply.code(500).send({ error: { code: 'LICENSE_PERSIST_FAILED' } });
+    }
 
     // Re-evaluate rules with the updated license so conflict state stays in sync,
     // exactly as patchProfile does after saving answers.
@@ -170,9 +176,9 @@ export async function engagementRoutes(fastify: FastifyInstance) {
     const ruleInput = {
       answers: (profile?.answers ?? {}) as Record<string, unknown>,
       license: {
-        id: license.id as string ?? '',
+        id: (license.id as string) ?? '',
         engagementId: id,
-        edition: license.edition as string ?? 'MID_MARKET',
+        edition: (license.edition as string) ?? 'MID_MARKET',
         modules: (license.modules as string[]) ?? [],
         updatedAt: new Date(),
       } as LicenseProfile,
@@ -533,15 +539,25 @@ export async function engagementRoutes(fastify: FastifyInstance) {
     // Save merged profile
     await db.upsertProfile(id, merged);
 
-    // Re-evaluate rules
+    // Re-evaluate rules — mirror the pattern used after license + profile edits
+    // (see earlier handlers in this file) so a single conflict surface stays
+    // authoritative regardless of which code path triggered re-evaluation.
     const updatedLicense = await db.getLicense(id);
     const phases = await db.getPhases(id);
-    const conflicts = evaluate({
+    const { conflicts, warnings, infos } = evaluate({
       answers: merged,
-      license: updatedLicense as any,
-      phases: (phases || []) as Phase[],
+      license: (updatedLicense as unknown) as LicenseProfile,
+      phases: ((phases || []) as unknown) as Phase[],
     });
-    await db.syncConflicts(id, conflicts);
+    const allConflicts = [...conflicts, ...warnings, ...infos];
+    await db.replaceConflicts(id, allConflicts.map((c) => ({
+      ruleId: c.id,
+      type: c.type,
+      severity: c.severity,
+      questionIds: c.questionIds,
+      message: c.message,
+      resolution: c.resolution,
+    })));
 
     await db.logActivity(id, request.jwtUser.firmId, 'PROFILE_GENERATED', `AI generated ${Object.keys(result.answers).length} answers for business profile`);
 

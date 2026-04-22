@@ -2,7 +2,7 @@
  * Database layer — uses @libsql/client (SQLite, no binary downloads).
  * Replaces Prisma for the local/dev run.
  */
-import { createClient, type Client } from '@libsql/client';
+import { createClient, type Client, type InValue } from '@libsql/client';
 import { createId } from '@paralleldrive/cuid2';
 import crypto from 'crypto';
 import fs from 'fs';
@@ -670,7 +670,7 @@ export async function updateMember(id: string, engagementId: string, data: {
 }) {
   const db = getDb();
   const fields: string[] = [];
-  const args: unknown[] = [];
+  const args: InValue[] = [];
   if (data.name  !== undefined) { fields.push('name = ?');  args.push(data.name); }
   if (data.role  !== undefined) { fields.push('role = ?');  args.push(data.role); }
   if (data.team  !== undefined) { fields.push('team = ?');  args.push(data.team); }
@@ -1311,7 +1311,7 @@ export async function generateMemberInviteTokens(engagementId: string): Promise<
     const token = generateSecureToken();
     await db.execute({
       sql: `UPDATE ProjectMember SET inviteToken = ? WHERE id = ?`,
-      args: [token, (row as Row).id],
+      args: [token, String((row as Row).id)],
     });
     count++;
   }
@@ -1398,10 +1398,10 @@ export async function updatePortalTodo(todoId: string, engagementId: string, dat
   const db = getDb();
   const now = new Date().toISOString();
   const fields: string[] = ['updatedAt = ?'];
-  const args: unknown[] = [now];
+  const args: InValue[] = [now];
   for (const [k, v] of Object.entries(data)) {
     fields.push(`${k} = ?`);
-    args.push(v ?? null);
+    args.push((v ?? null) as InValue);
   }
   args.push(todoId, engagementId);
   await db.execute({

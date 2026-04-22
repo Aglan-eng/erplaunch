@@ -21,7 +21,13 @@ export async function authRoutes(fastify: FastifyInstance) {
     }
 
     const token = fastify.jwt.sign(
-      { userId: user.id, firmId: user.firmId, role: user.role },
+      {
+        userId: user.id,
+        firmId: user.firmId,
+        role: user.role,
+        name: user.name,
+        email: user.email,
+      },
       { expiresIn: process.env.JWT_EXPIRES_IN || '24h' }
     );
 

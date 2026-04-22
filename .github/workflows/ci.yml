@@ -84,6 +84,12 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Build workspace packages
+        # @ofoq/shared + @ofoq/rule-engine expose types via ./dist/index.d.ts
+        # (see their package.json "types" fields). Downstream packages cannot
+        # resolve those type declarations until the dist output exists, so
+        # typecheck must run after a build of library packages.
+        run: pnpm --filter "./packages/**" -r run build
       - name: tsc --noEmit
         run: pnpm -r exec tsc --noEmit
 

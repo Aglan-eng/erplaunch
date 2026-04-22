@@ -4,6 +4,10 @@ export interface JWTPayload {
   userId: string;
   firmId: string;
   role: string;
+  // Optional audit/display fields embedded at sign time. Optional because
+  // older tokens issued before these were added won't contain them.
+  name?: string;
+  email?: string;
 }
 
 declare module 'fastify' {

@@ -44,11 +44,11 @@ async function main() {
       passwordHash,
       role: 'CONSULTANT',
     });
-    console.log('User created:', (user as { email: string }).email);
+    console.log('User created:', (user as unknown as { email: string }).email);
   } else {
     // Always reset the password so FIX LOGIN.bat reliably fixes auth issues
     await resetUserPassword('consultant@test.ofoq.app', passwordHash);
-    console.log('User password reset:', (existing as { email: string }).email);
+    console.log('User password reset:', (existing as unknown as { email: string }).email);
   }
 
   // ── Engagement ────────────────────────────────────────────────────────────
