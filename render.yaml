@@ -12,7 +12,6 @@ services:
     plan: starter         # $7/mo; free plan has no persistent disks
     dockerfilePath: apps/api/Dockerfile
     dockerContext: .
-    rootDir: ofoq-accelerator
     healthCheckPath: /health
     disk:
       name: erplaunch-data
