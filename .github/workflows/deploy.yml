@@ -96,7 +96,7 @@ jobs:
       name: production
       url: ${{ steps.render-trigger.outputs.service_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.gate.outputs.sha }}
 
