@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import { LoginSchema, RegisterSchema, RequestPasswordResetSchema, ResetPasswordSchema } from '@ofoq/shared';
+import { LoginSchema, RegisterSchema, RequestPasswordResetSchema, ResetPasswordSchema, ChangePasswordSchema } from '@ofoq/shared';
 import { authenticate } from '../middleware/auth.js';
 import {
   findUserByEmail,
@@ -358,6 +358,53 @@ export async function authRoutes(fastify: FastifyInstance) {
     // Invalidate any sibling tokens too, so a second link in the user's
     // inbox can't undo the password they just set.
     await invalidateActivePasswordResetsForUser(row.userId);
+
+    return reply.send({ data: { ok: true } });
+  });
+
+  // POST /auth/change-password — authenticated password rotation.
+  //
+  // Requires the current password as a re-auth check; a stolen session
+  // cookie is not enough to change the password on its own. On success we
+  // also invalidate any outstanding reset tokens for this user, since the
+  // user has effectively acknowledged their password is fresh + correct
+  // and any lingering reset links from previous forgot-flows should stop
+  // working.
+  fastify.post('/auth/change-password', { preHandler: authenticate }, async (request, reply) => {
+    const parsed = ChangePasswordSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: parsed.error.message } });
+    }
+    const { currentPassword, newPassword } = parsed.data;
+
+    if (currentPassword === newPassword) {
+      return reply.code(400).send({
+        error: { code: 'SAME_PASSWORD', message: 'New password must differ from the current one.' },
+      });
+    }
+
+    // Load the user row fresh — do NOT trust anything from the JWT beyond
+    // the user id. Verifies the session is still attached to a real row.
+    const user = await findUserById(request.jwtUser.userId) as
+      | (Record<string, unknown> & { id: string; email: string; passwordHash: string })
+      | null;
+    if (!user) {
+      return reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'User not found' } });
+    }
+
+    const ok = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!ok) {
+      // Uniform-ish error — don't leak whether the user exists vs wrong
+      // password (though this endpoint is authenticated so the user
+      // definitely exists; we still keep the copy neutral).
+      return reply.code(400).send({
+        error: { code: 'WRONG_PASSWORD', message: 'Current password is incorrect.' },
+      });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await resetUserPassword(user.email, passwordHash);
+    await invalidateActivePasswordResetsForUser(user.id);
 
     return reply.send({ data: { ok: true } });
   });

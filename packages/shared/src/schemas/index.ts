@@ -19,6 +19,14 @@ export const ResetPasswordSchema = z.object({
   password: z.string().min(8).max(200),
 });
 
+// Change password — authenticated flow for signed-in users (Phase 17).
+// Requires the current password as a re-auth check so a stolen session
+// cookie alone cannot rotate the password.
+export const ChangePasswordSchema = z.object({
+  currentPassword: z.string().min(1).max(200),
+  newPassword: z.string().min(8).max(200),
+});
+
 // Slug: kebab-case, 3-40 chars. Start+end alphanumeric. No consecutive dashes.
 // Reserved word check happens in the route so the schema stays platform-agnostic.
 export const SlugRegex = /^[a-z0-9](?:[a-z0-9]|-(?!-)){1,38}[a-z0-9]$/;
@@ -88,3 +96,4 @@ export type CreateCustomAdaptorInput = z.infer<typeof CreateCustomAdaptorSchema>
 export type UpdateCustomAdaptorDraftInput = z.infer<typeof UpdateCustomAdaptorDraftSchema>;
 export type RequestPasswordResetInput = z.infer<typeof RequestPasswordResetSchema>;
 export type ResetPasswordInput = z.infer<typeof ResetPasswordSchema>;
+export type ChangePasswordInput = z.infer<typeof ChangePasswordSchema>;

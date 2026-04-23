@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api } from '../lib/api';
+import { api, authApi } from '../lib/api';
 
 interface FirmBranding {
   displayName: string;
@@ -104,7 +104,7 @@ export function SettingsPage() {
       </header>
 
       <main className="max-w-5xl mx-auto px-6 py-8 grid lg:grid-cols-3 gap-8">
-        <section className="lg:col-span-2">
+        <section className="lg:col-span-2 space-y-8">
           <div className="bg-white rounded-2xl border border-slate-200 p-6">
             <div className="mb-6">
               <h2 className="text-base font-semibold text-slate-900">Branding</h2>
@@ -175,6 +175,8 @@ export function SettingsPage() {
               </div>
             </form>
           </div>
+
+          <ChangePasswordCard />
         </section>
 
         <aside className="lg:col-span-1">
@@ -271,6 +273,120 @@ function PortalHeaderPreview({
           </p>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Change-password card (Phase 17). Sibling of the Branding section.
+ * Self-contained state + validation + submission — mirrors the
+ * ResetPasswordPage UX but re-auths against the current password
+ * instead of a reset token.
+ */
+function ChangePasswordCard() {
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [okMessage, setOkMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const clientSideError = (): string | null => {
+    if (!currentPassword) return 'Enter your current password.';
+    if (newPassword.length < 8) return 'New password must be at least 8 characters.';
+    if (newPassword === currentPassword) return 'New password must differ from your current one.';
+    if (newPassword !== confirm) return 'New password and confirmation do not match.';
+    return null;
+  };
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setOkMessage(null);
+    setErrorMessage(null);
+    const ce = clientSideError();
+    if (ce) { setErrorMessage(ce); return; }
+
+    setSaving(true);
+    try {
+      await authApi.changePassword({ currentPassword, newPassword });
+      setOkMessage('Password updated. You\'ll use the new one next time you sign in.');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirm('');
+    } catch (err: unknown) {
+      const code = (err as { response?: { data?: { error?: { code?: string; message?: string } } } }).response?.data?.error;
+      if (code?.code === 'WRONG_PASSWORD') {
+        setErrorMessage('Current password is incorrect.');
+      } else if (code?.code === 'SAME_PASSWORD') {
+        setErrorMessage('New password must differ from your current one.');
+      } else {
+        setErrorMessage(code?.message ?? 'Could not update the password. Try again in a moment.');
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 p-6">
+      <div className="mb-5">
+        <h2 className="text-base font-semibold text-slate-900">Change password</h2>
+        <p className="text-sm text-slate-500 mt-1">
+          Rotates your sign-in password. You'll stay signed in on this device.
+        </p>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-4 max-w-md">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Current password</label>
+          <input
+            type="password"
+            value={currentPassword}
+            onChange={(e) => { setCurrentPassword(e.target.value); setErrorMessage(null); setOkMessage(null); }}
+            placeholder="••••••••"
+            autoComplete="current-password"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">New password</label>
+          <input
+            type="password"
+            value={newPassword}
+            onChange={(e) => { setNewPassword(e.target.value); setErrorMessage(null); setOkMessage(null); }}
+            placeholder="Minimum 8 characters"
+            autoComplete="new-password"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Confirm new password</label>
+          <input
+            type="password"
+            value={confirm}
+            onChange={(e) => { setConfirm(e.target.value); setErrorMessage(null); setOkMessage(null); }}
+            placeholder="••••••••"
+            autoComplete="new-password"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+          />
+        </div>
+
+        <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+          <p className="text-xs">
+            {errorMessage && <span className="text-rose-600">{errorMessage}</span>}
+            {!errorMessage && okMessage && <span className="text-green-600">{okMessage}</span>}
+          </p>
+          <button
+            type="submit"
+            disabled={saving || !currentPassword || !newPassword || !confirm}
+            className="rounded-lg bg-brand-600 text-white text-sm font-medium px-5 py-2 hover:bg-brand-700 disabled:opacity-50"
+          >
+            {saving ? 'Updating…' : 'Update password'}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
