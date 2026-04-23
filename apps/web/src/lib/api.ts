@@ -38,6 +38,20 @@ export const engagementsApi = {
   get: (id: string) =>
     api.get(`/engagements/${id}`).then((r) => r.data.data),
 
+  // Full PlatformAdaptor for this engagement (manifest + schema + license +
+  // phases + generators). Phase 3: wizard reads this instead of bundling
+  // NetSuite questions statically.
+  getAdaptor: (id: string) =>
+    api.get(`/engagements/${id}/adaptor`).then((r) => r.data.data as {
+      id: string;
+      source: 'built-in' | 'custom';
+      manifest: Record<string, unknown>;
+      schema: { version: string; flows: Array<{ id: string; label: string; sections: Array<{ id: string; label: string; order: number; questions: Array<Record<string, unknown>> }> }> };
+      license: Record<string, unknown>;
+      phases: Record<string, unknown>;
+      generators: Array<Record<string, unknown>>;
+    }),
+
   patch: (id: string, data: { status?: string; clientName?: string; startDate?: string | null; contractEndDate?: string | null }) =>
     api.patch(`/engagements/${id}`, data).then((r) => r.data.data),
 

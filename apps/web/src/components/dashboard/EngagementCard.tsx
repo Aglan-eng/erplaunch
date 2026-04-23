@@ -23,10 +23,18 @@ interface EngagementCardProps {
     clientName: string;
     status: string;
     updatedAt: string;
+    adaptorId?: string;
     profile?: { completeness: Record<string, number>; updatedAt: string } | null;
     conflicts?: Array<{ severity: string }>;
     jobs?: Array<{ status: string; createdAt: string }>;
   };
+}
+
+function adaptorLabel(adaptorId?: string): string {
+  if (!adaptorId || adaptorId === 'netsuite') return 'NetSuite';
+  if (adaptorId === 'odoo') return 'Odoo';
+  if (adaptorId.startsWith('custom:')) return `Custom · ${adaptorId.slice('custom:'.length)}`;
+  return adaptorId;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -84,6 +92,13 @@ export function EngagementCard({ engagement }: EngagementCardProps) {
               </h3>
               <div className="mt-1 flex items-center gap-2 flex-wrap">
                 <Badge variant="default">{STATUS_LABELS[engagement.status] ?? engagement.status}</Badge>
+                <span
+                  className="inline-flex items-center gap-1 text-[10px] font-semibold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded"
+                  title={`Platform adaptor: ${engagement.adaptorId ?? 'netsuite'}`}
+                >
+                  <Layers className="h-2.5 w-2.5" />
+                  {adaptorLabel(engagement.adaptorId)}
+                </span>
                 {blocks > 0 && (
                   <Badge variant="block">
                     <CircleX className="h-3 w-3" />

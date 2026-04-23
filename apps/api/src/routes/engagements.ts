@@ -76,6 +76,55 @@ export async function engagementRoutes(fastify: FastifyInstance) {
     return reply.send({ data: engagement });
   });
 
+  // GET /engagements/:id/adaptor — full PlatformAdaptor for this engagement
+  // (built-in from the process-wide registry, or custom from DB). This is
+  // what the wizard will read to render sections/questions, and what the
+  // rule engine + generators should route through.
+  fastify.get('/engagements/:id/adaptor', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const engagement = await db.findEngagementById(id) as (Record<string, unknown> & { firmId: string; adaptorId?: string }) | null;
+    if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+    if (engagement.firmId !== request.jwtUser.firmId) return reply.code(403).send({ error: { code: 'FORBIDDEN' } });
+
+    const adaptorId = engagement.adaptorId ?? 'netsuite';
+
+    if (adaptorId.startsWith('custom:')) {
+      const slug = adaptorId.slice('custom:'.length);
+      const row = await db.findCustomAdaptorByFirmAndSlug(request.jwtUser.firmId, slug);
+      if (!row || row.status !== 'PUBLISHED') {
+        return reply.code(404).send({ error: { code: 'ADAPTOR_NOT_PUBLISHED', message: `Custom adaptor "${slug}" is not published.` } });
+      }
+      return reply.send({
+        data: {
+          id: adaptorId,
+          source: 'custom',
+          manifest: row.parsedManifest,
+          schema: row.parsedSchema,
+          license: row.parsedLicense,
+          phases: row.parsedPhases,
+          generators: row.parsedGenerators,
+        },
+      });
+    }
+
+    const registry = getAdaptorRegistry();
+    const adaptor = registry.find(adaptorId);
+    if (!adaptor) {
+      return reply.code(404).send({ error: { code: 'ADAPTOR_MISSING', message: `Adaptor "${adaptorId}" is not registered on this deployment.` } });
+    }
+    return reply.send({
+      data: {
+        id: adaptorId,
+        source: 'built-in',
+        manifest: adaptor.manifest,
+        schema: adaptor.schema,
+        license: adaptor.license,
+        phases: adaptor.phases,
+        generators: adaptor.generators,
+      },
+    });
+  });
+
   // DELETE /engagements/:id
   fastify.delete('/engagements/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
