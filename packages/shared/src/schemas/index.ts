@@ -40,9 +40,13 @@ export const PatchProfileSchema = z.object({
   answers: z.record(z.unknown()),
 });
 
+// Edition IDs are adaptor-specific: NetSuite ships STARTER/MID_MARKET/ONEWORLD,
+// Odoo uses COMMUNITY/ENTERPRISE, custom adaptors declare whatever makes sense
+// for the target system. The engagement route validates the concrete value
+// against the active adaptor's license model, so this schema stays loose.
 export const PutLicenseSchema = z.object({
-  edition: z.enum(['STARTER', 'MID_MARKET', 'ONEWORLD']),
-  modules: z.array(z.string()),
+  edition: z.string().min(1).max(80),
+  modules: z.array(z.string().min(1).max(80)),
 });
 
 export const CreateJobSchema = z.object({

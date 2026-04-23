@@ -169,29 +169,41 @@ export async function engagementRoutes(fastify: FastifyInstance) {
     const currentAnswers = (existing?.answers ?? {}) as Record<string, unknown>;
     const merged = { ...currentAnswers, ...result.data.answers };
     const profile = await db.upsertProfile(id, merged);
-    const license = await db.getLicense(id);
-    const phases = await db.getPhases(id);
-    const ruleInput = {
-      answers: merged,
-      license: {
-        id: license?.id as string ?? '',
-        engagementId: id,
-        edition: license?.edition as string ?? 'MID_MARKET',
-        modules: (license?.modules as string[]) ?? [],
-        updatedAt: new Date(),
-      } as LicenseProfile,
-      phases: (phases as unknown as Phase[]),
-    };
-    const { conflicts, warnings, infos } = evaluate(ruleInput);
-    const allConflicts = [...conflicts, ...warnings, ...infos];
-    await db.replaceConflicts(id, allConflicts.map((c) => ({
-      ruleId: c.id,
-      type: c.type,
-      severity: c.severity,
-      questionIds: c.questionIds,
-      message: c.message,
-      resolution: c.resolution,
-    })));
+
+    // Rule evaluation is NetSuite-specific today; skip for other adaptors
+    // until Phase 4 routes through adaptor.rules. See license PUT for the
+    // mirrored guard.
+    const engagementAdaptorId = (check as { adaptorId?: string }).adaptorId ?? 'netsuite';
+    let allConflicts: Array<{
+      id: string; type: string; severity: string; questionIds: string[]; message: string; resolution: string;
+    }> = [];
+    if (engagementAdaptorId === 'netsuite') {
+      const license = await db.getLicense(id);
+      const phases = await db.getPhases(id);
+      const ruleInput = {
+        answers: merged,
+        license: {
+          id: license?.id as string ?? '',
+          engagementId: id,
+          edition: license?.edition as string ?? 'MID_MARKET',
+          modules: (license?.modules as string[]) ?? [],
+          updatedAt: new Date(),
+        } as LicenseProfile,
+        phases: (phases as unknown as Phase[]),
+      };
+      const { conflicts, warnings, infos } = evaluate(ruleInput);
+      allConflicts = [...conflicts, ...warnings, ...infos];
+      await db.replaceConflicts(id, allConflicts.map((c) => ({
+        ruleId: c.id,
+        type: c.type,
+        severity: c.severity,
+        questionIds: c.questionIds,
+        message: c.message,
+        resolution: c.resolution,
+      })));
+    } else {
+      await db.replaceConflicts(id, []);
+    }
     return reply.send({ data: { profile, conflicts: allConflicts } });
   });
 
@@ -242,30 +254,41 @@ export async function engagementRoutes(fastify: FastifyInstance) {
     }
 
     // Re-evaluate rules with the updated license so conflict state stays in sync,
-    // exactly as patchProfile does after saving answers.
-    const profile = await db.getProfile(id);
-    const phases = await db.getPhases(id);
-    const ruleInput = {
-      answers: (profile?.answers ?? {}) as Record<string, unknown>,
-      license: {
-        id: (license.id as string) ?? '',
-        engagementId: id,
-        edition: (license.edition as string) ?? 'MID_MARKET',
-        modules: (license.modules as string[]) ?? [],
-        updatedAt: new Date(),
-      } as LicenseProfile,
-      phases: (phases as unknown as Phase[]),
-    };
-    const { conflicts, warnings, infos } = evaluate(ruleInput);
-    const allConflicts = [...conflicts, ...warnings, ...infos];
-    await db.replaceConflicts(id, allConflicts.map((c) => ({
-      ruleId: c.id,
-      type: c.type,
-      severity: c.severity,
-      questionIds: c.questionIds,
-      message: c.message,
-      resolution: c.resolution,
-    })));
+    // exactly as patchProfile does after saving answers. The rule engine today
+    // is NetSuite-specific; other adaptors get a no-op evaluation (Phase 4 will
+    // route through adaptor.rules once non-NetSuite rule packs exist).
+    const engagementAdaptorId = (check as { adaptorId?: string }).adaptorId ?? 'netsuite';
+    let allConflicts: Array<{
+      id: string; type: string; severity: string; questionIds: string[]; message: string; resolution: string;
+    }> = [];
+    if (engagementAdaptorId === 'netsuite') {
+      const profile = await db.getProfile(id);
+      const phases = await db.getPhases(id);
+      const ruleInput = {
+        answers: (profile?.answers ?? {}) as Record<string, unknown>,
+        license: {
+          id: (license.id as string) ?? '',
+          engagementId: id,
+          edition: (license.edition as string) ?? 'MID_MARKET',
+          modules: (license.modules as string[]) ?? [],
+          updatedAt: new Date(),
+        } as LicenseProfile,
+        phases: (phases as unknown as Phase[]),
+      };
+      const { conflicts, warnings, infos } = evaluate(ruleInput);
+      allConflicts = [...conflicts, ...warnings, ...infos];
+      await db.replaceConflicts(id, allConflicts.map((c) => ({
+        ruleId: c.id,
+        type: c.type,
+        severity: c.severity,
+        questionIds: c.questionIds,
+        message: c.message,
+        resolution: c.resolution,
+      })));
+    } else {
+      // Clear any stale NetSuite-shaped conflicts from a previous adaptor.
+      await db.replaceConflicts(id, []);
+    }
 
     return reply.send({ data: { license, conflicts: allConflicts } });
   });
