@@ -113,7 +113,7 @@ function MemberRow({
             className="px-2 py-1 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-300 bg-white"
           >
             <option value="CLIENT">Client</option>
-            <option value="CONSULTANT">Ofoq / Consultant</option>
+            <option value="CONSULTANT">Consultant</option>
           </select>
           <div className="flex-1" />
           <button
@@ -212,7 +212,7 @@ function AddMemberForm({
         )}
       >
         <UserPlus className="h-3.5 w-3.5" />
-        Add {isOfoq ? 'Ofoq' : 'Client'} Team Member
+        Add {isOfoq ? 'Consultant' : 'Client'} Team Member
       </button>
     );
   }
@@ -223,7 +223,7 @@ function AddMemberForm({
       isOfoq ? 'border-violet-200 bg-violet-50/50' : 'border-blue-200 bg-blue-50/50'
     )}>
       <p className={cn('text-xs font-bold uppercase tracking-wider', isOfoq ? 'text-violet-700' : 'text-blue-700')}>
-        New {isOfoq ? 'Ofoq' : 'Client'} Member
+        New {isOfoq ? 'Consultant' : 'Client'} Member
       </p>
       <div className="grid grid-cols-2 gap-2">
         <div className="col-span-2">
@@ -568,7 +568,7 @@ export function ProjectSetupStep({ engagementId }: { engagementId: string }) {
               <div className="h-5 w-5 rounded-full bg-violet-100 flex items-center justify-center flex-shrink-0">
                 <span className="text-[9px] font-black text-violet-700">O</span>
               </div>
-              <h4 className="text-sm font-bold text-gray-700">Ofoq Team</h4>
+              <h4 className="text-sm font-bold text-gray-700">Consultant Team</h4>
               <span className="rounded-full bg-violet-50 text-violet-600 text-[10px] font-bold px-2 py-0.5 border border-violet-100">
                 {ofoqTeam.length} {ofoqTeam.length === 1 ? 'member' : 'members'}
               </span>
@@ -699,10 +699,10 @@ const SECTION_TOGGLES: PortalToggle[] = [
   {
     key: 'showConsultantTeam',
     label: 'Implementation Team',
-    description: 'Ofoq consultants and project managers',
+    description: 'Your consultants and project managers',
     guidance: {
       title: 'What the client sees',
-      body: 'Shows your Ofoq team members with their names, roles, and contact details. Clients feel more confident when they know exactly who is working on their project.',
+      body: 'Shows your consulting team members with their names, roles, and contact details. Clients feel more confident when they know exactly who is working on their project.',
       bullets: [
         'Shows members flagged as CONSULTANT in your committee',
         'Recommended to always show — builds trust and accountability',

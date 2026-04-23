@@ -377,7 +377,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     ],
     nsModules: ['NetSuite Manufacturing', 'Advanced Manufacturing', 'Quality Management', 'Lot Tracking (mandatory)', 'Multi-Location Inventory', 'OneWorld (if multi-entity)', 'SuiteProjects for validation project tracking'],
     consultantNotes: [
-      'Computer System Validation (CSV) is mandatory — the client will need IQ/OQ/PQ documentation. Ofoq must provide system specification documents. Add 3-4 weeks to the project timeline.',
+      'Computer System Validation (CSV) is mandatory — the client will need IQ/OQ/PQ documentation. You must provide system specification documents. Add 3-4 weeks to the project timeline.',
       'Electronic signatures (21 CFR Part 11) need SuiteCloud configuration — not out-of-the-box',
       'Batch records must be immutable — custom scripts may be needed to lock records after release',
       'Ask about Change Control — any system change post go-live requires a formal change request in regulated environments',

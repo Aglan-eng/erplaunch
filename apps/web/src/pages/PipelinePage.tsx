@@ -277,9 +277,9 @@ function MembersModal({ engagement, onClose }: { engagement: Engagement; onClose
               activeTeam === 'CONSULTANT' ? 'border-violet-500 text-violet-700 bg-violet-50/50' : 'border-transparent text-gray-500 hover:text-gray-700')}
           >
             <div className="h-5 w-5 rounded-full bg-violet-100 flex items-center justify-center">
-              <span className="text-[9px] font-black text-violet-700">O</span>
+              <span className="text-[9px] font-black text-violet-700">C</span>
             </div>
-            Ofoq Team
+            Consultant Team
             <span className={cn('rounded-full px-1.5 py-0.5 text-[10px] font-bold',
               activeTeam === 'CONSULTANT' ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-500')}>
               {ofoqTeam.length}
@@ -291,7 +291,7 @@ function MembersModal({ engagement, onClose }: { engagement: Engagement; onClose
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-2">
           {current.length === 0 && (
             <p className="text-sm text-gray-400 text-center py-8">
-              {activeTeam === 'CLIENT' ? 'No client-side members yet.' : 'No Ofoq team members yet.'}
+              {activeTeam === 'CLIENT' ? 'No client-side members yet.' : 'No consultant team members yet.'}
             </p>
           )}
           {current.map((m) => (
@@ -303,7 +303,7 @@ function MembersModal({ engagement, onClose }: { engagement: Engagement; onClose
         <div className="border-t px-6 py-4 bg-gray-50 rounded-b-2xl">
           <p className="text-xs font-semibold uppercase tracking-wider mb-3"
             style={{ color: activeTeam === 'CLIENT' ? '#1d4ed8' : '#7c3aed' }}>
-            Add {activeTeam === 'CLIENT' ? 'Client' : 'Ofoq'} Member
+            Add {activeTeam === 'CLIENT' ? 'Client' : 'Consultant'} Member
           </p>
           <div className="grid grid-cols-2 gap-2">
             <input placeholder="Full name *" value={form.name}
@@ -325,7 +325,7 @@ function MembersModal({ engagement, onClose }: { engagement: Engagement; onClose
                 activeTeam === 'CLIENT' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-violet-600 hover:bg-violet-700')}
             >
               {addMutation.isPending ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <UserPlus className="h-3.5 w-3.5" />}
-              Add to {activeTeam === 'CLIENT' ? 'Client' : 'Ofoq'} Team
+              Add to {activeTeam === 'CLIENT' ? 'Client' : 'Consultant'} Team
             </button>
           </div>
         </div>
@@ -658,9 +658,9 @@ function EngCard({ eng, onMembersClick, onDatesClick }: {
             {/* Ofoq team row */}
             <div className="flex items-center gap-2">
               <div className="h-4 w-4 rounded-full bg-violet-100 flex items-center justify-center flex-shrink-0">
-                <span className="text-[8px] font-black text-violet-700">O</span>
+                <span className="text-[8px] font-black text-violet-700">C</span>
               </div>
-              <span className="text-[10px] font-semibold text-gray-500 w-16">Ofoq</span>
+              <span className="text-[10px] font-semibold text-gray-500 w-16">Consultant</span>
               {ofoqTeam.length > 0
                 ? <AvatarStack members={ofoqTeam} color="violet" />
                 : <span className="text-[10px] text-gray-300 italic">Add members</span>}

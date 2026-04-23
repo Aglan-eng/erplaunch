@@ -692,7 +692,7 @@ export function ClientPortalPage() {
         )}
 
         <div className="text-center py-4">
-          <p className="text-[10px] text-gray-300 font-medium">Powered by OFOQ Accelerator</p>
+          <p className="text-[10px] text-gray-300 font-medium">Powered by ERPLaunch</p>
         </div>
       </main>
     </div>

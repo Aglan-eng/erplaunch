@@ -291,7 +291,7 @@ export function DashboardPage() {
               <Layers className="h-4 w-4 text-white" />
             </div>
             <div>
-              <h1 className="text-sm font-bold text-gray-900 leading-tight">OFOQ Accelerator</h1>
+              <h1 className="text-sm font-bold text-gray-900 leading-tight">ERPLaunch</h1>
               <p className="text-[11px] text-gray-400 leading-tight">{user?.firm?.name}</p>
             </div>
           </div>

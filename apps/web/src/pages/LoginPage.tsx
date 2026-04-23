@@ -51,10 +51,10 @@ export function LoginPage() {
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center h-12 w-12 rounded-xl bg-white/10 mb-4">
-            <span className="text-white font-bold text-xl">O</span>
+            <span className="text-white font-bold text-xl">E</span>
           </div>
-          <h1 className="text-2xl font-bold text-white">OFOQ Accelerator</h1>
-          <p className="mt-1 text-brand-200 text-sm">NetSuite Implementation Wizard</p>
+          <h1 className="text-2xl font-bold text-white">ERPLaunch</h1>
+          <p className="mt-1 text-brand-200 text-sm">AI-native implementation platform</p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-xl p-6">

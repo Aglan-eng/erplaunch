@@ -415,9 +415,9 @@ export function VerticalWorkspacePage() {
             >
               <div className="flex items-center gap-2 mb-1">
                 <AlertCircle className="h-3.5 w-3.5 text-amber-600" />
-                <p className="text-xs font-bold text-amber-800">OFOQ Custom Solution</p>
+                <p className="text-xs font-bold text-amber-800">ERPLaunch Custom Solution</p>
               </div>
-              <p className="text-[11px] text-amber-700 leading-snug">This vertical uses a specialized OFOQ product. Click to view product documentation.</p>
+              <p className="text-[11px] text-amber-700 leading-snug">This vertical uses a specialized ERPLaunch product. Click to view product documentation.</p>
             </a>
           )}
         </div>
