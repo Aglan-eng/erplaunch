@@ -305,13 +305,107 @@ const phases: PhaseModel = {
   ],
 };
 
-// Phase 1C ships the rule pack as empty. Real Odoo rules (e.g. "Quality app
-// requires MRP", "Studio is Enterprise-only") land in Phase 2 once the
-// evaluator routes through the adaptor.
+// Phase 10: real rule definitions for Odoo. These are declarative metadata
+// (id, type, severity, questionIds, message, resolution) describing the
+// cross-answer constraints a consultant should respect when scoping an
+// Odoo implementation. The rule engine today only evaluates the NetSuite
+// pack, so these rules surface to consultants via the AdaptorPanel rule
+// count and ship as a catalog for any future cross-adaptor evaluator — they
+// are not yet enforced automatically during profile edits.
 const rules: RulePack = {
   id: 'odoo-rules',
   version: '1.0.0',
-  rules: [],
+  rules: [
+    // ── License gaps — required modules for enabled features ──────────────
+    {
+      id: 'odoo.mrp.requires-mrp-module',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: ['odoo.mrp.enabled'],
+      message: 'Manufacturing is enabled but the MRP module is not provisioned.',
+      resolution: 'Add "MRP" to the Licensed Modules list or set Manufacturing to No.',
+    },
+    {
+      id: 'odoo.mrp.work-centers-require-mrp-module',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: ['odoo.mrp.workCenters', 'odoo.mrp.enabled'],
+      message: 'Work centers / routings require the MRP module.',
+      resolution: 'Provision the MRP module, or disable the Work Centers question.',
+    },
+    {
+      id: 'odoo.mrp.quality-requires-mrp-and-quality',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: ['odoo.mrp.quality', 'odoo.mrp.enabled'],
+      message: 'Quality Control on manufacturing requires both the MRP and Quality modules.',
+      resolution: 'Provision the MRP and Quality modules, or disable the Quality Control question.',
+    },
+
+    // ── License gaps — Enterprise-only modules ────────────────────────────
+    {
+      id: 'odoo.studio-is-enterprise-only',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: [],
+      message: 'Studio is an Odoo Enterprise-only app; it is not available on Community.',
+      resolution: 'Upgrade the edition to Enterprise, or remove the STUDIO module from the license.',
+    },
+    {
+      id: 'odoo.documents-is-enterprise-only',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: [],
+      message: 'Documents is an Odoo Enterprise-only app; it is not available on Community.',
+      resolution: 'Upgrade the edition to Enterprise, or remove the ENTERPRISE_DOCUMENTS module.',
+    },
+    {
+      id: 'odoo.helpdesk-is-enterprise-only',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: [],
+      message: 'Helpdesk is an Odoo Enterprise-only app; it is not available on Community.',
+      resolution: 'Upgrade the edition to Enterprise, or remove the HELPDESK module.',
+    },
+
+    // ── Config conflicts — sub-settings without parent toggle ─────────────
+    {
+      id: 'odoo.mrp.sub-settings-without-parent',
+      type: 'CONFIG_CONFLICT',
+      severity: 'WARN',
+      questionIds: ['odoo.mrp.enabled', 'odoo.mrp.workCenters', 'odoo.mrp.quality'],
+      message: 'Work centers or Quality are enabled while Manufacturing itself is set to No.',
+      resolution: 'Either enable Manufacturing or disable the sub-settings — the sub-questions are only meaningful when MRP is on.',
+    },
+
+    // ── Data warnings — cross-question sanity checks ──────────────────────
+    {
+      id: 'odoo.company.multi-company-needs-analytic',
+      type: 'DATA_WARNING',
+      severity: 'WARN',
+      questionIds: ['odoo.company.multiCompany', 'odoo.coa.analyticAccounting'],
+      message: 'Multi-company installs almost always need analytic accounting for inter-company reporting.',
+      resolution: 'Set "Do you need analytic accounting?" to Yes, or document the exception in the Risk Register.',
+    },
+    {
+      id: 'odoo.company.fiscal-year-start-required',
+      type: 'DATA_WARNING',
+      severity: 'WARN',
+      questionIds: ['odoo.company.fiscalYearStart'],
+      message: 'Fiscal year start (MM-DD) is required before configuration can begin.',
+      resolution: 'Confirm the fiscal calendar with the client and record it on the Company & Entities section.',
+    },
+
+    // ── Info — best practice nudges ───────────────────────────────────────
+    {
+      id: 'odoo.sales.tiered-pricelist-needs-customer-tiers',
+      type: 'DATA_WARNING',
+      severity: 'INFO',
+      questionIds: ['odoo.sales.priceListStrategy'],
+      message: 'Per-customer-tier pricelists require each customer to be tagged with a tier — usually a migration step.',
+      resolution: 'Capture the customer tier taxonomy in the Migration Tracker before go-live.',
+    },
+  ],
 };
 
 const generators: OutputGeneratorDefinition[] = [

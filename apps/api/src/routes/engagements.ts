@@ -149,6 +149,7 @@ export async function engagementRoutes(fastify: FastifyInstance) {
           license: row.parsedLicense,
           phases: row.parsedPhases,
           generators: row.parsedGenerators,
+          rules: { id: `custom:${slug}-rules`, version: '1.0.0', rules: [] },
         },
       });
     }
@@ -167,6 +168,7 @@ export async function engagementRoutes(fastify: FastifyInstance) {
         license: adaptor.license,
         phases: adaptor.phases,
         generators: adaptor.generators,
+        rules: adaptor.rules,
       },
     });
   });

@@ -107,6 +107,61 @@ describe('odooAdaptor: phases + generators', () => {
   });
 });
 
+describe('odooAdaptor: rule pack', () => {
+  it('ships a non-empty rule pack with a stable id', () => {
+    expect(odooAdaptor.rules.id).toBe('odoo-rules');
+    expect(odooAdaptor.rules.rules.length).toBeGreaterThan(0);
+  });
+
+  it('every rule has an id, type, severity, message, resolution', () => {
+    for (const rule of odooAdaptor.rules.rules) {
+      expect(rule.id, `rule ${JSON.stringify(rule)} missing id`).toBeTruthy();
+      expect(['LICENSE_GAP', 'PHASE_DEPENDENCY', 'CONFIG_CONFLICT', 'DATA_WARNING']).toContain(rule.type);
+      expect(['BLOCK', 'WARN', 'INFO']).toContain(rule.severity);
+      expect(rule.message, `rule ${rule.id} missing message`).toBeTruthy();
+      expect(rule.resolution, `rule ${rule.id} missing resolution`).toBeTruthy();
+      expect(Array.isArray(rule.questionIds)).toBe(true);
+    }
+  });
+
+  it('rule IDs are namespaced under "odoo." and unique', () => {
+    const seen = new Set<string>();
+    for (const rule of odooAdaptor.rules.rules) {
+      expect(rule.id.startsWith('odoo.'), `rule id ${rule.id} not namespaced`).toBe(true);
+      expect(seen.has(rule.id), `duplicate rule id: ${rule.id}`).toBe(false);
+      seen.add(rule.id);
+    }
+  });
+
+  it('rule questionIds (when present) match real adaptor questions', () => {
+    const allQuestionIds = new Set<string>();
+    for (const flow of odooAdaptor.schema.flows) {
+      for (const section of flow.sections) {
+        for (const q of section.questions) allQuestionIds.add(q.id);
+      }
+    }
+    for (const rule of odooAdaptor.rules.rules) {
+      for (const qid of rule.questionIds) {
+        expect(allQuestionIds.has(qid), `rule ${rule.id} references missing question ${qid}`).toBe(true);
+      }
+    }
+  });
+
+  it('covers MRP licensing gaps — the most common Odoo scoping pitfalls', () => {
+    const ids = odooAdaptor.rules.rules.map((r) => r.id);
+    expect(ids).toContain('odoo.mrp.requires-mrp-module');
+    expect(ids).toContain('odoo.mrp.work-centers-require-mrp-module');
+    expect(ids).toContain('odoo.mrp.quality-requires-mrp-and-quality');
+  });
+
+  it('documents Enterprise-only modules (Studio, Documents, Helpdesk)', () => {
+    const ids = odooAdaptor.rules.rules.map((r) => r.id);
+    expect(ids).toContain('odoo.studio-is-enterprise-only');
+    expect(ids).toContain('odoo.documents-is-enterprise-only');
+    expect(ids).toContain('odoo.helpdesk-is-enterprise-only');
+  });
+});
+
 describe('AdaptorRegistry with Odoo', () => {
   it('registers + retrieves Odoo by id', () => {
     const reg = new AdaptorRegistry();

@@ -58,6 +58,7 @@ export const engagementsApi = {
       license: Record<string, unknown>;
       phases: Record<string, unknown>;
       generators: Array<Record<string, unknown>>;
+      rules?: { id: string; version: string; rules: Array<Record<string, unknown>> };
     }),
 
   patch: (id: string, data: { status?: string; clientName?: string; startDate?: string | null; contractEndDate?: string | null }) =>

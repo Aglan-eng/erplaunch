@@ -36,6 +36,8 @@ export function AdaptorPanel({ engagementId }: { engagementId: string }) {
   const license = data.license as { editions?: unknown[]; modules?: unknown[]; defaultEditionId?: string } | null;
   const phases = data.phases as { defaultPhases?: unknown[] } | null;
   const generators = Array.isArray(data.generators) ? data.generators : [];
+  const rules = (data as unknown as { rules?: { rules?: unknown[] } }).rules;
+  const ruleCount = Array.isArray(rules?.rules) ? rules!.rules!.length : 0;
 
   const flowCount = Array.isArray(schema?.flows) ? schema.flows.length : 0;
   const questionCount = Array.isArray(schema?.flows)
@@ -72,12 +74,19 @@ export function AdaptorPanel({ engagementId }: { engagementId: string }) {
       </div>
 
       <div className="px-6 py-4 space-y-3 text-xs">
-        <div className="flex items-center gap-2 text-gray-500">
+        <div className="flex items-center gap-2 text-gray-500 flex-wrap">
           <Zap className="h-3 w-3 text-amber-500" />
           <span className="font-semibold text-gray-700">{phases?.defaultPhases?.length ?? 0}</span>
           <span>phases ·</span>
           <span className="font-semibold text-gray-700">{generators.length}</span>
           <span>generator{generators.length === 1 ? '' : 's'}</span>
+          {ruleCount > 0 && (
+            <>
+              <span>·</span>
+              <span className="font-semibold text-gray-700">{ruleCount}</span>
+              <span>rule{ruleCount === 1 ? '' : 's'}</span>
+            </>
+          )}
           {license?.defaultEditionId && (
             <>
               <span>·</span>
