@@ -324,6 +324,12 @@ const rules: RulePack = {
       questionIds: ['odoo.mrp.enabled'],
       message: 'Manufacturing is enabled but the MRP module is not provisioned.',
       resolution: 'Add "MRP" to the Licensed Modules list or set Manufacturing to No.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.mrp.enabled' } },
+          { licenseMissingModule: 'MRP' },
+        ],
+      },
     },
     {
       id: 'odoo.mrp.work-centers-require-mrp-module',
@@ -332,6 +338,12 @@ const rules: RulePack = {
       questionIds: ['odoo.mrp.workCenters', 'odoo.mrp.enabled'],
       message: 'Work centers / routings require the MRP module.',
       resolution: 'Provision the MRP module, or disable the Work Centers question.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.mrp.workCenters' } },
+          { licenseMissingModule: 'MRP' },
+        ],
+      },
     },
     {
       id: 'odoo.mrp.quality-requires-mrp-and-quality',
@@ -340,6 +352,15 @@ const rules: RulePack = {
       questionIds: ['odoo.mrp.quality', 'odoo.mrp.enabled'],
       message: 'Quality Control on manufacturing requires both the MRP and Quality modules.',
       resolution: 'Provision the MRP and Quality modules, or disable the Quality Control question.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.mrp.quality' } },
+          { any: [
+            { licenseMissingModule: 'MRP' },
+            { licenseMissingModule: 'QUALITY' },
+          ] },
+        ],
+      },
     },
 
     // ── License gaps — Enterprise-only modules ────────────────────────────
@@ -350,6 +371,12 @@ const rules: RulePack = {
       questionIds: [],
       message: 'Studio is an Odoo Enterprise-only app; it is not available on Community.',
       resolution: 'Upgrade the edition to Enterprise, or remove the STUDIO module from the license.',
+      when: {
+        all: [
+          { licenseHasModule: 'ENTERPRISE_STUDIO' },
+          { licenseEditionNotIn: ['ENTERPRISE'] },
+        ],
+      },
     },
     {
       id: 'odoo.documents-is-enterprise-only',
@@ -358,6 +385,12 @@ const rules: RulePack = {
       questionIds: [],
       message: 'Documents is an Odoo Enterprise-only app; it is not available on Community.',
       resolution: 'Upgrade the edition to Enterprise, or remove the ENTERPRISE_DOCUMENTS module.',
+      when: {
+        all: [
+          { licenseHasModule: 'ENTERPRISE_DOCUMENTS' },
+          { licenseEditionNotIn: ['ENTERPRISE'] },
+        ],
+      },
     },
     {
       id: 'odoo.helpdesk-is-enterprise-only',
@@ -366,6 +399,12 @@ const rules: RulePack = {
       questionIds: [],
       message: 'Helpdesk is an Odoo Enterprise-only app; it is not available on Community.',
       resolution: 'Upgrade the edition to Enterprise, or remove the HELPDESK module.',
+      when: {
+        all: [
+          { licenseHasModule: 'HELPDESK' },
+          { licenseEditionNotIn: ['ENTERPRISE'] },
+        ],
+      },
     },
 
     // ── Config conflicts — sub-settings without parent toggle ─────────────
@@ -376,6 +415,15 @@ const rules: RulePack = {
       questionIds: ['odoo.mrp.enabled', 'odoo.mrp.workCenters', 'odoo.mrp.quality'],
       message: 'Work centers or Quality are enabled while Manufacturing itself is set to No.',
       resolution: 'Either enable Manufacturing or disable the sub-settings — the sub-questions are only meaningful when MRP is on.',
+      when: {
+        all: [
+          { answerFalsy: { questionId: 'odoo.mrp.enabled' } },
+          { any: [
+            { answerTruthy: { questionId: 'odoo.mrp.workCenters' } },
+            { answerTruthy: { questionId: 'odoo.mrp.quality' } },
+          ] },
+        ],
+      },
     },
 
     // ── Data warnings — cross-question sanity checks ──────────────────────
@@ -386,6 +434,12 @@ const rules: RulePack = {
       questionIds: ['odoo.company.multiCompany', 'odoo.coa.analyticAccounting'],
       message: 'Multi-company installs almost always need analytic accounting for inter-company reporting.',
       resolution: 'Set "Do you need analytic accounting?" to Yes, or document the exception in the Risk Register.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.company.multiCompany' } },
+          { answerFalsy: { questionId: 'odoo.coa.analyticAccounting' } },
+        ],
+      },
     },
     {
       id: 'odoo.company.fiscal-year-start-required',
@@ -394,6 +448,7 @@ const rules: RulePack = {
       questionIds: ['odoo.company.fiscalYearStart'],
       message: 'Fiscal year start (MM-DD) is required before configuration can begin.',
       resolution: 'Confirm the fiscal calendar with the client and record it on the Company & Entities section.',
+      when: { answerFalsy: { questionId: 'odoo.company.fiscalYearStart' } },
     },
 
     // ── Info — best practice nudges ───────────────────────────────────────
@@ -404,6 +459,7 @@ const rules: RulePack = {
       questionIds: ['odoo.sales.priceListStrategy'],
       message: 'Per-customer-tier pricelists require each customer to be tagged with a tier — usually a migration step.',
       resolution: 'Capture the customer tier taxonomy in the Migration Tracker before go-live.',
+      when: { answerEquals: { questionId: 'odoo.sales.priceListStrategy', value: 'CUSTOMER_TIER' } },
     },
   ],
 };

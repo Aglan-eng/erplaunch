@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateAdaptor } from '@ofoq/adaptor-sdk';
+import { validateAdaptor, evaluateAdaptorRules } from '@ofoq/adaptor-sdk';
 import { AdaptorRegistry } from '@ofoq/adaptor-registry';
 import odooAdaptor from '../src/index.js';
 
@@ -159,6 +159,104 @@ describe('odooAdaptor: rule pack', () => {
     expect(ids).toContain('odoo.studio-is-enterprise-only');
     expect(ids).toContain('odoo.documents-is-enterprise-only');
     expect(ids).toContain('odoo.helpdesk-is-enterprise-only');
+  });
+});
+
+describe('odooAdaptor: rule evaluation via evaluateAdaptorRules', () => {
+  it('clean Enterprise scoping raises no conflicts', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.company.multiCompany': true,
+        'odoo.company.fiscalYearStart': '01-01',
+        'odoo.coa.analyticAccounting': true,
+        'odoo.mrp.enabled': true,
+        'odoo.mrp.workCenters': true,
+        'odoo.mrp.quality': true,
+        'odoo.sales.priceListStrategy': 'SINGLE',
+      },
+      license: {
+        edition: 'ENTERPRISE',
+        modules: ['MRP', 'QUALITY', 'ENTERPRISE_STUDIO', 'ENTERPRISE_DOCUMENTS', 'HELPDESK'],
+      },
+    });
+    expect(conflicts).toEqual([]);
+  });
+
+  it('flags MRP-enabled with missing MRP module (BLOCK)', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'odoo.mrp.enabled': true, 'odoo.company.fiscalYearStart': '01-01' },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const ids = conflicts.map((c) => c.id);
+    expect(ids).toContain('odoo.mrp.requires-mrp-module');
+    expect(conflicts.find((c) => c.id === 'odoo.mrp.requires-mrp-module')?.severity).toBe('BLOCK');
+  });
+
+  it('flags Studio on Community edition (BLOCK)', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'odoo.company.fiscalYearStart': '01-01' },
+      license: { edition: 'COMMUNITY', modules: ['ENTERPRISE_STUDIO'] },
+    });
+    const ids = conflicts.map((c) => c.id);
+    expect(ids).toContain('odoo.studio-is-enterprise-only');
+  });
+
+  it('flags Quality Control without MRP or QUALITY modules (BLOCK)', () => {
+    const missingMrp = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'odoo.mrp.quality': true, 'odoo.company.fiscalYearStart': '01-01' },
+      license: { edition: 'ENTERPRISE', modules: ['QUALITY'] },
+    });
+    expect(missingMrp.map((c) => c.id)).toContain('odoo.mrp.quality-requires-mrp-and-quality');
+
+    const missingQuality = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'odoo.mrp.quality': true, 'odoo.company.fiscalYearStart': '01-01' },
+      license: { edition: 'ENTERPRISE', modules: ['MRP'] },
+    });
+    expect(missingQuality.map((c) => c.id)).toContain('odoo.mrp.quality-requires-mrp-and-quality');
+  });
+
+  it('warns on MRP sub-settings enabled while parent is off (WARN)', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.mrp.enabled': false,
+        'odoo.mrp.workCenters': true,
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: ['MRP'] },
+    });
+    const rule = conflicts.find((c) => c.id === 'odoo.mrp.sub-settings-without-parent');
+    expect(rule).toBeDefined();
+    expect(rule?.severity).toBe('WARN');
+  });
+
+  it('warns when multi-company is on but analytic accounting is off', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.company.multiCompany': true,
+        'odoo.coa.analyticAccounting': false,
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).toContain('odoo.company.multi-company-needs-analytic');
+  });
+
+  it('warns when fiscal year start is missing', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {},
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).toContain('odoo.company.fiscal-year-start-required');
+  });
+
+  it('INFO-level nudge on customer-tier pricelist strategy', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'odoo.sales.priceListStrategy': 'CUSTOMER_TIER', 'odoo.company.fiscalYearStart': '01-01' },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const info = conflicts.find((c) => c.id === 'odoo.sales.tiered-pricelist-needs-customer-tiers');
+    expect(info).toBeDefined();
+    expect(info?.severity).toBe('INFO');
   });
 });
 

@@ -13,6 +13,7 @@ import {
 import { evaluate } from '@ofoq/rule-engine';
 import type { Phase, LicenseProfile } from '@ofoq/shared';
 import { getAdaptorRegistry } from '@ofoq/adaptor-registry';
+import { evaluateAdaptorRules, type RulePack } from '@ofoq/adaptor-sdk';
 import * as db from '../db/index.js';
 import { generateAIAdvice, computeInputHash } from '../services/aiAdvisor.js';
 import { generateFullProfile, generateSectionSuggestions } from '../services/aiProfileGenerator.js';
@@ -67,6 +68,19 @@ async function resolveAdaptorContext(
     },
     adaptorQuestions: questions.length > 0 ? questions : undefined,
   };
+}
+
+/**
+ * Return the RulePack for an adaptor (built-in via registry, custom via
+ * firm DB). Custom adaptor rows don't currently carry a rule pack, so the
+ * custom path always returns null — the frontend edit-draft UI can author
+ * rule-when expressions in a later phase.
+ */
+async function resolveRulePack(adaptorId: string, firmId: string): Promise<RulePack | null> {
+  if (adaptorId.startsWith('custom:')) return null;
+  const reg = getAdaptorRegistry();
+  const adaptor = reg.find(adaptorId);
+  return adaptor?.rules ?? null;
 }
 
 export async function engagementRoutes(fastify: FastifyInstance) {
@@ -218,9 +232,10 @@ export async function engagementRoutes(fastify: FastifyInstance) {
     const merged = { ...currentAnswers, ...result.data.answers };
     const profile = await db.upsertProfile(id, merged);
 
-    // Rule evaluation is NetSuite-specific today; skip for other adaptors
-    // until Phase 4 routes through adaptor.rules. See license PUT for the
-    // mirrored guard.
+    // Rule evaluation now branches per-adaptor:
+    //   - netsuite → legacy hand-written rule engine (full answer+phases context)
+    //   - else     → generic adaptor-sdk evaluator against adaptor.rules if the
+    //     adaptor ships a rule pack; otherwise clears stale conflicts.
     const engagementAdaptorId = (check as { adaptorId?: string }).adaptorId ?? 'netsuite';
     let allConflicts: Array<{
       id: string; type: string; severity: string; questionIds: string[]; message: string; resolution: string;
@@ -241,17 +256,27 @@ export async function engagementRoutes(fastify: FastifyInstance) {
       };
       const { conflicts, warnings, infos } = evaluate(ruleInput);
       allConflicts = [...conflicts, ...warnings, ...infos];
-      await db.replaceConflicts(id, allConflicts.map((c) => ({
-        ruleId: c.id,
-        type: c.type,
-        severity: c.severity,
-        questionIds: c.questionIds,
-        message: c.message,
-        resolution: c.resolution,
-      })));
     } else {
-      await db.replaceConflicts(id, []);
+      const pack = await resolveRulePack(engagementAdaptorId, request.jwtUser.firmId);
+      if (pack) {
+        const license = await db.getLicense(id);
+        allConflicts = evaluateAdaptorRules(pack, {
+          answers: merged,
+          license: {
+            edition: (license?.edition as string) ?? '',
+            modules: (license?.modules as string[]) ?? [],
+          },
+        });
+      }
     }
+    await db.replaceConflicts(id, allConflicts.map((c) => ({
+      ruleId: c.id,
+      type: c.type,
+      severity: c.severity,
+      questionIds: c.questionIds,
+      message: c.message,
+      resolution: c.resolution,
+    })));
     return reply.send({ data: { profile, conflicts: allConflicts } });
   });
 
@@ -301,10 +326,9 @@ export async function engagementRoutes(fastify: FastifyInstance) {
       return reply.code(500).send({ error: { code: 'LICENSE_PERSIST_FAILED' } });
     }
 
-    // Re-evaluate rules with the updated license so conflict state stays in sync,
-    // exactly as patchProfile does after saving answers. The rule engine today
-    // is NetSuite-specific; other adaptors get a no-op evaluation (Phase 4 will
-    // route through adaptor.rules once non-NetSuite rule packs exist).
+    // Re-evaluate rules with the updated license so conflict state stays in
+    // sync (mirrors PATCH /profile). Dispatch on adaptor: NetSuite → legacy
+    // rule engine; everything else → generic adaptor-sdk evaluator.
     const engagementAdaptorId = (check as { adaptorId?: string }).adaptorId ?? 'netsuite';
     let allConflicts: Array<{
       id: string; type: string; severity: string; questionIds: string[]; message: string; resolution: string;
@@ -325,18 +349,27 @@ export async function engagementRoutes(fastify: FastifyInstance) {
       };
       const { conflicts, warnings, infos } = evaluate(ruleInput);
       allConflicts = [...conflicts, ...warnings, ...infos];
-      await db.replaceConflicts(id, allConflicts.map((c) => ({
-        ruleId: c.id,
-        type: c.type,
-        severity: c.severity,
-        questionIds: c.questionIds,
-        message: c.message,
-        resolution: c.resolution,
-      })));
     } else {
-      // Clear any stale NetSuite-shaped conflicts from a previous adaptor.
-      await db.replaceConflicts(id, []);
+      const pack = await resolveRulePack(engagementAdaptorId, request.jwtUser.firmId);
+      if (pack) {
+        const profile = await db.getProfile(id);
+        allConflicts = evaluateAdaptorRules(pack, {
+          answers: (profile?.answers ?? {}) as Record<string, unknown>,
+          license: {
+            edition: (license.edition as string) ?? '',
+            modules: (license.modules as string[]) ?? [],
+          },
+        });
+      }
     }
+    await db.replaceConflicts(id, allConflicts.map((c) => ({
+      ruleId: c.id,
+      type: c.type,
+      severity: c.severity,
+      questionIds: c.questionIds,
+      message: c.message,
+      resolution: c.resolution,
+    })));
 
     return reply.send({ data: { license, conflicts: allConflicts } });
   });
@@ -749,9 +782,9 @@ export async function engagementRoutes(fastify: FastifyInstance) {
     // Re-evaluate rules — mirror the pattern used after license + profile edits
     // (see earlier handlers in this file) so a single conflict surface stays
     // authoritative regardless of which code path triggered re-evaluation.
-    // NetSuite-only: the rule engine today only speaks the NetSuite rule
-    // pack, so skip it for non-NetSuite adaptors and clear any stale
-    // conflicts instead.
+    // Phase 12: non-NetSuite adaptors now route through the generic
+    // evaluator instead of always clearing their conflicts.
+    let allConflicts: Array<{ id: string; type: string; severity: string; questionIds: string[]; message: string; resolution: string; }> = [];
     if (adaptorId === 'netsuite') {
       const updatedLicense = await db.getLicense(id);
       const phases = await db.getPhases(id);
@@ -760,18 +793,28 @@ export async function engagementRoutes(fastify: FastifyInstance) {
         license: (updatedLicense as unknown) as LicenseProfile,
         phases: ((phases || []) as unknown) as Phase[],
       });
-      const allConflicts = [...conflicts, ...warnings, ...infos];
-      await db.replaceConflicts(id, allConflicts.map((c) => ({
-        ruleId: c.id,
-        type: c.type,
-        severity: c.severity,
-        questionIds: c.questionIds,
-        message: c.message,
-        resolution: c.resolution,
-      })));
+      allConflicts = [...conflicts, ...warnings, ...infos];
     } else {
-      await db.replaceConflicts(id, []);
+      const pack = await resolveRulePack(adaptorId, request.jwtUser.firmId);
+      if (pack) {
+        const updatedLicense = await db.getLicense(id);
+        allConflicts = evaluateAdaptorRules(pack, {
+          answers: merged,
+          license: {
+            edition: (updatedLicense?.edition as string) ?? '',
+            modules: (updatedLicense?.modules as string[]) ?? [],
+          },
+        });
+      }
     }
+    await db.replaceConflicts(id, allConflicts.map((c) => ({
+      ruleId: c.id,
+      type: c.type,
+      severity: c.severity,
+      questionIds: c.questionIds,
+      message: c.message,
+      resolution: c.resolution,
+    })));
 
     await db.logActivity(id, request.jwtUser.firmId, 'PROFILE_GENERATED', `AI generated ${Object.keys(result.answers).length} answers for business profile`);
 

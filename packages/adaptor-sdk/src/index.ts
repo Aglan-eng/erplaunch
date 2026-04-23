@@ -131,6 +131,28 @@ export interface PhaseModel {
 export type ConflictSeverity = 'BLOCK' | 'WARN' | 'INFO';
 export type ConflictType = 'LICENSE_GAP' | 'PHASE_DEPENDENCY' | 'CONFIG_CONFLICT' | 'DATA_WARNING';
 
+/**
+ * Declarative rule condition (Phase 12). Optional — rules without a `when`
+ * clause stay metadata-only and must be evaluated by adaptor-specific code
+ * (this is how the legacy NetSuite rule engine works). Rules WITH a `when`
+ * clause can be fired by the generic `evaluateAdaptorRules()` evaluator
+ * against any adaptor's answers + license.
+ *
+ * The expression language is intentionally small — authored by hand, read
+ * by JSON — to keep authoring approachable and the evaluator boring.
+ */
+export type RuleCondition =
+  | { all: RuleCondition[] }
+  | { any: RuleCondition[] }
+  | { not: RuleCondition }
+  | { answerEquals: { questionId: string; value: unknown } }
+  | { answerTruthy: { questionId: string } }
+  | { answerFalsy: { questionId: string } }
+  | { licenseEditionIn: string[] }
+  | { licenseEditionNotIn: string[] }
+  | { licenseHasModule: string }
+  | { licenseMissingModule: string };
+
 export interface RuleDefinition {
   id: string;
   type: ConflictType;
@@ -138,6 +160,9 @@ export interface RuleDefinition {
   questionIds: string[];
   message: string;
   resolution: string;
+  /** Optional declarative trigger. When omitted the rule is documentation
+   *  only and will not be fired by the generic evaluator. */
+  when?: RuleCondition;
 }
 
 export interface RulePack {
@@ -170,6 +195,115 @@ export interface PlatformAdaptor {
 }
 
 export const SDK_VERSION = '0.1.0';
+
+// ─── Generic rule evaluator (Phase 12) ───────────────────────────────────────
+//
+// Runs any RulePack against an engagement's answers + license and returns a
+// list of RuleEvaluation results (one per rule whose `when` clause fires).
+// Rules without a `when` clause are skipped — they remain metadata-only and
+// must be evaluated by adaptor-specific code.
+//
+// Intentionally framework-free: the evaluator is a pure function with zero
+// dependencies beyond these types, so the API, the SPA, and future adaptors
+// can all share one canonical evaluation implementation.
+
+export interface AdaptorRuleInput {
+  answers: Record<string, unknown>;
+  license: {
+    edition: string;
+    modules: string[];
+  };
+}
+
+export interface AdaptorRuleConflict {
+  id: string;
+  type: ConflictType;
+  severity: ConflictSeverity;
+  questionIds: string[];
+  message: string;
+  resolution: string;
+}
+
+export function evaluateAdaptorRules(
+  rules: RulePack,
+  input: AdaptorRuleInput,
+): AdaptorRuleConflict[] {
+  const out: AdaptorRuleConflict[] = [];
+  if (!rules || !Array.isArray(rules.rules)) return out;
+  for (const rule of rules.rules) {
+    if (!rule.when) continue;
+    if (!matches(rule.when, input)) continue;
+    out.push({
+      id: rule.id,
+      type: rule.type,
+      severity: rule.severity,
+      questionIds: rule.questionIds,
+      message: rule.message,
+      resolution: rule.resolution,
+    });
+  }
+  return out;
+}
+
+function matches(cond: RuleCondition, input: AdaptorRuleInput): boolean {
+  if ('all' in cond) return cond.all.every((c) => matches(c, input));
+  if ('any' in cond) return cond.any.some((c) => matches(c, input));
+  if ('not' in cond) return !matches(cond.not, input);
+  if ('answerEquals' in cond) {
+    return deepEqual(input.answers[cond.answerEquals.questionId], cond.answerEquals.value);
+  }
+  if ('answerTruthy' in cond) {
+    return isTruthy(input.answers[cond.answerTruthy.questionId]);
+  }
+  if ('answerFalsy' in cond) {
+    return !isTruthy(input.answers[cond.answerFalsy.questionId]);
+  }
+  if ('licenseEditionIn' in cond) {
+    return cond.licenseEditionIn.includes(input.license.edition);
+  }
+  if ('licenseEditionNotIn' in cond) {
+    return !cond.licenseEditionNotIn.includes(input.license.edition);
+  }
+  if ('licenseHasModule' in cond) {
+    return input.license.modules.includes(cond.licenseHasModule);
+  }
+  if ('licenseMissingModule' in cond) {
+    return !input.license.modules.includes(cond.licenseMissingModule);
+  }
+  // Unknown condition shapes must never silently match — return false.
+  return false;
+}
+
+function isTruthy(v: unknown): boolean {
+  if (v === null || v === undefined) return false;
+  if (typeof v === 'boolean') return v;
+  if (typeof v === 'string') return v.trim().length > 0;
+  if (typeof v === 'number') return v !== 0;
+  if (Array.isArray(v)) return v.length > 0;
+  if (typeof v === 'object') return Object.keys(v as Record<string, unknown>).length > 0;
+  return Boolean(v);
+}
+
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a === null || b === null || a === undefined || b === undefined) return a === b;
+  if (typeof a !== typeof b) return false;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) if (!deepEqual(a[i], b[i])) return false;
+    return true;
+  }
+  if (typeof a === 'object' && typeof b === 'object') {
+    const ao = a as Record<string, unknown>;
+    const bo = b as Record<string, unknown>;
+    const ak = Object.keys(ao);
+    const bk = Object.keys(bo);
+    if (ak.length !== bk.length) return false;
+    for (const k of ak) if (!deepEqual(ao[k], bo[k])) return false;
+    return true;
+  }
+  return false;
+}
 
 // ─── Validator (runtime shape check at register time) ────────────────────────
 
