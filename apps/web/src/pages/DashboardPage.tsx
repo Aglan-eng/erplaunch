@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   Plus, LogOut, Layers, LayoutGrid, BarChart2, Target, TrendingUp,
@@ -325,6 +326,13 @@ export function DashboardPage() {
             <div className="h-6 w-px bg-gray-200" />
 
             <span className="text-sm text-gray-600 hidden sm:block font-medium">{user?.name}</span>
+            <Link
+              to="/settings"
+              className="text-sm text-gray-500 hover:text-gray-900 px-2 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+              title="Firm settings"
+            >
+              Settings
+            </Link>
             <Button variant="ghost" size="sm" onClick={logout} title="Sign out">
               <LogOut className="h-4 w-4" />
             </Button>

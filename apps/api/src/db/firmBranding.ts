@@ -50,6 +50,38 @@ export async function getFirmBranding(firmId: string): Promise<FirmBranding> {
   return coalesceBranding((r.rows[0] as Row) ?? null);
 }
 
+/**
+ * Update branding fields on a Firm. Any undefined field is left untouched;
+ * `null` explicitly clears a stored value back to the default.
+ */
+export async function updateFirmBranding(
+  firmId: string,
+  patch: Partial<{
+    displayName: string | null;
+    logoUrl: string | null;
+    primaryColor: string | null;
+    secondaryColor: string | null;
+    supportEmail: string | null;
+  }>,
+): Promise<FirmBranding> {
+  const db = getDb();
+  const fields: string[] = [];
+  const args: (string | null)[] = [];
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === undefined) continue;
+    fields.push(`${k} = ?`);
+    args.push(v);
+  }
+  if (fields.length > 0) {
+    args.push(firmId);
+    await db.execute({
+      sql: `UPDATE Firm SET ${fields.join(', ')} WHERE id = ?`,
+      args,
+    });
+  }
+  return getFirmBranding(firmId);
+}
+
 export async function getFirmBrandingByEngagementId(engagementId: string): Promise<FirmBranding> {
   const db = getDb();
   const r = await db.execute({

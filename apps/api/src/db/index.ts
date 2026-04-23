@@ -1761,6 +1761,7 @@ export type { PortalSession } from './portalSession.js';
 export {
   getFirmBranding,
   getFirmBrandingByEngagementId,
+  updateFirmBranding,
   DEFAULT_BRANDING,
 } from './firmBranding.js';
 export type { FirmBranding } from './firmBranding.js';

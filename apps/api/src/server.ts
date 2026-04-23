@@ -20,6 +20,7 @@ import { migrationRoutes } from './routes/migration.js';
 import { activityRoutes } from './routes/activity.js';
 import { portalRoutes } from './routes/portal.js';
 import { portalAuthRoutes } from './routes/portalAuth.js';
+import { firmBrandingRoutes } from './routes/firmBranding.js';
 import { verticalsRoutes } from './routes/verticals.js';
 import { dataCollectionRoutes } from './routes/dataCollection.js';
 import { exportRoutes } from './routes/export.js';
@@ -106,6 +107,7 @@ export async function buildServer() {
   await fastify.register(activityRoutes, { prefix: '/api/v1' });
   await fastify.register(portalAuthRoutes, { prefix: '/api/v1' });
   await fastify.register(portalRoutes, { prefix: '/api/v1' });
+  await fastify.register(firmBrandingRoutes, { prefix: '/api/v1' });
   await fastify.register(verticalsRoutes, { prefix: '/api/v1' });
   await fastify.register(dataCollectionRoutes, { prefix: '/api/v1' });
   await fastify.register(exportRoutes, { prefix: '/api/v1' });

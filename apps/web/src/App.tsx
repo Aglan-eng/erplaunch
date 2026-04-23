@@ -10,6 +10,7 @@ const WizardPage = lazy(() => import('./pages/WizardPage').then(m => ({ default:
 const ClientPortalPage = lazy(() => import('./pages/ClientPortalPage').then(m => ({ default: m.ClientPortalPage })));
 const PortalLoginPage = lazy(() => import('./pages/PortalLoginPage').then(m => ({ default: m.PortalLoginPage })));
 const PortalVerifyPage = lazy(() => import('./pages/PortalVerifyPage').then(m => ({ default: m.PortalVerifyPage })));
+const SettingsPage = lazy(() => import('./pages/SettingsPage').then(m => ({ default: m.SettingsPage })));
 const StatusReportPage = lazy(() => import('./pages/StatusReportPage').then(m => ({ default: m.StatusReportPage })));
 const VerticalWorkspacePage = lazy(() => import('./pages/VerticalWorkspacePage').then(m => ({ default: m.VerticalWorkspacePage })));
 
@@ -48,6 +49,14 @@ function AppRoutes() {
           element={
             <RequireAuth>
               <ErrorBoundary><DashboardPage /></ErrorBoundary>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <RequireAuth>
+              <ErrorBoundary><SettingsPage /></ErrorBoundary>
             </RequireAuth>
           }
         />
