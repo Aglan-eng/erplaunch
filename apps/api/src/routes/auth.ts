@@ -1,8 +1,32 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import bcrypt from 'bcryptjs';
 import { LoginSchema } from '@ofoq/shared';
 import { authenticate } from '../middleware/auth.js';
 import { findUserByEmail, findUserById } from '../db/index.js';
+import {
+  checkRequestCodeLimit,
+  recordRequestCode,
+  RedisUnavailableError,
+  type RedisLike,
+} from '../services/portalRateLimit.js';
+
+async function tryLoginRateLimit(
+  request: FastifyRequest,
+  fn: (redis: RedisLike) => Promise<{ ok: boolean }>,
+): Promise<{ ok: boolean }> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const redis = (request.server as any).redis as RedisLike | undefined;
+  if (!redis) return { ok: true };
+  try {
+    return await fn(redis);
+  } catch (err) {
+    if (err instanceof RedisUnavailableError) {
+      request.log.warn('auth/login rate-limit: redis unavailable — proceeding');
+      return { ok: true };
+    }
+    throw err;
+  }
+}
 
 export async function authRoutes(fastify: FastifyInstance) {
   // POST /auth/login
@@ -13,6 +37,17 @@ export async function authRoutes(fastify: FastifyInstance) {
     }
 
     const { email, password } = result.data;
+
+    // Rate-limit on (IP, email). Reuses the portal limiter's primitives — same
+    // shape, same per-minute 3/3 caps via env (overridable). Fail-open if
+    // Redis is unavailable (see tryLoginRateLimit above for rationale).
+    const ip = request.ip || '0.0.0.0';
+    const limit = await tryLoginRateLimit(request, (r) => checkRequestCodeLimit(r, ip, email));
+    if (!limit.ok) {
+      request.log.warn({ ip }, 'auth/login rate-limit hit');
+      return reply.code(429).send({ error: { code: 'RATE_LIMITED', message: 'Too many sign-in attempts. Wait a moment and try again.' } });
+    }
+    await tryLoginRateLimit(request, async (r) => { await recordRequestCode(r, ip, email); return { ok: true }; });
 
     const user = await findUserByEmail(email) as Record<string, unknown> & { passwordHash: string; id: string; firmId: string; role: string; email: string; name: string; firm: Record<string, unknown> } | null;
 

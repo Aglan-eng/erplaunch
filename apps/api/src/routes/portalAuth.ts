@@ -1,10 +1,18 @@
 import crypto from 'crypto';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import * as db from '../db/index.js';
 import { issuePortalOtp, verifyPortalOtp } from '../services/portalOtp.js';
 import { sendEmailForFirm } from '../services/emailTransport.js';
 import { authenticatePortalSession, hashJti } from '../middleware/portalAuth.js';
+import {
+  checkRequestCodeLimit,
+  recordRequestCode,
+  checkVerifyLimit,
+  recordVerifyFailure,
+  RedisUnavailableError,
+  type RedisLike,
+} from '../services/portalRateLimit.js';
 
 const RequestAccessSchema = z.object({
   email: z.string().email(),
@@ -33,6 +41,39 @@ function appUrl(): string {
   return (process.env.APP_URL || 'http://localhost:5173').replace(/\/$/, '');
 }
 
+function getRedis(request: FastifyRequest): RedisLike | null {
+  // fastify.redis is decorated by plugins/redis.ts. In tests the plugin isn't
+  // registered. Accept either shape and return null when unavailable so the
+  // caller can degrade gracefully.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const r = (request.server as any).redis as RedisLike | undefined;
+  return r ?? null;
+}
+
+/**
+ * Best-effort rate-limit check. Returns `{ ok: true }` if Redis is unavailable
+ * so pilot deploys with transient Redis blips don't lock out real users.
+ * Prod deploys with a healthy Redis get real rate limits; the warn log line
+ * in the catch is the ops signal that something is wrong.
+ */
+async function tryRateLimit<T extends { ok: boolean; retryAfterSeconds?: number }>(
+  request: FastifyRequest,
+  fn: (redis: RedisLike) => Promise<T>,
+  label: string,
+): Promise<T> {
+  const redis = getRedis(request);
+  if (!redis) return { ok: true } as T;
+  try {
+    return await fn(redis);
+  } catch (err) {
+    if (err instanceof RedisUnavailableError) {
+      request.log.warn({ label }, 'portal rate-limit: redis unavailable — proceeding without limits');
+      return { ok: true } as T;
+    }
+    throw err;
+  }
+}
+
 export async function portalAuthRoutes(fastify: FastifyInstance) {
   /**
    * POST /engagements/portal/request-access
@@ -52,12 +93,34 @@ export async function portalAuthRoutes(fastify: FastifyInstance) {
     }
     const { email, engagementToken } = parsed.data;
 
+    // Rate limit before any DB work — an attacker spraying this endpoint
+    // should not get cheap engagement-existence probes. We check both
+    // per-IP and per-email counters.
+    const ip = request.ip || '0.0.0.0';
+    const limit = await tryRateLimit(
+      request,
+      (r) => checkRequestCodeLimit(r, ip, email),
+      'request-access',
+    );
+    if (!limit.ok) {
+      request.log.warn({ ip, label: 'request-access' }, 'portal rate-limit hit');
+      return reply.code(429).send({ error: { code: 'RATE_LIMITED', message: 'Too many requests. Wait a moment and try again.' } });
+    }
+
     const engagement = await db.findEngagementByPortalToken(engagementToken);
     if (!engagement) {
       return reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'Unknown portal' } });
     }
     const engagementId = (engagement as { id: string }).id;
     const firmId = (engagement as { firmId?: string }).firmId;
+
+    // Record the request counter even if the member isn't found — prevents
+    // enumeration-by-timing.
+    await tryRateLimit(
+      request,
+      async (r) => { await recordRequestCode(r, ip, email); return { ok: true }; },
+      'request-access',
+    );
 
     // Constant-ish latency regardless of membership: always do the member
     // lookup and only branch on actions after. Respond 202 in both paths.
@@ -117,6 +180,22 @@ export async function portalAuthRoutes(fastify: FastifyInstance) {
     }
     const { email, engagementToken, code } = parsed.data;
 
+    // Rate-limit verify attempts on a (engagementToken, IP) dimension. The
+    // token stands in as the "verification id" — an attacker can only brute
+    // N attempts per token per window before getting blocked. Per-member OTP
+    // attempt burn (5 wrong codes → CODE_EXPIRED) is already enforced inside
+    // verifyPortalOtp, so this is a second layer.
+    const ip = request.ip || '0.0.0.0';
+    const limit = await tryRateLimit(
+      request,
+      (r) => checkVerifyLimit(r, ip, engagementToken),
+      'verify',
+    );
+    if (!limit.ok) {
+      request.log.warn({ ip, label: 'verify' }, 'portal rate-limit hit');
+      return reply.code(429).send({ error: { code: 'RATE_LIMITED', message: 'Too many attempts. Wait a moment and request a new link.' } });
+    }
+
     const engagement = await db.findEngagementByPortalToken(engagementToken);
     if (!engagement) {
       return reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'Unknown portal' } });
@@ -125,11 +204,21 @@ export async function portalAuthRoutes(fastify: FastifyInstance) {
 
     const member = await db.findClientMemberByEngagementAndEmail(engagementId, email);
     if (!member) {
+      await tryRateLimit(
+        request,
+        async (r) => { await recordVerifyFailure(r, ip, engagementToken); return { ok: true }; },
+        'verify',
+      );
       return reply.code(401).send({ error: { code: 'INVALID_CREDENTIALS', message: 'Verification failed' } });
     }
 
     const result = await verifyPortalOtp({ memberId: member.id, code });
     if (!result.ok) {
+      await tryRateLimit(
+        request,
+        async (r) => { await recordVerifyFailure(r, ip, engagementToken); return { ok: true }; },
+        'verify',
+      );
       const statusCode = result.reason === 'RATE_LIMITED' ? 429 : 401;
       return reply.code(statusCode).send({ error: { code: result.reason, message: 'Verification failed' } });
     }
