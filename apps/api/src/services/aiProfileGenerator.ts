@@ -18,6 +18,16 @@ export interface ProfileGeneratorInput {
   country: string;
   additionalContext?: string;
   license?: { edition: string; modules: string[] };
+  /** Platform context (Phase 8). When omitted, falls back to NetSuite framing
+   *  + the @ofoq/shared NetSuite question bank. */
+  platform?: {
+    id: string;
+    name: string;
+    vendor?: string;
+  };
+  /** Optional adaptor-sourced question list. Every element mirrors the
+   *  @ofoq/shared Question shape so downstream code doesn't branch. */
+  adaptorQuestions?: Question[];
 }
 
 export interface GeneratedProfile {
@@ -41,18 +51,18 @@ const SIZE_DESCRIPTIONS: Record<string, string> = {
   ENTERPRISE: '1000+ employees, $200M+ revenue, multi-entity/multi-country',
 };
 
-function buildQuestionList(): string {
+function buildQuestionList(questions: Question[]): string {
   const sections = new Map<string, Question[]>();
-  for (const q of allQuestions) {
+  for (const q of questions) {
     const key = `${q.flow}.${q.section}`;
     if (!sections.has(key)) sections.set(key, []);
     sections.get(key)!.push(q);
   }
 
   const lines: string[] = [];
-  for (const [section, questions] of sections) {
+  for (const [section, sectionQuestions] of sections) {
     lines.push(`\n### ${section}`);
-    for (const q of questions) {
+    for (const q of sectionQuestions) {
       const type = q.inputType;
       const options = q.options ? ` Options: [${q.options.map(o => o.value).join(', ')}]` : '';
       const dep = q.dependsOn ? ` (only if ${q.dependsOn.questionId} = ${q.dependsOn.value})` : '';
@@ -73,15 +83,23 @@ export async function generateFullProfile(input: ProfileGeneratorInput): Promise
   }
 
   const client = new Anthropic({ apiKey });
-  const questionList = buildQuestionList();
+  const platformName = input.platform?.name ?? 'NetSuite';
+  const platformVendor = input.platform?.vendor;
+  const isNetSuite = (input.platform?.id ?? 'netsuite') === 'netsuite';
+  const questions = input.adaptorQuestions ?? allQuestions;
+  const questionList = buildQuestionList(questions);
 
-  const systemPrompt = `You are a Senior NetSuite Implementation Expert. Given basic information about a company, you generate a complete business profile with answers to all relevant NetSuite implementation discovery questions.
+  const platformBullet = isNetSuite
+    ? '4. NetSuite capabilities and common patterns'
+    : `4. ${platformName}${platformVendor ? ` (${platformVendor})` : ''} capabilities and common patterns — if you are unsure about a platform-specific detail, mark confidence LOW rather than guess`;
+
+  const systemPrompt = `You are a Senior ${platformName} Implementation Expert. Given basic information about a company, you generate a complete business profile with answers to all relevant ${platformName} implementation discovery questions.
 
 Your answers should be based on:
 1. Industry best practices and typical configurations for the given industry
 2. Company size to determine complexity (multi-entity, approval workflows, etc.)
 3. Country/region for tax, currency, and compliance requirements
-4. NetSuite capabilities and common patterns
+${platformBullet}
 
 CRITICAL RULES:
 - Only answer questions that are relevant to the company (respect dependsOn conditions)
@@ -104,7 +122,7 @@ You MUST respond with ONLY valid JSON matching this schema:
   "summary": "2-3 sentence overview of the recommended configuration approach"
 }`;
 
-  const userPrompt = `Generate a complete NetSuite implementation business profile for:
+  const userPrompt = `Generate a complete ${platformName} implementation business profile for:
 
 ## Client Information
 - **Company Name**: ${input.clientName}
@@ -156,7 +174,8 @@ export async function generateSectionSuggestions(
   sectionKey: string,
   existingAnswers: Record<string, unknown>,
   clientInfo: { industry: string; companySize: string; country: string },
-  license: { edition: string; modules: string[] }
+  license: { edition: string; modules: string[] },
+  options: { platform?: { id: string; name: string; vendor?: string }; adaptorQuestions?: Question[] } = {},
 ): Promise<SectionSuggestions> {
   const apiKey = process.env.AI_API_KEY;
   const model = process.env.AI_MODEL || 'claude-sonnet-4-20250514';
@@ -165,7 +184,9 @@ export async function generateSectionSuggestions(
     return { suggestedAnswers: {}, reasoning: {} };
   }
 
-  const sectionQuestions = allQuestions.filter(q => `${q.flow.toLowerCase()}.${q.section}` === sectionKey || q.id.startsWith(`${sectionKey}.`));
+  const platformName = options.platform?.name ?? 'NetSuite';
+  const questionPool = options.adaptorQuestions ?? allQuestions;
+  const sectionQuestions = questionPool.filter(q => `${q.flow.toLowerCase()}.${q.section}` === sectionKey || q.id.startsWith(`${sectionKey}.`));
 
   if (sectionQuestions.length === 0) {
     return { suggestedAnswers: {}, reasoning: {} };
@@ -190,7 +211,7 @@ export async function generateSectionSuggestions(
     .map(([k, v]) => `- ${k}: ${JSON.stringify(v)}`)
     .join('\n') || '(no existing answers)';
 
-  const systemPrompt = `You are a NetSuite expert. Suggest answers for unanswered questions based on the client's industry, size, and existing answers. Return ONLY valid JSON: { "suggestedAnswers": { "id": value }, "reasoning": { "id": "why" } }`;
+  const systemPrompt = `You are a ${platformName} expert. Suggest answers for unanswered questions based on the client's industry, size, and existing answers. Return ONLY valid JSON: { "suggestedAnswers": { "id": value }, "reasoning": { "id": "why" } }`;
 
   const userPrompt = `Client: ${clientInfo.industry}, ${clientInfo.companySize}, ${clientInfo.country}
 License: ${license.edition}, Modules: ${license.modules.join(', ') || 'none'}

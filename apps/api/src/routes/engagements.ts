@@ -20,9 +20,54 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { createId } from '@paralleldrive/cuid2';
-import { findSectionLabel } from '../services/adaptorSchemaHelpers.js';
+import { findSectionLabel, flattenAdaptorSchemaToQuestions } from '../services/adaptorSchemaHelpers.js';
+import type { Question as SharedQuestion } from '@ofoq/shared';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+/**
+ * Resolve an adaptorId into a platform descriptor + a question bank usable
+ * by the NetSuite-shaped AI services. Built-ins come from the process
+ * registry; custom adaptors come from the firm's DB (only PUBLISHED rows
+ * contribute context). Returns undefined fields when the adaptor is unknown
+ * so callers can fall back to their pre-SPI defaults.
+ */
+async function resolveAdaptorContext(
+  adaptorId: string,
+  firmId: string,
+): Promise<{
+  platform?: { id: string; name: string; vendor?: string };
+  adaptorQuestions?: SharedQuestion[];
+}> {
+  if (adaptorId.startsWith('custom:')) {
+    const slug = adaptorId.slice('custom:'.length);
+    const row = await db.findCustomAdaptorByFirmAndSlug(firmId, slug);
+    if (!row || row.status !== 'PUBLISHED') return {};
+    const manifest = (row.parsedManifest ?? {}) as { name?: string; vendor?: string };
+    const schema = row.parsedSchema as Parameters<typeof flattenAdaptorSchemaToQuestions>[0];
+    const questions = flattenAdaptorSchemaToQuestions(schema);
+    return {
+      platform: {
+        id: adaptorId,
+        name: manifest.name ?? row.name,
+        vendor: manifest.vendor,
+      },
+      adaptorQuestions: questions.length > 0 ? questions : undefined,
+    };
+  }
+  if (adaptorId === 'netsuite') return {}; // let callers use the legacy @ofoq/shared bank
+  const adaptor = getAdaptorRegistry().find(adaptorId);
+  if (!adaptor) return {};
+  const questions = flattenAdaptorSchemaToQuestions(adaptor.schema as unknown as Parameters<typeof flattenAdaptorSchemaToQuestions>[0]);
+  return {
+    platform: {
+      id: adaptorId,
+      name: adaptor.manifest.name,
+      vendor: adaptor.manifest.vendor,
+    },
+    adaptorQuestions: questions.length > 0 ? questions : undefined,
+  };
+}
 
 export async function engagementRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', authenticate);
@@ -665,8 +710,14 @@ export async function engagementRoutes(fastify: FastifyInstance) {
 
     const license = await db.getLicense(id);
 
+    // Phase 8: resolve the engagement's adaptor so the AI profile generator
+    // can prompt against the right platform + question bank.
+    const engRow = engagement as Record<string, unknown>;
+    const adaptorId = (engRow.adaptorId as string | undefined) ?? 'netsuite';
+    const { platform, adaptorQuestions } = await resolveAdaptorContext(adaptorId, request.jwtUser.firmId);
+
     const result = await generateFullProfile({
-      clientName: (engagement as Record<string, unknown>).clientName as string,
+      clientName: engRow.clientName as string,
       industry: body.industry,
       companySize: body.companySize,
       country: body.country,
@@ -675,6 +726,8 @@ export async function engagementRoutes(fastify: FastifyInstance) {
         edition: (license.edition as string) || 'MID_MARKET',
         modules: (license.modules as string[]) || [],
       } : undefined,
+      platform,
+      adaptorQuestions,
     });
 
     // Merge AI answers with existing (AI fills blanks, doesn't overwrite)
@@ -694,22 +747,29 @@ export async function engagementRoutes(fastify: FastifyInstance) {
     // Re-evaluate rules — mirror the pattern used after license + profile edits
     // (see earlier handlers in this file) so a single conflict surface stays
     // authoritative regardless of which code path triggered re-evaluation.
-    const updatedLicense = await db.getLicense(id);
-    const phases = await db.getPhases(id);
-    const { conflicts, warnings, infos } = evaluate({
-      answers: merged,
-      license: (updatedLicense as unknown) as LicenseProfile,
-      phases: ((phases || []) as unknown) as Phase[],
-    });
-    const allConflicts = [...conflicts, ...warnings, ...infos];
-    await db.replaceConflicts(id, allConflicts.map((c) => ({
-      ruleId: c.id,
-      type: c.type,
-      severity: c.severity,
-      questionIds: c.questionIds,
-      message: c.message,
-      resolution: c.resolution,
-    })));
+    // NetSuite-only: the rule engine today only speaks the NetSuite rule
+    // pack, so skip it for non-NetSuite adaptors and clear any stale
+    // conflicts instead.
+    if (adaptorId === 'netsuite') {
+      const updatedLicense = await db.getLicense(id);
+      const phases = await db.getPhases(id);
+      const { conflicts, warnings, infos } = evaluate({
+        answers: merged,
+        license: (updatedLicense as unknown) as LicenseProfile,
+        phases: ((phases || []) as unknown) as Phase[],
+      });
+      const allConflicts = [...conflicts, ...warnings, ...infos];
+      await db.replaceConflicts(id, allConflicts.map((c) => ({
+        ruleId: c.id,
+        type: c.type,
+        severity: c.severity,
+        questionIds: c.questionIds,
+        message: c.message,
+        resolution: c.resolution,
+      })));
+    } else {
+      await db.replaceConflicts(id, []);
+    }
 
     await db.logActivity(id, request.jwtUser.firmId, 'PROFILE_GENERATED', `AI generated ${Object.keys(result.answers).length} answers for business profile`);
 
@@ -736,6 +796,12 @@ export async function engagementRoutes(fastify: FastifyInstance) {
 
     const body = (request.body || {}) as { industry?: string; companySize?: string; country?: string };
 
+    // Phase 8: plumb adaptor context so suggestions come from the right
+    // platform's expert persona + question bank.
+    const engRow = engagement as Record<string, unknown>;
+    const adaptorId = (engRow.adaptorId as string | undefined) ?? 'netsuite';
+    const { platform, adaptorQuestions } = await resolveAdaptorContext(adaptorId, request.jwtUser.firmId);
+
     const suggestions = await generateSectionSuggestions(
       sectionKey,
       answers,
@@ -748,6 +814,7 @@ export async function engagementRoutes(fastify: FastifyInstance) {
         edition: (license?.edition as string) || 'MID_MARKET',
         modules: (license?.modules as string[]) || [],
       },
+      { platform, adaptorQuestions },
     );
 
     return reply.send({ data: suggestions });
