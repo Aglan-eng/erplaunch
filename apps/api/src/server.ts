@@ -37,8 +37,17 @@ export async function buildServer() {
     },
   });
 
+  // CORS_ORIGIN may be a single origin or a comma-separated allowlist. This
+  // lets a deploy serve multiple SPA URLs (e.g. a legacy vercel.app preview
+  // and the canonical subdomain) without an env-var change. When a list is
+  // given, @fastify/cors reflects the request's Origin header only if it is
+  // in the allowlist; otherwise the browser blocks the request.
+  const corsOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
   await fastify.register(cors, {
-    origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+    origin: corsOrigins.length === 1 ? corsOrigins[0] : corsOrigins,
     credentials: true,
   });
 

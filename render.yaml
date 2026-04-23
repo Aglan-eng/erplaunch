@@ -48,11 +48,13 @@ services:
         sync: false
       - key: TWILIO_VERIFY_SERVICE_SID
         sync: false
-      # Wiring — set CORS_ORIGIN + APP_URL to your Vercel URL after first web deploy
+      # Wiring — CORS_ORIGIN accepts a comma-separated allowlist so we can
+      # support both the canonical web URL and any legacy preview URLs during
+      # cutover. APP_URL is the canonical one used for outbound email links.
       - key: CORS_ORIGIN
-        sync: false
+        value: https://erplaunch-web.vercel.app,https://erplaunch.vercel.app,https://erplaunch-api.vercel.app
       - key: APP_URL
-        sync: false
+        value: https://erplaunch-web.vercel.app
       # Portal tunables (defaults are fine, override if needed)
       - key: PORTAL_SESSION_TTL_DAYS
         value: "7"
