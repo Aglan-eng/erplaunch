@@ -99,9 +99,9 @@ Routes never call the registry directly when the firm matters — they use `reso
 
 **Not yet adaptor-driven**:
 
-- NetSuite's own rule engine (`packages/rule-engine/`) runs hand-written rules with phase-dependency logic that doesn't fit the current declarative `when` shape. Lives alongside the adaptor evaluator and is only invoked when `adaptorId === 'netsuite'`.
+- NetSuite's rule engine is **partially migrated**. As of Phase 15, `netsuiteAdaptor.rules` ships 13 declarative rules (the license-gap catalog + a few cross-answer checks) that the generic evaluator can fire. The legacy `packages/rule-engine/` still runs in parallel and remains authoritative for NetSuite engagements — same-id duplicates are handled by the dispatch strategy (legacy first, declarative rules surface in the AdaptorPanel count + are available to any future dual-dispatch path). Rules that still need legacy-only handling: phase-dependency rules (`R2R-009`), the "Starter auto-FX" mixed warning (`R2R-007`), and anything that reads `input.phases` — the declarative language doesn't yet express phase-scoped predicates.
 - Generator runner emits platform-neutral documents for non-NetSuite adaptors. Adaptor-native artifacts (Odoo XML-RPC push, Dynamics extensions, etc.) are a later phase.
-- Custom adaptor draft editor — firms can view and publish the AI-drafted PlatformAdaptor but can't yet hand-edit rule `when` clauses from the UI.
+- Custom adaptor draft editor now supports hand-editing every subtree including the rule pack (Phase 14), but there's no form-based `when`-clause builder — firms author rules as raw JSON in the Rules tab.
 
 ---
 
@@ -116,16 +116,19 @@ type RuleCondition =
   | { all: RuleCondition[] }
   | { any: RuleCondition[] }
   | { not: RuleCondition }
-  | { answerEquals:      { questionId: string; value: unknown } }
-  | { answerTruthy:      { questionId: string } }
-  | { answerFalsy:       { questionId: string } }
-  | { licenseEditionIn:      string[] }
-  | { licenseEditionNotIn:   string[] }
-  | { licenseHasModule:      string }
-  | { licenseMissingModule:  string };
+  | { answerEquals:           { questionId: string; value: unknown } }
+  | { answerTruthy:           { questionId: string } }
+  | { answerFalsy:            { questionId: string } }
+  | { answerIn:               { questionId: string; values: unknown[] } }
+  | { answerNumberGreaterThan:{ questionId: string; value: number } }
+  | { licenseEditionIn:       string[] }
+  | { licenseEditionNotIn:    string[] }
+  | { licenseHasModule:       string }
+  | { licenseMissingModule:   string }
+  | { licenseHasAnyModule:    string[] };
 ```
 
-Intentionally small. JSON-serializable by design — the Custom Adaptor Wizard will eventually let firms author these in a form UI or hand-written JSON. Truthy follows JS intuitions with carve-outs: `0`, `''`, `[]`, `{}` all fall on the falsy side.
+Intentionally small. JSON-serializable by design — the Custom Adaptor Wizard now lets firms author these in the Rules tab (Phase 14), and the language is small enough that a form-based builder is tractable for a later phase. Truthy follows JS intuitions with carve-outs: `0`, `''`, `[]`, `{}` all fall on the falsy side.
 
 ### Example Odoo rule
 

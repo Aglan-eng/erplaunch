@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateAdaptor } from '@ofoq/adaptor-sdk';
+import { validateAdaptor, evaluateAdaptorRules } from '@ofoq/adaptor-sdk';
 import { AdaptorRegistry } from '@ofoq/adaptor-registry';
 import netsuiteAdaptor from '../src/index.js';
 
@@ -76,6 +76,81 @@ describe('netsuiteAdaptor: phases + generators', () => {
     expect(genIds).toEqual(
       ['brd', 'plan', 'risk', 'sdf', 'solution-doc', 'suitescript', 'training-manual', 'uat'].sort(),
     );
+  });
+});
+
+describe('netsuiteAdaptor: rule pack (Phase 15)', () => {
+  it('ships a non-empty rule pack covering the license-gap catalog', () => {
+    expect(netsuiteAdaptor.rules.id).toBe('netsuite-rules');
+    expect(netsuiteAdaptor.rules.rules.length).toBeGreaterThan(0);
+  });
+
+  it('rule IDs match the legacy rule-engine naming convention', () => {
+    const ids = netsuiteAdaptor.rules.rules.map((r) => r.id);
+    // License rules keep their LIC-xxx identity from the legacy engine so the
+    // dual-dispatch migration can dedupe by id.
+    for (const must of ['LIC-001', 'LIC-003', 'LIC-005', 'LIC-007', 'R2R-001', 'R2R-002', 'R2R-005', 'R2R-008']) {
+      expect(ids).toContain(must);
+    }
+  });
+
+  it('every rule carries a when clause so it auto-fires via the generic evaluator', () => {
+    for (const rule of netsuiteAdaptor.rules.rules) {
+      expect(rule.when, `rule ${rule.id} missing when clause`).toBeDefined();
+    }
+  });
+
+  it('STARTER edition + OneWorld module fires LIC-001 (incompat modules)', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {},
+      license: { edition: 'STARTER', modules: ['ONEWORLD'] },
+    });
+    expect(conflicts.map((c) => c.id)).toContain('LIC-001');
+    expect(conflicts.find((c) => c.id === 'LIC-001')?.severity).toBe('BLOCK');
+  });
+
+  it('OneWorld module on MID_MARKET edition fires LIC-003', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {},
+      license: { edition: 'MID_MARKET', modules: ['ONEWORLD'] },
+    });
+    expect(conflicts.map((c) => c.id)).toContain('LIC-003');
+  });
+
+  it('WMS without Advanced Inventory fires LIC-005', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {},
+      license: { edition: 'MID_MARKET', modules: ['WMS'] },
+    });
+    expect(conflicts.map((c) => c.id)).toContain('LIC-005');
+  });
+
+  it('Multi-entity answer without OneWorld module fires R2R-001', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: { 'r2r.entities.multiEntity': true },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).toContain('R2R-001');
+  });
+
+  it('Invalid fiscal year start fires R2R-005 via the new answerIn primitive', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: { 'r2r.accountingPeriods.fiscalYearStart': 'Octember' },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).toContain('R2R-005');
+  });
+
+  it('Valid scoping (OneWorld edition + OneWorld module + no conflicts) fires nothing', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'r2r.entities.multiEntity': true,
+        'r2r.currencies.isMultiCurrency': true,
+        'r2r.accountingPeriods.fiscalYearStart': 'January',
+      },
+      license: { edition: 'ONEWORLD', modules: ['ONEWORLD', 'WORK_ORDERS', 'WMS', 'ADVANCED_INVENTORY'] },
+    });
+    expect(conflicts).toEqual([]);
   });
 });
 

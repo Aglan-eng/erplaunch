@@ -148,6 +148,16 @@ export type RuleCondition =
   | { answerEquals: { questionId: string; value: unknown } }
   | { answerTruthy: { questionId: string } }
   | { answerFalsy: { questionId: string } }
+  /** True when the answer is strictly equal to ANY value in the allowed list.
+   *  Useful for "fiscal year start must be one of twelve calendar months",
+   *  "invoicing policy in (ORDERED, DELIVERED)", etc. Phase 15. */
+  | { answerIn: { questionId: string; values: unknown[] } }
+  /** True when the answer IS a number AND is strictly greater than the
+   *  threshold. Non-numbers and missing answers both return false, so callers
+   *  can compose with `answerTruthy` / `answerFalsy` to distinguish them. */
+  | { answerNumberGreaterThan: { questionId: string; value: number } }
+  /** True when the license has at least one of the listed modules. */
+  | { licenseHasAnyModule: string[] }
   | { licenseEditionIn: string[] }
   | { licenseEditionNotIn: string[] }
   | { licenseHasModule: string }
@@ -257,6 +267,17 @@ function matches(cond: RuleCondition, input: AdaptorRuleInput): boolean {
   }
   if ('answerFalsy' in cond) {
     return !isTruthy(input.answers[cond.answerFalsy.questionId]);
+  }
+  if ('answerIn' in cond) {
+    const v = input.answers[cond.answerIn.questionId];
+    return cond.answerIn.values.some((expected) => deepEqual(v, expected));
+  }
+  if ('answerNumberGreaterThan' in cond) {
+    const v = input.answers[cond.answerNumberGreaterThan.questionId];
+    return typeof v === 'number' && Number.isFinite(v) && v > cond.answerNumberGreaterThan.value;
+  }
+  if ('licenseHasAnyModule' in cond) {
+    return cond.licenseHasAnyModule.some((m) => input.license.modules.includes(m));
   }
   if ('licenseEditionIn' in cond) {
     return cond.licenseEditionIn.includes(input.license.edition);

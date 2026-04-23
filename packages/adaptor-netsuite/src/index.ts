@@ -158,15 +158,205 @@ const phases: PhaseModel = {
   ],
 };
 
-// Rule catalog — IDs + metadata only. Actual evaluation continues to happen
-// via @ofoq/rule-engine's evaluate() for Phase 1A; routing through the adaptor
-// is Phase 2+ work. This object exists so the adaptor shape is complete and
-// downstream tooling (e.g. the ERP picker) can say "LIC, R2R, P2P, O2C, MFG,
-// RTN rule packs included".
+// Rule catalog (Phase 15): declarative ports of the NetSuite rule engine's
+// license-level checks. These are duplicated metadata today — the legacy
+// `@ofoq/rule-engine`'s `evaluateLicense()` still fires for NetSuite
+// engagements and remains authoritative. Adding them here so they surface
+// in the AdaptorPanel rule count + can be evaluated by the generic
+// `evaluateAdaptorRules()` evaluator. The dual-dispatch plan (remove the
+// legacy rule bodies one-at-a-time once behavior is proven identical)
+// lands in Phase 16+; see ADR 0005 for the migration strategy.
 const rules: RulePack = {
   id: 'netsuite-rules',
   version: '1.0.0',
-  rules: [],
+  rules: [
+    // ── Edition-module compatibility ────────────────────────────────────────
+    {
+      id: 'LIC-001',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: [],
+      message: 'One or more modules selected are not available on the Starter edition.',
+      resolution: 'Upgrade the license to Mid-Market or OneWorld, or remove the incompatible modules from the license profile.',
+      when: {
+        all: [
+          { licenseEditionIn: ['STARTER'] },
+          { licenseHasAnyModule: [
+            'ONEWORLD', 'MANUFACTURING', 'WMS', 'WORK_ORDERS', 'WIP_ROUTINGS',
+            'ADVANCED_INVENTORY', 'DEMAND_PLANNING', 'ADVANCED_PROCUREMENT', 'PSA',
+          ] },
+        ],
+      },
+    },
+    {
+      id: 'LIC-002',
+      type: 'LICENSE_GAP',
+      severity: 'WARN',
+      questionIds: [],
+      message: 'SuiteCommerce is available on Starter but is limited to basic storefront functionality; Advanced features require Mid-Market or OneWorld.',
+      resolution: 'Confirm the required e-commerce feature set with the client. Upgrade to Mid-Market if SuiteCommerce Advanced features are needed.',
+      when: {
+        all: [
+          { licenseEditionIn: ['STARTER'] },
+          { licenseHasModule: 'ECOMMERCE' },
+        ],
+      },
+    },
+
+    // ── OneWorld edition/module consistency ─────────────────────────────────
+    {
+      id: 'LIC-003',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: [],
+      message: 'The OneWorld module requires the OneWorld edition. Multi-entity and multi-subsidiary features are not available on Starter or Mid-Market editions.',
+      resolution: 'Upgrade the license edition to OneWorld, or remove the OneWorld module if multi-entity is not required.',
+      when: {
+        all: [
+          { licenseHasModule: 'ONEWORLD' },
+          { licenseEditionNotIn: ['ONEWORLD'] },
+        ],
+      },
+    },
+    {
+      id: 'LIC-004',
+      type: 'LICENSE_GAP',
+      severity: 'WARN',
+      questionIds: [],
+      message: 'The OneWorld edition is selected but the OneWorld module is not included in the license profile. Multi-entity features will not be activated.',
+      resolution: 'Add the OneWorld module to the license profile to enable multi-entity configuration.',
+      when: {
+        all: [
+          { licenseEditionIn: ['ONEWORLD'] },
+          { licenseMissingModule: 'ONEWORLD' },
+        ],
+      },
+    },
+
+    // ── Module-to-module dependencies ───────────────────────────────────────
+    {
+      id: 'LIC-005',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: [],
+      message: 'The Warehouse Management (WMS) module requires Advanced Inventory. Bin management, multi-location transfers, and barcode-driven workflows all depend on it.',
+      resolution: 'Add the Advanced Inventory module to the license profile alongside WMS.',
+      when: {
+        all: [
+          { licenseHasModule: 'WMS' },
+          { licenseMissingModule: 'ADVANCED_INVENTORY' },
+        ],
+      },
+    },
+    {
+      id: 'LIC-006',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: [],
+      message: 'The Demand Planning module requires Advanced Inventory. Forecast-driven replenishment depends on the multi-location inventory data from Advanced Inventory.',
+      resolution: 'Add the Advanced Inventory module to the license profile alongside Demand Planning.',
+      when: {
+        all: [
+          { licenseHasModule: 'DEMAND_PLANNING' },
+          { licenseMissingModule: 'ADVANCED_INVENTORY' },
+        ],
+      },
+    },
+    {
+      id: 'LIC-007',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: [],
+      message: 'The WIP/Routings module requires Work Orders. Routing steps, operation sequences, and labour capture are all attached to Work Order records.',
+      resolution: 'Add the Work Orders module to the license profile alongside WIP/Routings.',
+      when: {
+        all: [
+          { licenseHasModule: 'WIP_ROUTINGS' },
+          { licenseMissingModule: 'WORK_ORDERS' },
+        ],
+      },
+    },
+    {
+      id: 'LIC-008',
+      type: 'LICENSE_GAP',
+      severity: 'WARN',
+      questionIds: [],
+      message: 'The Manufacturing module typically requires Work Orders for BOM-driven production. Without Work Orders only Assembly Builds are supported, lacking routing + labour capture.',
+      resolution: 'Add the Work Orders module to enable full manufacturing functionality, or confirm Assembly Builds alone are sufficient.',
+      when: {
+        all: [
+          { licenseHasModule: 'MANUFACTURING' },
+          { licenseMissingModule: 'WORK_ORDERS' },
+        ],
+      },
+    },
+
+    // ── R2R license-gap rules (answer × license) ────────────────────────────
+    {
+      id: 'R2R-001',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: ['r2r.entities.multiEntity'],
+      message: 'Multi-entity configuration requires the OneWorld module, which is not included in the current license.',
+      resolution: 'Add the OneWorld module to the license profile, or disable multi-entity mode.',
+      when: {
+        all: [
+          { answerEquals: { questionId: 'r2r.entities.multiEntity', value: true } },
+          { licenseMissingModule: 'ONEWORLD' },
+        ],
+      },
+    },
+    {
+      id: 'R2R-002',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: ['r2r.currencies.isMultiCurrency'],
+      message: 'Multi-currency is not supported on the Starter edition.',
+      resolution: 'Upgrade the license to Mid-Market or OneWorld, or disable multi-currency.',
+      when: {
+        all: [
+          { answerEquals: { questionId: 'r2r.currencies.isMultiCurrency', value: true } },
+          { licenseEditionIn: ['STARTER'] },
+        ],
+      },
+    },
+    {
+      id: 'R2R-008',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: ['r2r.journalEntries.intercompanyJE'],
+      message: 'Intercompany journal entries require the OneWorld module, which is not included in the current license.',
+      resolution: 'Add the OneWorld module to the license profile, or disable intercompany journal entries.',
+      when: {
+        all: [
+          { answerEquals: { questionId: 'r2r.journalEntries.intercompanyJE', value: true } },
+          { licenseMissingModule: 'ONEWORLD' },
+        ],
+      },
+    },
+    {
+      id: 'R2R-005',
+      type: 'CONFIG_CONFLICT',
+      severity: 'BLOCK',
+      questionIds: ['r2r.accountingPeriods.fiscalYearStart'],
+      message: 'The fiscal year start must be one of January through December.',
+      resolution: 'Select a valid calendar month for the fiscal year start.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'r2r.accountingPeriods.fiscalYearStart' } },
+          { not: {
+            answerIn: {
+              questionId: 'r2r.accountingPeriods.fiscalYearStart',
+              values: [
+                'January', 'February', 'March', 'April', 'May', 'June',
+                'July', 'August', 'September', 'October', 'November', 'December',
+              ],
+            },
+          } },
+        ],
+      },
+    },
+  ],
 };
 
 const generators: OutputGeneratorDefinition[] = [

@@ -92,6 +92,49 @@ describe('evaluateAdaptorRules — leaf conditions', () => {
   });
 });
 
+describe('evaluateAdaptorRules — Phase 15 leaf predicates', () => {
+  it('answerIn fires on strict equality with any listed value', () => {
+    const rules = pack([
+      { id: 'r', type: 'CONFIG_CONFLICT', severity: 'BLOCK', questionIds: [], message: 'm', resolution: 'r',
+        when: { not: { answerIn: { questionId: 'x.month', values: ['January', 'February', 'March'] } } } },
+    ]);
+    expect(evaluateAdaptorRules(rules, { answers: { 'x.month': 'January' }, license: { edition: 'X', modules: [] } })).toHaveLength(0);
+    expect(evaluateAdaptorRules(rules, { answers: { 'x.month': 'Janauary' }, license: { edition: 'X', modules: [] } })).toHaveLength(1);
+    expect(evaluateAdaptorRules(rules, { answers: {}, license: { edition: 'X', modules: [] } })).toHaveLength(1);
+  });
+
+  it('answerIn handles non-primitive values via deep equality', () => {
+    const rules = pack([
+      { id: 'r', type: 'CONFIG_CONFLICT', severity: 'BLOCK', questionIds: [], message: 'm', resolution: 'r',
+        when: { answerIn: { questionId: 'x.tiers', values: [['RETAIL', 'WHOLESALE'], ['RETAIL']] } } },
+    ]);
+    expect(evaluateAdaptorRules(rules, { answers: { 'x.tiers': ['RETAIL', 'WHOLESALE'] }, license: { edition: 'X', modules: [] } })).toHaveLength(1);
+    expect(evaluateAdaptorRules(rules, { answers: { 'x.tiers': ['WHOLESALE', 'RETAIL'] }, license: { edition: 'X', modules: [] } })).toHaveLength(0);
+  });
+
+  it('answerNumberGreaterThan only fires on real numbers', () => {
+    const rules = pack([
+      { id: 'r', type: 'DATA_WARNING', severity: 'WARN', questionIds: [], message: 'm', resolution: 'r',
+        when: { answerNumberGreaterThan: { questionId: 'x.count', value: 1 } } },
+    ]);
+    expect(evaluateAdaptorRules(rules, { answers: { 'x.count': 5 }, license: { edition: 'X', modules: [] } })).toHaveLength(1);
+    expect(evaluateAdaptorRules(rules, { answers: { 'x.count': 1 }, license: { edition: 'X', modules: [] } })).toHaveLength(0);
+    expect(evaluateAdaptorRules(rules, { answers: { 'x.count': '5' }, license: { edition: 'X', modules: [] } })).toHaveLength(0); // string
+    expect(evaluateAdaptorRules(rules, { answers: { 'x.count': Number.POSITIVE_INFINITY }, license: { edition: 'X', modules: [] } })).toHaveLength(0);
+    expect(evaluateAdaptorRules(rules, { answers: {}, license: { edition: 'X', modules: [] } })).toHaveLength(0);
+  });
+
+  it('licenseHasAnyModule fires when at least one listed module is present', () => {
+    const rules = pack([
+      { id: 'r', type: 'LICENSE_GAP', severity: 'BLOCK', questionIds: [], message: 'm', resolution: 'r',
+        when: { licenseHasAnyModule: ['MANUFACTURING', 'WMS', 'WORK_ORDERS'] } },
+    ]);
+    expect(evaluateAdaptorRules(rules, { answers: {}, license: { edition: 'X', modules: ['CRM', 'WMS'] } })).toHaveLength(1);
+    expect(evaluateAdaptorRules(rules, { answers: {}, license: { edition: 'X', modules: ['CRM'] } })).toHaveLength(0);
+    expect(evaluateAdaptorRules(rules, { answers: {}, license: { edition: 'X', modules: [] } })).toHaveLength(0);
+  });
+});
+
 describe('evaluateAdaptorRules — combinators', () => {
   it('all fires only when every child matches', () => {
     const rules = pack([
