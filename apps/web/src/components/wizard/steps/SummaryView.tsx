@@ -1,11 +1,14 @@
 import React from 'react';
+import { useParams } from 'react-router-dom';
 import { useWizardStore } from '@/stores/wizardStore';
 import { useWizardProgress } from '@/hooks/useWizardProgress';
 import { CircleCheck, ChevronRight, LayoutDashboard, FileText, Settings2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ProgressBar } from '@/components/ui/ProgressBar';
+import { AdaptorPanel } from '../AdaptorPanel';
 
 export function SummaryView() {
+  const { id: engagementId } = useParams<{ id: string }>();
   const { answers, setCurrentSection } = useWizardStore();
   const { sectionProgress, overall } = useWizardProgress(answers);
 
@@ -31,6 +34,8 @@ export function SummaryView() {
         <h2 className="text-3xl font-black text-slate-900 tracking-tight">Implementation Summary</h2>
         <p className="text-slate-500">Review your progress across all workstreams before generating the final configuration package.</p>
       </div>
+
+      {engagementId && <AdaptorPanel engagementId={engagementId} />}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Overall Progress Card */}
