@@ -71,13 +71,21 @@ async function resolveAdaptorContext(
 }
 
 /**
- * Return the RulePack for an adaptor (built-in via registry, custom via
- * firm DB). Custom adaptor rows don't currently carry a rule pack, so the
- * custom path always returns null — the frontend edit-draft UI can author
- * rule-when expressions in a later phase.
+ * Return the RulePack for an adaptor. Built-in adapters source it from the
+ * process-wide registry; custom adaptors source it from the firm's DB row
+ * (Phase 14 — authored via PATCH /custom-adaptors/:id/draft). Returns null
+ * when the adaptor has no rules to evaluate, which the caller treats as
+ * "don't re-evaluate, just clear stale conflicts."
  */
 async function resolveRulePack(adaptorId: string, firmId: string): Promise<RulePack | null> {
-  if (adaptorId.startsWith('custom:')) return null;
+  if (adaptorId.startsWith('custom:')) {
+    const slug = adaptorId.slice('custom:'.length);
+    const row = await db.findCustomAdaptorByFirmAndSlug(firmId, slug);
+    if (!row || row.status !== 'PUBLISHED') return null;
+    const raw = row.parsedRules as RulePack | null | undefined;
+    if (!raw || !Array.isArray(raw.rules) || raw.rules.length === 0) return null;
+    return raw;
+  }
   const reg = getAdaptorRegistry();
   const adaptor = reg.find(adaptorId);
   return adaptor?.rules ?? null;
@@ -154,6 +162,10 @@ export async function engagementRoutes(fastify: FastifyInstance) {
       if (!row || row.status !== 'PUBLISHED') {
         return reply.code(404).send({ error: { code: 'ADAPTOR_NOT_PUBLISHED', message: `Custom adaptor "${slug}" is not published.` } });
       }
+      // Phase 14: custom rules live in parsedRules when the firm has authored
+      // them; otherwise return an empty pack so the SPA can still render the
+      // rule count badge consistently (just as 0).
+      const customRules = (row.parsedRules ?? { id: `custom:${slug}-rules`, version: '1.0.0', rules: [] });
       return reply.send({
         data: {
           id: adaptorId,
@@ -163,7 +175,7 @@ export async function engagementRoutes(fastify: FastifyInstance) {
           license: row.parsedLicense,
           phases: row.parsedPhases,
           generators: row.parsedGenerators,
-          rules: { id: `custom:${slug}-rules`, version: '1.0.0', rules: [] },
+          rules: customRules,
         },
       });
     }

@@ -20,6 +20,7 @@ export const UpdateCustomAdaptorDraftSchema = z.object({
   license: z.unknown().optional(),
   phases: z.unknown().optional(),
   generators: z.unknown().optional(),
+  rules: z.unknown().optional(),
 });
 
 export const RegisterSchema = z.object({

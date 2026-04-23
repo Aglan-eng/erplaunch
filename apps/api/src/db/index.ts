@@ -535,6 +535,9 @@ async function createTables(db: Client) {
   `);
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_customadaptor_firm   ON CustomAdaptor(firmId)`);
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_customadaptor_status ON CustomAdaptor(status)`);
+  // Phase 14: custom adaptors carry their own rule pack. Additive ALTER so
+  // existing pilot data (where the column doesn't yet exist) keeps working.
+  try { await db.execute(`ALTER TABLE CustomAdaptor ADD COLUMN parsedRules TEXT`); } catch {}
 }
 
 // ─── Helper types ─────────────────────────────────────────────────────────────
@@ -1797,6 +1800,7 @@ export interface CustomAdaptorRow {
   parsedLicense: unknown;
   parsedPhases: unknown;
   parsedGenerators: unknown;
+  parsedRules: unknown;
   parseError: string | null;
   publishedAt: string | null;
   createdAt: string;
@@ -1895,6 +1899,7 @@ export async function savePlatformAdaptorDraft(
     license: unknown;
     phases: unknown;
     generators: unknown;
+    rules?: unknown;
   },
 ): Promise<CustomAdaptorRow> {
   const db = getDb();
@@ -1906,6 +1911,7 @@ export async function savePlatformAdaptorDraft(
              parsedLicense    = ?,
              parsedPhases     = ?,
              parsedGenerators = ?,
+             parsedRules      = ?,
              status           = 'READY',
              parseError       = NULL,
              updatedAt        = datetime('now')
@@ -1917,6 +1923,9 @@ export async function savePlatformAdaptorDraft(
       JSON.stringify(parsed.license),
       JSON.stringify(parsed.phases),
       JSON.stringify(parsed.generators),
+      // rules is optional on the input — pass null when absent so existing
+      // AI-parse callers (which don't yet emit rule packs) keep working.
+      parsed.rules === undefined ? null : JSON.stringify(parsed.rules),
       id,
     ],
   });

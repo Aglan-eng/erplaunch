@@ -352,6 +352,7 @@ export interface CustomAdaptor {
   parsedLicense: unknown;
   parsedPhases: unknown;
   parsedGenerators: unknown;
+  parsedRules: unknown;
   parseError: string | null;
   publishedAt: string | null;
   createdAt: string;
@@ -378,7 +379,7 @@ export const customAdaptorsApi = {
   parse: (id: string) =>
     api.post<{ data: { id: string; status: string } }>(`/custom-adaptors/${id}/parse`).then((r) => r.data.data),
 
-  updateDraft: (id: string, patch: Partial<{ manifest: unknown; schema: unknown; license: unknown; phases: unknown; generators: unknown }>) =>
+  updateDraft: (id: string, patch: Partial<{ manifest: unknown; schema: unknown; license: unknown; phases: unknown; generators: unknown; rules: unknown }>) =>
     api.patch<{ data: CustomAdaptor }>(`/custom-adaptors/${id}/draft`, patch).then((r) => r.data.data),
 
   publish: (id: string) =>

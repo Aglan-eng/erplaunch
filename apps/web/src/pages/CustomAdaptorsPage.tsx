@@ -3,11 +3,15 @@ import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import {
   ArrowLeft, Plus, Upload, Sparkles, CheckCircle2, AlertCircle, Archive,
-  FileText, Loader2, Rocket, X, Trash2,
+  FileText, Loader2, Rocket, X, Trash2, Code2, Eye, Save,
 } from 'lucide-react';
 import { customAdaptorsApi, type CustomAdaptor, type CustomAdaptorStatus } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+
+// Which draft field the JSON editor is focused on — mirrors the five (soon
+// six, with rules) subtrees of PlatformAdaptor that PATCH /draft accepts.
+type DraftField = 'manifest' | 'schema' | 'license' | 'phases' | 'generators' | 'rules';
 
 /**
  * Custom Adaptor wizard — firms upload their ERP / system docs, Claude
@@ -324,6 +328,11 @@ function AdaptorDrawer({ row, onClose }: { row: CustomAdaptor; onClose: () => vo
             </section>
           )}
 
+          {/* JSON draft editor — hand-edit any subtree the AI parse produced */}
+          {(row.status === 'READY' || row.status === 'PUBLISHED' || row.status === 'FAILED') && (
+            <DraftEditor row={row} />
+          )}
+
           {/* Publish + archive */}
           <section className="border-t border-gray-100 pt-5 flex items-center justify-between">
             <Button
@@ -367,6 +376,153 @@ function Stat({ label, value }: { label: string; value: number }) {
       <p className="text-lg font-bold text-gray-900 tabular-nums">{value}</p>
     </div>
   );
+}
+
+/**
+ * Per-field JSON editor. Loads the current value for the active tab, lets
+ * the firm hand-edit, validates parseability on save, PATCHes the server.
+ * Only touches one subtree per save so a botched edit to schema doesn't
+ * wipe the license.
+ */
+function DraftEditor({ row }: { row: CustomAdaptor }) {
+  const qc = useQueryClient();
+  const [field, setField] = useState<DraftField>('manifest');
+  const [text, setText] = useState<string>(() => prettyPrint(draftValue(row, 'manifest')));
+  const [error, setError] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
+
+  // When the user switches tabs or the row refreshes after a save, snap the
+  // textarea to the current persisted value for that field. We DON'T force-
+  // refresh while dirty — otherwise a slow network roundtrip would clobber
+  // whatever they were in the middle of typing.
+  useEffect(() => {
+    if (!dirty) {
+      setText(prettyPrint(draftValue(row, field)));
+      setError(null);
+    }
+  }, [row, field, dirty]);
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      let parsed: unknown;
+      try {
+        parsed = text.trim() === '' ? null : JSON.parse(text);
+      } catch (err) {
+        throw new Error(`Invalid JSON: ${(err as Error).message}`);
+      }
+      return customAdaptorsApi.updateDraft(row.id, { [field]: parsed } as Record<DraftField, unknown>);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['custom-adaptors'] });
+      setDirty(false);
+      setError(null);
+    },
+    onError: (err: unknown) => {
+      const response = (err as { response?: { data?: { error?: { message?: string } } } }).response;
+      setError(response?.data?.error?.message ?? (err as { message?: string }).message ?? 'Save failed.');
+    },
+  });
+
+  const tabs: Array<{ field: DraftField; label: string }> = [
+    { field: 'manifest', label: 'Manifest' },
+    { field: 'schema', label: 'Schema' },
+    { field: 'license', label: 'License' },
+    { field: 'phases', label: 'Phases' },
+    { field: 'generators', label: 'Generators' },
+    { field: 'rules', label: 'Rules' },
+  ];
+
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+          <Code2 className="h-4 w-4 text-gray-400" />
+          Edit draft
+        </h3>
+        <span className="text-[10px] text-gray-400 uppercase tracking-wider">
+          Raw JSON · PATCH /draft
+        </span>
+      </div>
+
+      <div className="flex flex-wrap gap-1 mb-3 border-b border-gray-100">
+        {tabs.map((t) => {
+          const active = field === t.field;
+          return (
+            <button
+              key={t.field}
+              onClick={() => setField(t.field)}
+              className={[
+                'text-xs font-semibold px-2.5 py-1.5 rounded-t border-b-2 transition-colors',
+                active
+                  ? 'text-brand-700 border-brand-500 bg-brand-50'
+                  : 'text-gray-500 border-transparent hover:text-gray-800',
+              ].join(' ')}
+            >
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <textarea
+        value={text}
+        onChange={(e) => { setText(e.target.value); setDirty(true); setError(null); }}
+        spellCheck={false}
+        className="w-full h-64 font-mono text-[11px] leading-5 p-3 border border-gray-200 rounded-lg bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-400"
+      />
+
+      {error && (
+        <div className="mt-2 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+          <p className="text-xs text-red-700 flex items-center gap-1">
+            <AlertCircle className="h-3 w-3" />
+            {error}
+          </p>
+        </div>
+      )}
+
+      <div className="mt-3 flex items-center justify-between">
+        <div className="text-[11px] text-gray-400">
+          {dirty ? <span className="text-amber-600 font-semibold">Unsaved changes</span> : <span className="inline-flex items-center gap-1"><Eye className="h-3 w-3" /> Up to date</span>}
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={!dirty || saveMutation.isPending}
+            onClick={() => { setText(prettyPrint(draftValue(row, field))); setDirty(false); setError(null); }}
+          >
+            Revert
+          </Button>
+          <Button
+            size="sm"
+            loading={saveMutation.isPending}
+            disabled={!dirty}
+            onClick={() => saveMutation.mutate()}
+          >
+            <Save className="h-4 w-4" />
+            Save {tabs.find((t) => t.field === field)?.label}
+          </Button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** Grab the current persisted value for a given draft tab. */
+function draftValue(row: CustomAdaptor, field: DraftField): unknown {
+  switch (field) {
+    case 'manifest':   return row.parsedManifest;
+    case 'schema':     return row.parsedSchema;
+    case 'license':    return row.parsedLicense;
+    case 'phases':     return row.parsedPhases;
+    case 'generators': return row.parsedGenerators;
+    case 'rules':      return row.parsedRules;
+  }
+}
+
+function prettyPrint(v: unknown): string {
+  if (v === null || v === undefined) return '';
+  try { return JSON.stringify(v, null, 2); } catch { return String(v); }
 }
 
 function prettyBytes(n: number): string {

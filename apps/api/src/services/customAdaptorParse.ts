@@ -65,11 +65,34 @@ export async function parseCustomAdaptor(opts: ParseOptions): Promise<void> {
       license: draft.license,
       phases: draft.phases,
       generators: draft.generators,
+      // Phase 14: Claude may emit a rules block today; we accept whatever it
+      // produced as long as it parses as { id, version, rules: [] }. Falls
+      // back to an empty pack so the column is never null post-parse.
+      rules: normalizeRulesFromDraft(draft.rules, draft.manifest),
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown parse error';
     await db.updateCustomAdaptorStatus(customAdaptorId, 'FAILED', msg);
   }
+}
+
+/**
+ * Normalize whatever Claude produced in `rules` into a valid RulePack shape.
+ * If nothing usable is there, return an empty pack keyed off the adaptor's
+ * manifest id so the SPA doesn't hit a null rules field.
+ */
+function normalizeRulesFromDraft(raw: unknown, manifest: unknown): { id: string; version: string; rules: unknown[] } {
+  const m = (manifest ?? {}) as { id?: string };
+  const fallbackId = typeof m.id === 'string' && m.id ? `${m.id}-rules` : 'custom-rules';
+  if (!raw || typeof raw !== 'object') {
+    return { id: fallbackId, version: '1.0.0', rules: [] };
+  }
+  const r = raw as { id?: unknown; version?: unknown; rules?: unknown };
+  return {
+    id: typeof r.id === 'string' && r.id ? r.id : fallbackId,
+    version: typeof r.version === 'string' && r.version ? r.version : '1.0.0',
+    rules: Array.isArray(r.rules) ? r.rules : [],
+  };
 }
 
 // ─── Document text extraction ────────────────────────────────────────────────

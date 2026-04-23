@@ -379,6 +379,49 @@ describe('POST /custom-adaptors/:id/archive', () => {
 
 // ─── Draft editing ───────────────────────────────────────────────────────────
 
+describe('PATCH /custom-adaptors/:id/draft — rules field (Phase 14)', () => {
+  it('persists a firm-authored rules pack on the custom adaptor row', async () => {
+    const { token } = await seedFirmAndToken();
+    const create = await app.inject({ method: 'POST', url: '/api/v1/custom-adaptors',
+      headers: authHeaders(token), payload: { name: 'RulesAuth', slug: 'rules-auth' } });
+    const { data: { id } } = create.json() as { data: { id: string } };
+
+    // Seed an initial READY state so PATCH /draft has something to merge onto.
+    await savePlatformAdaptorDraft(id, {
+      manifest: { id: 'custom:rules-auth', name: 'RulesAuth', version: '1.0.0', vendor: 'V', capabilities: [], minSdk: '0.1.0', sourceKind: 'custom' },
+      schema: { version: '1.0.0', flows: [] },
+      license: { editions: [{ id: 'BASIC', label: 'Basic', includesModules: [] }], modules: [], defaultEditionId: 'BASIC' },
+      phases: { defaultPhases: [] },
+      generators: [],
+    });
+
+    const authored = {
+      id: 'rules-auth-rules',
+      version: '1.0.0',
+      rules: [
+        {
+          id: 'rules-auth.demo',
+          type: 'DATA_WARNING',
+          severity: 'INFO',
+          questionIds: ['x.y'],
+          message: 'demo rule',
+          resolution: 'take action',
+          when: { answerTruthy: { questionId: 'x.y' } },
+        },
+      ],
+    };
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/custom-adaptors/${id}/draft`,
+      headers: { ...authHeaders(token), 'content-type': 'application/json' },
+      payload: { rules: authored },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { data: { parsedRules: unknown } };
+    expect(body.data.parsedRules).toMatchObject({ id: 'rules-auth-rules', rules: [{ id: 'rules-auth.demo' }] });
+  });
+});
+
 describe('PATCH /custom-adaptors/:id/draft', () => {
   it('merges partial updates onto the stored draft', async () => {
     const { token } = await seedFirmAndToken();

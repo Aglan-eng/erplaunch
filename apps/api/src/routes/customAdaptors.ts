@@ -164,13 +164,16 @@ export async function customAdaptorRoutes(fastify: FastifyInstance) {
       return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: parsed.error.message } });
     }
 
-    // Merge — only overwrite fields the caller actually sent
+    // Merge — only overwrite fields the caller actually sent. `rules` is the
+    // newest field and may be undefined on existing rows; that's fine, the
+    // save helper passes null to the DB in that case.
     const updated = await db.savePlatformAdaptorDraft(id, {
       manifest: parsed.data.manifest ?? row.parsedManifest,
       schema: parsed.data.schema ?? row.parsedSchema,
       license: parsed.data.license ?? row.parsedLicense,
       phases: parsed.data.phases ?? row.parsedPhases,
       generators: parsed.data.generators ?? row.parsedGenerators,
+      rules: parsed.data.rules ?? row.parsedRules,
     });
 
     return reply.send({ data: updated });
