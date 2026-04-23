@@ -35,6 +35,13 @@ export const authApi = {
 
   changePassword: (input: { currentPassword: string; newPassword: string }) =>
     api.post('/auth/change-password', input).then((r) => r.data),
+
+  // Phase 19 — email verification
+  verifyEmail: (token: string) =>
+    api.post('/auth/verify-email', { token }).then((r) => r.data),
+
+  requestEmailVerification: () =>
+    api.post('/auth/request-email-verification').then((r) => r.data),
 };
 
 // ─── Engagements ─────────────────────────────────────────────────────────────

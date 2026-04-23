@@ -27,6 +27,13 @@ export const ChangePasswordSchema = z.object({
   newPassword: z.string().min(8).max(200),
 });
 
+// Email verification — redemption phase (Phase 19). The token is the raw
+// 64-hex string from the verification email; the server hashes it before
+// DB lookup. No password in this payload — verification is identity-only.
+export const VerifyEmailSchema = z.object({
+  token: z.string().min(20).max(200),
+});
+
 // Slug: kebab-case, 3-40 chars. Start+end alphanumeric. No consecutive dashes.
 // Reserved word check happens in the route so the schema stays platform-agnostic.
 export const SlugRegex = /^[a-z0-9](?:[a-z0-9]|-(?!-)){1,38}[a-z0-9]$/;
@@ -97,3 +104,4 @@ export type UpdateCustomAdaptorDraftInput = z.infer<typeof UpdateCustomAdaptorDr
 export type RequestPasswordResetInput = z.infer<typeof RequestPasswordResetSchema>;
 export type ResetPasswordInput = z.infer<typeof ResetPasswordSchema>;
 export type ChangePasswordInput = z.infer<typeof ChangePasswordSchema>;
+export type VerifyEmailInput = z.infer<typeof VerifyEmailSchema>;

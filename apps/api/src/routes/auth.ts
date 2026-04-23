@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import { LoginSchema, RegisterSchema, RequestPasswordResetSchema, ResetPasswordSchema, ChangePasswordSchema } from '@ofoq/shared';
+import { LoginSchema, RegisterSchema, RequestPasswordResetSchema, ResetPasswordSchema, ChangePasswordSchema, VerifyEmailSchema } from '@ofoq/shared';
 import { authenticate } from '../middleware/auth.js';
 import {
   findUserByEmail,
@@ -14,6 +14,11 @@ import {
   findActivePasswordResetTokenByHash,
   consumePasswordResetToken,
   invalidateActivePasswordResetsForUser,
+  createEmailVerificationToken,
+  findActiveEmailVerificationTokenByHash,
+  consumeEmailVerificationToken,
+  invalidateActiveEmailVerificationsForUser,
+  markUserEmailVerified,
 } from '../db/index.js';
 import {
   checkRequestCodeLimit,
@@ -21,10 +26,48 @@ import {
   RedisUnavailableError,
   type RedisLike,
 } from '../services/portalRateLimit.js';
-import { sendPasswordResetEmail, APP_URL } from '../services/email.js';
+import { sendPasswordResetEmail, sendEmailVerificationEmail, APP_URL } from '../services/email.js';
 
 /** How long a password reset link stays valid, in minutes. Overridable via env. */
 const RESET_TOKEN_TTL_MIN = Math.max(5, parseInt(process.env.PASSWORD_RESET_TTL_MIN ?? '60', 10));
+
+/** How long an email verification link stays valid, in hours. Defaults to 24h. */
+const VERIFY_TOKEN_TTL_HOURS = Math.max(1, parseInt(process.env.EMAIL_VERIFY_TTL_HOURS ?? '24', 10));
+
+/**
+ * Issue a fresh email verification token for the user and send the email.
+ * Best-effort: errors are logged but not re-thrown, so callers in the
+ * signup / resend paths don't fail on transient mail outages. Prior active
+ * tokens for the same user are invalidated so only the latest link works.
+ */
+async function issueEmailVerification(
+  userId: string,
+  email: string,
+  name: string,
+  log: (level: 'info' | 'error', msg: string, obj?: Record<string, unknown>) => void,
+): Promise<string | null> {
+  try {
+    await invalidateActiveEmailVerificationsForUser(userId);
+    const raw = crypto.randomBytes(32).toString('hex');
+    const tokenHash = sha256Hex(raw);
+    const expiresAt = new Date(Date.now() + VERIFY_TOKEN_TTL_HOURS * 60 * 60 * 1000).toISOString();
+    await createEmailVerificationToken({ userId, tokenHash, expiresAt });
+    const verifyUrl = `${APP_URL}/verify-email?token=${raw}`;
+    try {
+      const parsedUrl = new URL(verifyUrl);
+      log('info', 'auth/email-verify: link prepared', { userId, host: parsedUrl.host });
+    } catch { /* URL parse only fails if APP_URL is malformed */ }
+    await sendEmailVerificationEmail(email, {
+      userName: name,
+      verifyUrl,
+      expiresInHours: VERIFY_TOKEN_TTL_HOURS,
+    });
+    return verifyUrl;
+  } catch (err) {
+    log('error', 'auth/email-verify: issue failed', { userId, err: String(err) });
+    return null;
+  }
+}
 
 function sha256Hex(raw: string): string {
   return crypto.createHash('sha256').update(raw).digest('hex');
@@ -193,6 +236,13 @@ export async function authRoutes(fastify: FastifyInstance) {
       return reply.code(500).send({ error: { code: 'USER_CREATE_FAILED' } });
     }
     const u = user as { id: string; email: string; name: string; role: string; firmId: string };
+
+    // Kick off email verification (Phase 19). Fire-and-forget — the user is
+    // signed in either way; verification is offered, not enforced.
+    void issueEmailVerification(u.id, u.email, u.name, (level, msg, obj) => {
+      if (level === 'error') request.log.error(obj, msg);
+      else request.log.info(obj, msg);
+    });
 
     // Sign the admin in immediately — same token shape as /auth/login.
     const token = fastify.jwt.sign(
@@ -411,7 +461,7 @@ export async function authRoutes(fastify: FastifyInstance) {
 
   // GET /auth/me
   fastify.get('/auth/me', { preHandler: authenticate }, async (request, reply) => {
-    const user = await findUserById(request.jwtUser.userId) as Record<string, unknown> & { id: string; email: string; name: string; role: string; firmId: string; firm: Record<string, unknown> } | null;
+    const user = await findUserById(request.jwtUser.userId) as Record<string, unknown> & { id: string; email: string; name: string; role: string; firmId: string; firm: Record<string, unknown>; emailVerifiedAt?: string | null } | null;
 
     if (!user) {
       return reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'User not found' } });
@@ -425,7 +475,72 @@ export async function authRoutes(fastify: FastifyInstance) {
         role: user.role,
         firmId: user.firmId,
         firm: user.firm,
+        // Phase 19: surface verification status so the SPA can offer
+        // a "verify your email" banner / resend action when null.
+        emailVerifiedAt: user.emailVerifiedAt ?? null,
       },
     });
+  });
+
+  // POST /auth/verify-email — redeem an email verification token (Phase 19).
+  //
+  // Public endpoint (the user may not yet have a session). Hashes the
+  // incoming token, looks up by hash, flips User.emailVerifiedAt,
+  // consumes the row, invalidates siblings. Uniform INVALID_OR_EXPIRED on
+  // unknown/expired/consumed tokens — same contract as /reset-password.
+  fastify.post('/auth/verify-email', async (request, reply) => {
+    const parsed = VerifyEmailSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: parsed.error.message } });
+    }
+    const { token } = parsed.data;
+
+    const tokenHash = sha256Hex(token);
+    const row = await findActiveEmailVerificationTokenByHash(tokenHash);
+    if (!row) {
+      return reply.code(400).send({
+        error: { code: 'INVALID_OR_EXPIRED', message: 'This verification link is invalid or has expired.' },
+      });
+    }
+
+    await markUserEmailVerified(row.userId);
+    await consumeEmailVerificationToken(row.id);
+    await invalidateActiveEmailVerificationsForUser(row.userId);
+
+    return reply.send({ data: { ok: true } });
+  });
+
+  // POST /auth/request-email-verification — authenticated, body-less.
+  //
+  // User-initiated re-send of the verification email. Skipped (still 200)
+  // when the user is already verified so the client can always "just try"
+  // the button. Rate-limited on the authenticated user's id so even a
+  // stolen session can't spam-send.
+  fastify.post('/auth/request-email-verification', { preHandler: authenticate }, async (request, reply) => {
+    const user = await findUserById(request.jwtUser.userId) as
+      | (Record<string, unknown> & { id: string; email: string; name: string; emailVerifiedAt?: string | null })
+      | null;
+    if (!user) {
+      return reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'User not found' } });
+    }
+    if (user.emailVerifiedAt) {
+      // Already verified; idempotent success so the SPA can blindly call
+      // this without first checking status.
+      return reply.send({ data: { ok: true, alreadyVerified: true } });
+    }
+
+    const ip = request.ip || '0.0.0.0';
+    const limit = await tryLoginRateLimit(request, (r) => checkRequestCodeLimit(r, ip, `verify:${user.id}`));
+    if (!limit.ok) {
+      return reply.code(429).send({ error: { code: 'RATE_LIMITED', message: 'Too many verification requests. Wait a moment and try again.' } });
+    }
+    await tryLoginRateLimit(request, async (r) => { await recordRequestCode(r, ip, `verify:${user.id}`); return { ok: true }; });
+
+    void issueEmailVerification(user.id, user.email, user.name, (level, msg, obj) => {
+      if (level === 'error') request.log.error(obj, msg);
+      else request.log.info(obj, msg);
+    });
+
+    return reply.send({ data: { ok: true } });
   });
 }

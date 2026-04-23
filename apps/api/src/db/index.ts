@@ -557,6 +557,25 @@ async function createTables(db: Client) {
   `);
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_password_reset_user    ON PasswordResetToken(userId)`);
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_password_reset_expires ON PasswordResetToken(expiresAt)`);
+
+  // ─── Email Verification Tokens (Phase 19) ──────────────────────────────────
+  // Same shape as PasswordResetToken but dedicated so invalidation and TTLs
+  // can be tuned independently per flow. User.emailVerifiedAt tracks the
+  // verification status; null means not yet verified.
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS EmailVerificationToken (
+      id         TEXT PRIMARY KEY,
+      userId     TEXT NOT NULL REFERENCES User(id) ON DELETE CASCADE,
+      tokenHash  TEXT NOT NULL UNIQUE,
+      expiresAt  TEXT NOT NULL,
+      consumedAt TEXT,
+      createdAt  TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_email_verify_user    ON EmailVerificationToken(userId)`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_email_verify_expires ON EmailVerificationToken(expiresAt)`);
+  // Additive column on User for existing pilot rows. Null = not yet verified.
+  try { await db.execute(`ALTER TABLE User ADD COLUMN emailVerifiedAt TEXT`); } catch {}
 }
 
 // ─── Helper types ─────────────────────────────────────────────────────────────
@@ -2018,3 +2037,13 @@ export {
   purgeExpiredPasswordResetTokens,
 } from './passwordResetToken.js';
 export type { PasswordResetToken } from './passwordResetToken.js';
+
+// ─── Re-exports for Phase 19 email verification ──────────────────────────────
+export {
+  createEmailVerificationToken,
+  findActiveEmailVerificationTokenByHash,
+  consumeEmailVerificationToken,
+  invalidateActiveEmailVerificationsForUser,
+  markUserEmailVerified,
+} from './emailVerificationToken.js';
+export type { EmailVerificationToken } from './emailVerificationToken.js';

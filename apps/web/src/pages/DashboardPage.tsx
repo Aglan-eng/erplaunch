@@ -4,10 +4,10 @@ import { useQuery } from '@tanstack/react-query';
 import {
   Plus, LogOut, Layers, LayoutGrid, BarChart2, Target, TrendingUp,
   TriangleAlert, Clock, Zap, Users, Search, SlidersHorizontal, ArrowUpDown,
-  X, ChevronDown,
+  X, ChevronDown, Mail, CheckCircle2,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { engagementsApi } from '@/lib/api';
+import { engagementsApi, authApi } from '@/lib/api';
 import { EngagementCard } from '@/components/dashboard/EngagementCard';
 import { NewEngagementModal } from '@/components/dashboard/NewEngagementModal';
 import { Button } from '@/components/ui/Button';
@@ -349,6 +349,7 @@ export function DashboardPage() {
 
       {/* Content */}
       <main className="max-w-7xl mx-auto px-6 py-7">
+        <VerifyEmailBanner />
         {isLoading ? (
           <>
             <StatsSkeleton />
@@ -470,6 +471,77 @@ export function DashboardPage() {
       </main>
 
       <NewEngagementModal open={newModalOpen} onClose={() => setNewModalOpen(false)} />
+    </div>
+  );
+}
+
+/**
+ * Verify-email banner (Phase 19). Rendered above the dashboard content
+ * when the signed-in user's email is still unverified. Offers a one-click
+ * resend that posts to /auth/request-email-verification. Dismissible for
+ * the current session only (state in-memory) — the banner re-appears on
+ * the next page load until emailVerifiedAt is set.
+ */
+function VerifyEmailBanner() {
+  const { user } = useAuth();
+  const [sending, setSending] = useState(false);
+  const [sentAt, setSentAt] = useState<number | null>(null);
+  const [dismissed, setDismissed] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!user || user.emailVerifiedAt || dismissed) return null;
+
+  async function handleResend() {
+    setSending(true);
+    setError(null);
+    try {
+      await authApi.requestEmailVerification();
+      setSentAt(Date.now());
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message;
+      setError(msg ?? 'Could not send. Try again in a moment.');
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="mb-5 bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-3">
+      <div className="h-8 w-8 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
+        <Mail className="h-4 w-4 text-amber-700" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-amber-900">
+          Verify your email to secure your account
+        </p>
+        <p className="text-xs text-amber-800 mt-0.5">
+          We sent a verification link to <span className="font-mono font-semibold">{user.email}</span>. Click it to confirm you own this address.
+        </p>
+        {sentAt && !error && (
+          <p className="text-xs text-green-700 mt-1.5 inline-flex items-center gap-1">
+            <CheckCircle2 className="h-3 w-3" />
+            Sent. Check your inbox (and spam folder).
+          </p>
+        )}
+        {error && <p className="text-xs text-red-700 mt-1.5">{error}</p>}
+      </div>
+      <div className="flex items-center gap-2 flex-shrink-0">
+        <button
+          onClick={handleResend}
+          disabled={sending}
+          className="text-xs font-semibold text-amber-900 hover:text-amber-950 px-3 py-1.5 rounded-lg bg-white/60 hover:bg-white border border-amber-300 disabled:opacity-50"
+        >
+          {sending ? 'Sending…' : 'Resend email'}
+        </button>
+        <button
+          onClick={() => setDismissed(true)}
+          className="text-amber-700 hover:text-amber-900 p-1.5 rounded-lg hover:bg-white/50"
+          aria-label="Dismiss"
+          title="Dismiss until next page load"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
     </div>
   );
 }

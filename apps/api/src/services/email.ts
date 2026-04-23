@@ -223,4 +223,64 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
 }
 
+// ─── Email verification email (Phase 19) ─────────────────────────────────────
+
+export interface EmailVerificationEmailData {
+  userName: string;
+  verifyUrl: string;
+  expiresInHours: number;
+}
+
+export async function sendEmailVerificationEmail(to: string, data: EmailVerificationEmailData): Promise<void> {
+  const { userName, verifyUrl, expiresInHours } = data;
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { margin: 0; padding: 0; background: #f9fafb; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    .wrapper { max-width: 520px; margin: 40px auto; background: #fff; border-radius: 16px; overflow: hidden; border: 1px solid #e5e7eb; }
+    .accent { height: 4px; background: linear-gradient(90deg, #10b981, #34d399, #6ee7b7); }
+    .header { padding: 32px 36px 20px; }
+    .logo { display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 12px; background: linear-gradient(135deg, #10b981, #059669); color: #fff; font-weight: 900; font-size: 16px; margin-bottom: 20px; }
+    h1 { margin: 0 0 6px; font-size: 20px; font-weight: 800; color: #111827; }
+    .subtitle { margin: 0; font-size: 14px; color: #6b7280; }
+    .body { padding: 0 36px 28px; font-size: 14px; color: #374151; line-height: 1.55; }
+    .btn { display: inline-block; margin: 20px 0; padding: 12px 22px; background: #10b981; color: #fff !important; text-decoration: none; border-radius: 10px; font-size: 14px; font-weight: 700; }
+    .link-box { margin-top: 6px; padding: 10px 12px; background: #f3f4f6; border-radius: 8px; font-size: 12px; color: #374151; word-break: break-all; font-family: ui-monospace, Menlo, Consolas, monospace; }
+    .footer { padding: 16px 36px 28px; font-size: 12px; color: #9ca3af; border-top: 1px solid #f3f4f6; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="accent"></div>
+    <div class="header">
+      <div class="logo">E</div>
+      <h1>Verify your ERPLaunch email</h1>
+      <p class="subtitle">One click and you're set.</p>
+    </div>
+    <div class="body">
+      <p>Hi ${escapeHtml(userName)},</p>
+      <p>Please confirm this is your email so we can deliver portal invites, reset links, and project updates reliably. The link expires in <strong>${expiresInHours} hour${expiresInHours === 1 ? '' : 's'}</strong>.</p>
+      <p><a class="btn" href="${verifyUrl}">Verify my email →</a></p>
+      <p style="font-size: 12px; color: #6b7280;">Or paste this into your browser:</p>
+      <div class="link-box">${verifyUrl}</div>
+    </div>
+    <div class="footer">
+      Didn't create an ERPLaunch account? You can safely ignore this email — no verification will happen without the link above.
+    </div>
+  </div>
+</body>
+</html>`.trim();
+
+  await sendEmail({
+    to,
+    subject: 'Verify your ERPLaunch email',
+    html,
+  });
+}
+
 export { APP_URL };

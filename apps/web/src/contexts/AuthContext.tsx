@@ -8,6 +8,9 @@ interface User {
   role: string;
   firmId: string;
   firm: { id: string; name: string; slug: string; plan: string };
+  /** Phase 19: when the user clicked the email verification link, or null
+   *  if still pending. SPA surfaces a "verify your email" banner when null. */
+  emailVerifiedAt?: string | null;
 }
 
 export interface RegisterInput {
