@@ -14,6 +14,14 @@ export const authApi = {
   login: (email: string, password: string) =>
     api.post('/auth/login', { email, password }).then((r) => r.data.data),
 
+  register: (input: {
+    firmName: string;
+    firmSlug: string;
+    adminName: string;
+    adminEmail: string;
+    password: string;
+  }) => api.post('/auth/register', input).then((r) => r.data.data),
+
   logout: () => api.post('/auth/logout').then((r) => r.data),
 
   me: () => api.get('/auth/me').then((r) => r.data.data),

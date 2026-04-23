@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -86,8 +86,15 @@ export function LoginPage() {
             </Button>
           </form>
 
+          <p className="mt-4 text-center text-sm text-gray-500">
+            New to ERPLaunch?{' '}
+            <Link to="/signup" className="text-brand-600 hover:text-brand-700 font-medium">
+              Create a firm
+            </Link>
+          </p>
+
           {import.meta.env.DEV && (
-            <p className="mt-4 text-center text-xs text-gray-400">
+            <p className="mt-2 text-center text-xs text-gray-400">
               Demo: consultant@test.ofoq.app / password123
             </p>
           )}

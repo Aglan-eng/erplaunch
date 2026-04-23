@@ -10,10 +10,19 @@ interface User {
   firm: { id: string; name: string; slug: string; plan: string };
 }
 
+export interface RegisterInput {
+  firmName: string;
+  firmSlug: string;
+  adminName: string;
+  adminEmail: string;
+  password: string;
+}
+
 interface AuthContextValue {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  register: (input: RegisterInput) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -43,13 +52,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(data.user);
   };
 
+  const register = async (input: RegisterInput) => {
+    const data = await authApi.register(input);
+    setUser(data.user);
+  };
+
   const logout = async () => {
     await authApi.logout();
     setUser(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   );
