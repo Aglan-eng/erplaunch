@@ -10,6 +10,8 @@ import { fileURLToPath } from 'url';
 import dbPlugin from './plugins/db.js';
 import redisPlugin from './plugins/redis.js';
 import queuePlugin from './plugins/queue.js';
+import requestIdPlugin from './plugins/requestId.js';
+import { metricsRoutes } from './routes/metrics.js';
 import { authRoutes } from './routes/auth.js';
 import { engagementRoutes } from './routes/engagements.js';
 import { riskRoutes } from './routes/risks.js';
@@ -91,6 +93,10 @@ export async function buildServer() {
 
   await fastify.register(multipart, { limits: { fileSize: 5 * 1024 * 1024 } });
 
+  // Request-ID plugin (Phase 20). Registered before routes so every
+  // route handler + log line sees the id.
+  await fastify.register(requestIdPlugin);
+
   await fastify.register(dbPlugin);
   await fastify.register(redisPlugin);
 
@@ -137,6 +143,9 @@ export async function buildServer() {
   await fastify.register(verticalsRoutes, { prefix: '/api/v1' });
   await fastify.register(dataCollectionRoutes, { prefix: '/api/v1' });
   await fastify.register(exportRoutes, { prefix: '/api/v1' });
+  // /metrics sits at the root (not /api/v1) so scrapers can hit a stable
+  // path. The onResponse hook it registers counts ALL responses.
+  await fastify.register(metricsRoutes);
 
   fastify.get('/health', async () => ({ ok: true, version: '0.2.0' }));
 

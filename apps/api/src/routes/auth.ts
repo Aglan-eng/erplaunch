@@ -27,6 +27,7 @@ import {
   type RedisLike,
 } from '../services/portalRateLimit.js';
 import { sendPasswordResetEmail, sendEmailVerificationEmail, APP_URL } from '../services/email.js';
+import { incrementCounter } from '../services/metrics.js';
 
 /** How long a password reset link stays valid, in minutes. Overridable via env. */
 const RESET_TOKEN_TTL_MIN = Math.max(5, parseInt(process.env.PASSWORD_RESET_TTL_MIN ?? '60', 10));
@@ -112,6 +113,7 @@ export async function authRoutes(fastify: FastifyInstance) {
     const limit = await tryLoginRateLimit(request, (r) => checkRequestCodeLimit(r, ip, email));
     if (!limit.ok) {
       request.log.warn({ ip }, 'auth/login rate-limit hit');
+      incrementCounter('auth_login_total', { outcome: 'rate_limited' });
       return reply.code(429).send({ error: { code: 'RATE_LIMITED', message: 'Too many sign-in attempts. Wait a moment and try again.' } });
     }
     await tryLoginRateLimit(request, async (r) => { await recordRequestCode(r, ip, email); return { ok: true }; });
@@ -119,8 +121,11 @@ export async function authRoutes(fastify: FastifyInstance) {
     const user = await findUserByEmail(email) as Record<string, unknown> & { passwordHash: string; id: string; firmId: string; role: string; email: string; name: string; firm: Record<string, unknown> } | null;
 
     if (!user || !(await bcrypt.compare(password, user.passwordHash as string))) {
+      incrementCounter('auth_login_total', { outcome: 'invalid' });
       return reply.code(401).send({ error: { code: 'INVALID_CREDENTIALS', message: 'Invalid email or password' } });
     }
+
+    incrementCounter('auth_login_total', { outcome: 'ok' });
 
     const token = fastify.jwt.sign(
       {
@@ -188,6 +193,7 @@ export async function authRoutes(fastify: FastifyInstance) {
     const ip = request.ip || '0.0.0.0';
     const limit = await tryLoginRateLimit(request, (r) => checkRequestCodeLimit(r, ip, adminEmail));
     if (!limit.ok) {
+      incrementCounter('auth_register_total', { outcome: 'rate_limited' });
       return reply.code(429).send({ error: { code: 'RATE_LIMITED', message: 'Too many signups. Wait a moment and try again.' } });
     }
     await tryLoginRateLimit(request, async (r) => { await recordRequestCode(r, ip, adminEmail); return { ok: true }; });
@@ -197,9 +203,11 @@ export async function authRoutes(fastify: FastifyInstance) {
     // writes so we never create a firm without a user.
     const normalizedEmail = adminEmail.trim().toLowerCase();
     if (await findFirmBySlug(firmSlug)) {
+      incrementCounter('auth_register_total', { outcome: 'conflict' });
       return reply.code(409).send({ error: { code: 'SLUG_TAKEN', message: 'A firm with that slug already exists.' } });
     }
     if (await findUserByEmail(normalizedEmail)) {
+      incrementCounter('auth_register_total', { outcome: 'conflict' });
       return reply.code(409).send({ error: { code: 'EMAIL_TAKEN', message: 'An account with that email already exists.' } });
     }
 
@@ -243,6 +251,8 @@ export async function authRoutes(fastify: FastifyInstance) {
       if (level === 'error') request.log.error(obj, msg);
       else request.log.info(obj, msg);
     });
+
+    incrementCounter('auth_register_total', { outcome: 'ok' });
 
     // Sign the admin in immediately — same token shape as /auth/login.
     const token = fastify.jwt.sign(
@@ -355,6 +365,7 @@ export async function authRoutes(fastify: FastifyInstance) {
       }
     }
 
+    incrementCounter('auth_password_reset_requested_total');
     return reply.code(202).send({
       data: {
         ok: true,
@@ -409,6 +420,7 @@ export async function authRoutes(fastify: FastifyInstance) {
     // inbox can't undo the password they just set.
     await invalidateActivePasswordResetsForUser(row.userId);
 
+    incrementCounter('auth_password_reset_completed_total');
     return reply.send({ data: { ok: true } });
   });
 
@@ -456,6 +468,7 @@ export async function authRoutes(fastify: FastifyInstance) {
     await resetUserPassword(user.email, passwordHash);
     await invalidateActivePasswordResetsForUser(user.id);
 
+    incrementCounter('auth_password_changed_total');
     return reply.send({ data: { ok: true } });
   });
 
@@ -507,6 +520,7 @@ export async function authRoutes(fastify: FastifyInstance) {
     await consumeEmailVerificationToken(row.id);
     await invalidateActiveEmailVerificationsForUser(row.userId);
 
+    incrementCounter('auth_email_verification_completed_total');
     return reply.send({ data: { ok: true } });
   });
 
@@ -526,12 +540,14 @@ export async function authRoutes(fastify: FastifyInstance) {
     if (user.emailVerifiedAt) {
       // Already verified; idempotent success so the SPA can blindly call
       // this without first checking status.
+      incrementCounter('auth_email_verification_requested_total', { outcome: 'already_verified' });
       return reply.send({ data: { ok: true, alreadyVerified: true } });
     }
 
     const ip = request.ip || '0.0.0.0';
     const limit = await tryLoginRateLimit(request, (r) => checkRequestCodeLimit(r, ip, `verify:${user.id}`));
     if (!limit.ok) {
+      incrementCounter('auth_email_verification_requested_total', { outcome: 'rate_limited' });
       return reply.code(429).send({ error: { code: 'RATE_LIMITED', message: 'Too many verification requests. Wait a moment and try again.' } });
     }
     await tryLoginRateLimit(request, async (r) => { await recordRequestCode(r, ip, `verify:${user.id}`); return { ok: true }; });
@@ -541,6 +557,7 @@ export async function authRoutes(fastify: FastifyInstance) {
       else request.log.info(obj, msg);
     });
 
+    incrementCounter('auth_email_verification_requested_total', { outcome: 'ok' });
     return reply.send({ data: { ok: true } });
   });
 }
