@@ -10,6 +10,7 @@ One file per consequential decision. Each ADR is a snapshot of the context, the 
 | [0002](./0002-portal-auth-model.md) | Portal authentication model (magic link + stateful session) | Accepted | Corporate spam-filter blocks reported; mobile app story. |
 | [0003](./0003-firm-whitelabel-scope.md) | Firm white-label scope for pilot | Accepted | Second firm's first engagement. |
 | [0004](./0004-e2e-strategy.md) | End-to-end test strategy (defer Playwright) | Accepted | Two weeks after pilot golive, unconditional. |
+| [0005](./0005-adaptor-spi.md) | Platform adaptor SPI | Accepted | First `connector.read` adapter; SDK breaking change; NetSuite rule engine port. |
 
 ## When to write a new ADR
 

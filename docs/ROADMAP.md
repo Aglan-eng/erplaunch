@@ -92,11 +92,19 @@ Not a commitment. Directional.
 - IMAP polling for inbound email replies, extracted into conversation threads.
 - See `WHATSAPP_INTEGRATION_SPEC.md` (from early design) for the per-client Baileys direction if we revisit it. Current lean: Twilio WhatsApp Business API (compliant), not Baileys (ToS risk).
 
-### Second ERP adapter — SAP Business One or Dynamics 365 BC
+### Adapter SPI and vendor adapters — **shipped** (see [docs/adaptor-spi.md](adaptor-spi.md) + [ADR 0005](adr/0005-adaptor-spi.md))
 
-- Requires splitting the rule engine into an `adaptor-*` plugin shape (see earlier `PLATFORM_PIVOT_PLAN.md`).
-- Pilot scope had us intentionally collapse to NetSuite-only. Re-introduce the adapter SPI once a real second-adapter client exists.
-- Don't speculate — ship the next adapter only for a named design partner.
+- Platform Adaptor SPI live in production across twelve phases (1B → 12).
+- Built-ins: NetSuite (wraps legacy code) + Odoo (native, with 10 declarative rules firing end-to-end).
+- Firm-authored custom adaptors via `/custom-adaptors`: upload docs → AI parse → review → publish.
+- Generic `evaluateAdaptorRules()` pure function in `@ofoq/adaptor-sdk`; NetSuite's hand-written engine still runs for NetSuite engagements.
+- Next adapter: ship only for a named design partner. SAP Business One or Dynamics 365 BC are the likely candidates; either would follow the Odoo adapter's pattern (package + registry hook + Dockerfile copy + COMING_SOON removal).
+
+### `connector.read` capability — future
+
+- The SDK declares `connector.read` + `connector.push` as capability tags but nothing uses them.
+- First candidate: Odoo XML-RPC adapter that pulls real CoA / vendor / module-provision data to prefill wizard answers.
+- Gated on credential handling (encrypt at rest via existing `credentialCipher`), network-isolation for tests, and refresh semantics. Treat as its own workstream when a design partner asks.
 
 ### Vertical rule packs
 

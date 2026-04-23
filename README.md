@@ -45,6 +45,9 @@ pnpm run build
 *   `apps/api`: Fastify server handling persistence, rules, and artifact generation.
 *   `packages/shared`: Shared types, Zod schemas, and core Domain Questions.
 *   `packages/rule-engine`: Decoupled logic for validating implementation consistency.
+*   `packages/adaptor-sdk`: Platform-agnostic SPI — any ERP adapter implements `PlatformAdaptor`. Includes a pure declarative rule evaluator. See [`docs/adaptor-spi.md`](docs/adaptor-spi.md).
+*   `packages/adaptor-registry`: Process-wide registry that loads built-in adapters at boot.
+*   `packages/adaptor-netsuite` / `packages/adaptor-odoo`: Built-in adapters. Firm-authored custom adapters live in the DB via the [Custom Adaptor Wizard](apps/web/src/pages/CustomAdaptorsPage.tsx).
 
 ## 📄 Artifacts Location
 All generated packages are stored in: `apps/api/outputs/[JOB_ID]/`
