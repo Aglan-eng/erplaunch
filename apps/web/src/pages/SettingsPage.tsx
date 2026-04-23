@@ -125,13 +125,10 @@ export function SettingsPage() {
                 />
               </Field>
 
-              <Field label="Logo URL" hint="Paste a public URL for now. File upload ships next.">
-                <input
-                  type="url"
+              <Field label="Logo" hint="PNG or JPEG, up to 2 MB. Or paste a public URL.">
+                <LogoUploader
                   value={form.logoUrl}
-                  onChange={(e) => setForm({ ...form, logoUrl: e.target.value })}
-                  placeholder="https://cdn.example.com/logo.png"
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                  onChange={(v) => setForm({ ...form, logoUrl: v })}
                 />
               </Field>
 
@@ -204,6 +201,113 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
       <label className="block text-sm font-medium text-slate-700 mb-1">{label}</label>
       {children}
       {hint && <p className="text-xs text-slate-400 mt-1">{hint}</p>}
+    </div>
+  );
+}
+
+/**
+ * Logo uploader (Phase 18). Two ways in:
+ *   - Drop / pick a PNG or JPEG → POST /firm/branding/logo
+ *   - Paste a public URL into the fallback text input (same as before)
+ *
+ * On successful upload, the API returns the absolute URL of the stored
+ * logo; we push that into the form's logoUrl field so the parent's
+ * portal preview updates immediately. Errors surface inline and don't
+ * clear the pasted URL.
+ */
+function LogoUploader({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleFile(file: File | null | undefined) {
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      setError('Logo must be under 2 MB.');
+      return;
+    }
+    if (file.type !== 'image/png' && file.type !== 'image/jpeg') {
+      setError('Logo must be PNG or JPEG.');
+      return;
+    }
+    setError(null);
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const { data } = await api.post('/firm/branding/logo', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const branding = data.data as { logoUrl: string | null };
+      if (branding?.logoUrl) onChange(branding.logoUrl);
+    } catch (err: unknown) {
+      const code = (err as { response?: { data?: { error?: { code?: string; message?: string } } } }).response?.data?.error;
+      setError(code?.message ?? 'Upload failed. Try again in a moment.');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-3">
+        {/* Preview + dropzone */}
+        <div className="relative h-16 w-16 rounded-lg border border-dashed border-slate-300 bg-slate-50 flex items-center justify-center overflow-hidden flex-shrink-0">
+          {value ? (
+            // eslint-disable-next-line jsx-a11y/alt-text
+            <img
+              src={value}
+              className="h-full w-full object-contain"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+            />
+          ) : (
+            <span className="text-[10px] text-slate-400 uppercase tracking-wider">No logo</span>
+          )}
+        </div>
+
+        <div className="flex-1 min-w-0 space-y-2">
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="rounded-lg bg-brand-600 text-white text-sm font-medium px-4 py-2 hover:bg-brand-700 disabled:opacity-50"
+            >
+              {uploading ? 'Uploading…' : value ? 'Replace logo' : 'Upload logo'}
+            </button>
+            {value && (
+              <button
+                type="button"
+                onClick={() => onChange('')}
+                disabled={uploading}
+                className="rounded-lg border border-slate-300 text-slate-700 text-sm font-medium px-4 py-2 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              void handleFile(f);
+              if (e.target) e.target.value = '';
+            }}
+          />
+          {/* Fallback / manual URL paste — same field the PATCH expects */}
+          <input
+            type="url"
+            value={value}
+            onChange={(e) => { onChange(e.target.value); setError(null); }}
+            placeholder="Or paste a public URL: https://cdn.example.com/logo.png"
+            className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+          />
+        </div>
+      </div>
+      {error && <p className="text-xs text-rose-600">{error}</p>}
     </div>
   );
 }
