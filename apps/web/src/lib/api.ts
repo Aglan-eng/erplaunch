@@ -25,6 +25,13 @@ export const authApi = {
   logout: () => api.post('/auth/logout').then((r) => r.data),
 
   me: () => api.get('/auth/me').then((r) => r.data.data),
+
+  // Phase 16 — password reset
+  requestReset: (email: string) =>
+    api.post('/auth/request-reset', { email }).then((r) => r.data),
+
+  resetPassword: (input: { token: string; password: string }) =>
+    api.post('/auth/reset-password', input).then((r) => r.data),
 };
 
 // ─── Engagements ─────────────────────────────────────────────────────────────

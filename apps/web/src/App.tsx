@@ -15,6 +15,8 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage').then(m => ({ defa
 const StatusReportPage = lazy(() => import('./pages/StatusReportPage').then(m => ({ default: m.StatusReportPage })));
 const VerticalWorkspacePage = lazy(() => import('./pages/VerticalWorkspacePage').then(m => ({ default: m.VerticalWorkspacePage })));
 const CustomAdaptorsPage = lazy(() => import('./pages/CustomAdaptorsPage').then(m => ({ default: m.CustomAdaptorsPage })));
+const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage').then(m => ({ default: m.ForgotPasswordPage })));
+const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage').then(m => ({ default: m.ResetPasswordPage })));
 
 function PageLoader() {
   return (
@@ -47,6 +49,8 @@ function AppRoutes() {
       <Routes>
         <Route path="/login" element={<ErrorBoundary><LoginPage /></ErrorBoundary>} />
         <Route path="/signup" element={<ErrorBoundary><SignupPage /></ErrorBoundary>} />
+        <Route path="/forgot-password" element={<ErrorBoundary><ForgotPasswordPage /></ErrorBoundary>} />
+        <Route path="/reset-password" element={<ErrorBoundary><ResetPasswordPage /></ErrorBoundary>} />
         <Route
           path="/dashboard"
           element={

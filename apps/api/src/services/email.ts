@@ -154,4 +154,73 @@ export async function sendPortalInvite(to: string, data: InviteEmailData): Promi
   });
 }
 
+// ─── Password reset email (Phase 16) ─────────────────────────────────────────
+
+export interface PasswordResetEmailData {
+  userName: string;
+  resetUrl: string;
+  expiresInMinutes: number;
+  ipHint?: string; // e.g. "a 197.xx.xx.xx address" — optional audit hint
+}
+
+export async function sendPasswordResetEmail(to: string, data: PasswordResetEmailData): Promise<void> {
+  const { userName, resetUrl, expiresInMinutes, ipHint } = data;
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { margin: 0; padding: 0; background: #f9fafb; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    .wrapper { max-width: 520px; margin: 40px auto; background: #fff; border-radius: 16px; overflow: hidden; border: 1px solid #e5e7eb; }
+    .accent { height: 4px; background: linear-gradient(90deg, #6366f1, #818cf8, #60a5fa); }
+    .header { padding: 32px 36px 20px; }
+    .logo { display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 12px; background: linear-gradient(135deg, #6366f1, #4f46e5); color: #fff; font-weight: 900; font-size: 16px; margin-bottom: 20px; }
+    h1 { margin: 0 0 6px; font-size: 20px; font-weight: 800; color: #111827; }
+    .subtitle { margin: 0; font-size: 14px; color: #6b7280; }
+    .body { padding: 0 36px 28px; font-size: 14px; color: #374151; line-height: 1.55; }
+    .btn { display: inline-block; margin: 20px 0; padding: 12px 22px; background: #4f46e5; color: #fff !important; text-decoration: none; border-radius: 10px; font-size: 14px; font-weight: 700; }
+    .link-box { margin-top: 6px; padding: 10px 12px; background: #f3f4f6; border-radius: 8px; font-size: 12px; color: #374151; word-break: break-all; font-family: ui-monospace, Menlo, Consolas, monospace; }
+    .meta { margin-top: 22px; padding: 12px 14px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; font-size: 12px; color: #92400e; }
+    .footer { padding: 16px 36px 28px; font-size: 12px; color: #9ca3af; border-top: 1px solid #f3f4f6; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="accent"></div>
+    <div class="header">
+      <div class="logo">E</div>
+      <h1>Reset your ERPLaunch password</h1>
+      <p class="subtitle">We received a request to reset the password on your account.</p>
+    </div>
+    <div class="body">
+      <p>Hi ${escapeHtml(userName)},</p>
+      <p>Click the button below to set a new password. The link is valid for <strong>${expiresInMinutes} minutes</strong> and can be used only once.</p>
+      <p><a class="btn" href="${resetUrl}">Reset password →</a></p>
+      <p style="font-size: 12px; color: #6b7280;">Or paste this into your browser:</p>
+      <div class="link-box">${resetUrl}</div>
+      <div class="meta">
+        If you didn't request this, you can safely ignore the email — your password stays unchanged${ipHint ? ` (request originated from ${escapeHtml(ipHint)})` : ''}.
+      </div>
+    </div>
+    <div class="footer">
+      Sent by ERPLaunch. Never share this link — anyone who has it can set a new password on your account.
+    </div>
+  </div>
+</body>
+</html>`.trim();
+
+  await sendEmail({
+    to,
+    subject: 'Reset your ERPLaunch password',
+    html,
+  });
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+}
+
 export { APP_URL };

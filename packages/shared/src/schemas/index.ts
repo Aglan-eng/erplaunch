@@ -5,6 +5,20 @@ export const LoginSchema = z.object({
   password: z.string().min(6),
 });
 
+// Password reset — request phase (Phase 16). Intentionally minimal: email only.
+// Route always returns 202 regardless of whether the address maps to a user,
+// so enumeration attacks can't distinguish registered vs unregistered emails.
+export const RequestPasswordResetSchema = z.object({
+  email: z.string().trim().toLowerCase().email().max(200),
+});
+
+// Password reset — redemption phase. The token is the raw 64-hex string
+// embedded in the email link; the server hashes it before DB lookup.
+export const ResetPasswordSchema = z.object({
+  token: z.string().min(20).max(200),
+  password: z.string().min(8).max(200),
+});
+
 // Slug: kebab-case, 3-40 chars. Start+end alphanumeric. No consecutive dashes.
 // Reserved word check happens in the route so the schema stays platform-agnostic.
 export const SlugRegex = /^[a-z0-9](?:[a-z0-9]|-(?!-)){1,38}[a-z0-9]$/;
@@ -72,3 +86,5 @@ export type CreateJobInput = z.infer<typeof CreateJobSchema>;
 export type UpdateEngagementInput = z.infer<typeof UpdateEngagementSchema>;
 export type CreateCustomAdaptorInput = z.infer<typeof CreateCustomAdaptorSchema>;
 export type UpdateCustomAdaptorDraftInput = z.infer<typeof UpdateCustomAdaptorDraftSchema>;
+export type RequestPasswordResetInput = z.infer<typeof RequestPasswordResetSchema>;
+export type ResetPasswordInput = z.infer<typeof ResetPasswordSchema>;

@@ -538,6 +538,25 @@ async function createTables(db: Client) {
   // Phase 14: custom adaptors carry their own rule pack. Additive ALTER so
   // existing pilot data (where the column doesn't yet exist) keeps working.
   try { await db.execute(`ALTER TABLE CustomAdaptor ADD COLUMN parsedRules TEXT`); } catch {}
+
+  // ─── Password Reset Tokens (Phase 16) ──────────────────────────────────────
+  // Per-user reset tokens for consultant-side accounts. The raw token is
+  // never stored — only its SHA-256 hash (tokenHash) is on disk. Invalidated
+  // by consumedAt OR expiresAt; a new token issued for the same user
+  // invalidates all prior active tokens (see invalidateActivePasswordResetsForUser).
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS PasswordResetToken (
+      id         TEXT PRIMARY KEY,
+      userId     TEXT NOT NULL REFERENCES User(id) ON DELETE CASCADE,
+      tokenHash  TEXT NOT NULL UNIQUE,
+      expiresAt  TEXT NOT NULL,
+      consumedAt TEXT,
+      ipHash     TEXT,
+      createdAt  TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_password_reset_user    ON PasswordResetToken(userId)`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_password_reset_expires ON PasswordResetToken(expiresAt)`);
 }
 
 // ─── Helper types ─────────────────────────────────────────────────────────────
@@ -1989,3 +2008,13 @@ export {
   purgeExpiredPortalMagicLinks,
 } from './portalMagicLink.js';
 export type { PortalMagicLink } from './portalMagicLink.js';
+
+// ─── Re-exports for Phase 16 password reset ──────────────────────────────────
+export {
+  createPasswordResetToken,
+  findActivePasswordResetTokenByHash,
+  consumePasswordResetToken,
+  invalidateActivePasswordResetsForUser,
+  purgeExpiredPasswordResetTokens,
+} from './passwordResetToken.js';
+export type { PasswordResetToken } from './passwordResetToken.js';

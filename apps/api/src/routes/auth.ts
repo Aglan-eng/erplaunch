@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import bcrypt from 'bcryptjs';
-import { LoginSchema, RegisterSchema } from '@ofoq/shared';
+import crypto from 'crypto';
+import { LoginSchema, RegisterSchema, RequestPasswordResetSchema, ResetPasswordSchema } from '@ofoq/shared';
 import { authenticate } from '../middleware/auth.js';
 import {
   findUserByEmail,
@@ -8,6 +9,11 @@ import {
   findFirmBySlug,
   createFirm,
   createUser,
+  resetUserPassword,
+  createPasswordResetToken,
+  findActivePasswordResetTokenByHash,
+  consumePasswordResetToken,
+  invalidateActivePasswordResetsForUser,
 } from '../db/index.js';
 import {
   checkRequestCodeLimit,
@@ -15,6 +21,18 @@ import {
   RedisUnavailableError,
   type RedisLike,
 } from '../services/portalRateLimit.js';
+import { sendPasswordResetEmail, APP_URL } from '../services/email.js';
+
+/** How long a password reset link stays valid, in minutes. Overridable via env. */
+const RESET_TOKEN_TTL_MIN = Math.max(5, parseInt(process.env.PASSWORD_RESET_TTL_MIN ?? '60', 10));
+
+function sha256Hex(raw: string): string {
+  return crypto.createHash('sha256').update(raw).digest('hex');
+}
+
+function hashIp(ip: string): string {
+  return crypto.createHash('sha256').update(ip).digest('hex').slice(0, 32);
+}
 
 async function tryLoginRateLimit(
   request: FastifyRequest,
@@ -208,6 +226,109 @@ export async function authRoutes(fastify: FastifyInstance) {
   // POST /auth/logout
   fastify.post('/auth/logout', async (_request, reply) => {
     reply.clearCookie('token', { path: '/' }).send({ data: { ok: true } });
+  });
+
+  // POST /auth/request-reset — start a password reset flow (Phase 16).
+  //
+  // Intentionally enumeration-safe: always returns 202 with the same body
+  // whether the email maps to a real user or not. The real work happens
+  // out-of-band (row insert + email send). Rate-limited on (ip, email) via
+  // the same primitives used by /login and /register — fail-open when Redis
+  // is unavailable.
+  fastify.post('/auth/request-reset', async (request, reply) => {
+    const parsed = RequestPasswordResetSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: parsed.error.message } });
+    }
+    const { email } = parsed.data;
+
+    const ip = request.ip || '0.0.0.0';
+    const limit = await tryLoginRateLimit(request, (r) => checkRequestCodeLimit(r, ip, email));
+    if (!limit.ok) {
+      request.log.warn({ ip }, 'auth/request-reset rate-limit hit');
+      return reply.code(429).send({ error: { code: 'RATE_LIMITED', message: 'Too many reset requests. Wait a moment and try again.' } });
+    }
+    await tryLoginRateLimit(request, async (r) => { await recordRequestCode(r, ip, email); return { ok: true }; });
+
+    const user = await findUserByEmail(email) as (Record<string, unknown> & { id: string; name: string }) | null;
+    if (user) {
+      try {
+        // Invalidate any stockpiled prior tokens so only the newest link works.
+        await invalidateActivePasswordResetsForUser(user.id);
+
+        // 32 random bytes → 64 hex chars. Raw value is emailed; only the
+        // SHA-256 digest lands in the DB.
+        const raw = crypto.randomBytes(32).toString('hex');
+        const tokenHash = sha256Hex(raw);
+        const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MIN * 60 * 1000).toISOString();
+        await createPasswordResetToken({
+          userId: user.id,
+          tokenHash,
+          expiresAt,
+          ipHash: hashIp(ip),
+        });
+
+        const resetUrl = `${APP_URL}/reset-password?token=${raw}`;
+        await sendPasswordResetEmail(email, {
+          userName: user.name,
+          resetUrl,
+          expiresInMinutes: RESET_TOKEN_TTL_MIN,
+        });
+      } catch (err) {
+        // Swallow mail/DB errors at the response boundary so the enumeration
+        // guarantee holds. Log loudly for operators.
+        request.log.error({ err, userId: user.id }, 'auth/request-reset: token create or email send failed');
+      }
+    }
+
+    return reply.code(202).send({ data: { ok: true } });
+  });
+
+  // POST /auth/reset-password — redeem a reset token.
+  //
+  // Looks the token up by its SHA-256 hash, confirms it's unconsumed and
+  // unexpired, rotates the password, marks the row consumed. Returns 200
+  // + a neutral body on success (no session cookie — the user is redirected
+  // to /login). On any failure returns 400 with INVALID_OR_EXPIRED so an
+  // attacker can't tell "bad token" apart from "expired" apart from
+  // "already used."
+  fastify.post('/auth/reset-password', async (request, reply) => {
+    const parsed = ResetPasswordSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: parsed.error.message } });
+    }
+    const { token, password } = parsed.data;
+
+    // Rate-limit redemption attempts too — a stolen token with a narrow TTL
+    // is still worth slowing down, and this blunts naive brute force on the
+    // hash lookup.
+    const ip = request.ip || '0.0.0.0';
+    const limit = await tryLoginRateLimit(request, (r) => checkRequestCodeLimit(r, ip, 'reset'));
+    if (!limit.ok) {
+      return reply.code(429).send({ error: { code: 'RATE_LIMITED', message: 'Too many reset attempts. Wait a moment and try again.' } });
+    }
+    await tryLoginRateLimit(request, async (r) => { await recordRequestCode(r, ip, 'reset'); return { ok: true }; });
+
+    const tokenHash = sha256Hex(token);
+    const row = await findActivePasswordResetTokenByHash(tokenHash);
+    if (!row) {
+      return reply.code(400).send({ error: { code: 'INVALID_OR_EXPIRED', message: 'This reset link is invalid or has expired.' } });
+    }
+
+    const user = await findUserById(row.userId) as (Record<string, unknown> & { email: string }) | null;
+    if (!user) {
+      // User vanished between token issue and redemption — treat as invalid.
+      return reply.code(400).send({ error: { code: 'INVALID_OR_EXPIRED', message: 'This reset link is invalid or has expired.' } });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    await resetUserPassword(user.email, passwordHash);
+    await consumePasswordResetToken(row.id);
+    // Invalidate any sibling tokens too, so a second link in the user's
+    // inbox can't undo the password they just set.
+    await invalidateActivePasswordResetsForUser(row.userId);
+
+    return reply.send({ data: { ok: true } });
   });
 
   // GET /auth/me
