@@ -36,6 +36,14 @@ interface AdvisorInput {
   comment: string;
   license: { edition: string; modules: string[] };
   conflicts: Array<{ message: string; severity: string; resolution: string }>;
+  /** Platform context (Phase 7). Optional — when absent we fall back to
+   *  NetSuite framing so existing pilot engagements keep the pre-SPI copy. */
+  platform?: {
+    id: string;          // e.g. 'netsuite', 'odoo', 'custom:myerp'
+    name: string;        // human product name, e.g. 'NetSuite', 'Odoo'
+    vendor?: string;     // e.g. 'Oracle', 'Odoo SA'
+    sectionLabel?: string; // label from the adaptor schema, overrides SECTION_CONTEXT lookup
+  };
 }
 
 // ── Question lookup ──────────────────────────────────────────────────────────
@@ -129,30 +137,45 @@ export async function generateAIAdvice(input: AdvisorInput): Promise<AIAdviceRes
   }
 
   const client = new Anthropic({ apiKey });
-  const sectionContext = SECTION_CONTEXT[input.sectionKey] || input.sectionKey;
+  const sectionContext = input.platform?.sectionLabel || SECTION_CONTEXT[input.sectionKey] || input.sectionKey;
   const formattedAnswers = formatAnswersForPrompt(input.sectionKey, input.answers);
 
   const conflictsText = input.conflicts.length > 0
     ? input.conflicts.map(c => `- [${c.severity}] ${c.message} (Resolution: ${c.resolution})`).join('\n')
     : 'None';
 
-  const systemPrompt = `You are a Senior NetSuite Implementation Expert with 15+ years of experience across hundreds of ERP implementations in the Middle East and globally. You specialize in translating discovery workshop findings into actionable configuration guidance.
+  // Phase 7: prompt is parameterized on the active platform so Odoo /
+  // custom adaptors don't get NetSuite-framed advice. Falls back to
+  // NetSuite copy when platform context is absent (legacy / pilot).
+  const platformName = input.platform?.name ?? 'NetSuite';
+  const platformVendor = input.platform?.vendor;
+  const isNetSuite = (input.platform?.id ?? 'netsuite') === 'netsuite';
 
-Your role is to analyze the client's responses and consultant notes for a specific section of the NetSuite implementation wizard, then provide structured implementation advice.
-
-CRITICAL RULES:
-1. Be specific to NetSuite — reference actual menu paths (e.g., "Setup > Company > Enable Features > Accounting")
+  const platformSpecificRules = isNetSuite
+    ? `1. Be specific to NetSuite — reference actual menu paths (e.g., "Setup > Company > Enable Features > Accounting")
 2. Tailor advice to the selected edition (${input.license.edition}) and modules (${input.license.modules.join(', ') || 'none'})
 3. Flag any risks or common pitfalls specific to the answers provided
 4. Reference NetSuite best practices and SuiteAnswers article IDs where applicable
-5. Keep instructions actionable and numbered — a junior consultant should be able to follow them
+5. Keep instructions actionable and numbered — a junior consultant should be able to follow them`
+    : `1. Be specific to ${platformName}${platformVendor ? ` (${platformVendor})` : ''} — reference its actual navigation, settings, and object names where you know them
+2. Tailor advice to the selected edition (${input.license.edition}) and modules (${input.license.modules.join(', ') || 'none'})
+3. Flag any risks or common pitfalls specific to the answers provided
+4. If you are unsure about a ${platformName}-specific detail, say so explicitly rather than fabricating menu paths — consultants rely on these as-is
+5. Keep instructions actionable and numbered — a junior consultant should be able to follow them`;
+
+  const systemPrompt = `You are a Senior ${platformName} Implementation Expert with 15+ years of experience across hundreds of ERP implementations in the Middle East and globally. You specialize in translating discovery workshop findings into actionable configuration guidance.
+
+Your role is to analyze the client's responses and consultant notes for a specific section of the ${platformName} implementation wizard, then provide structured implementation advice.
+
+CRITICAL RULES:
+${platformSpecificRules}
 
 You MUST respond with ONLY valid JSON matching this exact schema:
 {
   "suggestions": [
     {
       "title": "string — brief actionable title",
-      "description": "string — detailed explanation with specific NetSuite context",
+      "description": "string — detailed explanation with specific ${platformName} context",
       "priority": "HIGH | MEDIUM | LOW",
       "category": "CONFIGURATION | BEST_PRACTICE | RISK | DATA_MIGRATION"
     }
@@ -160,25 +183,25 @@ You MUST respond with ONLY valid JSON matching this exact schema:
   "consultantInstructions": [
     {
       "step": 1,
-      "instruction": "string — specific action to take in NetSuite",
+      "instruction": "string — specific action to take in ${platformName}",
       "context": "string — why this step matters"
     }
   ],
   "warnings": ["string — risk items or things to watch out for"],
   "relatedKBArticles": [
     {
-      "title": "string — article title or SuiteAnswers reference",
+      "title": "string — article title${isNetSuite ? ' or SuiteAnswers reference' : ''}",
       "description": "string — what it covers and why it's relevant"
     }
   ]
 }`;
 
-  const userPrompt = `Analyze this section of a NetSuite implementation and provide implementation advice.
+  const userPrompt = `Analyze this section of a ${platformName} implementation and provide implementation advice.
 
 ## Section
 **${input.sectionKey}** — ${sectionContext}
 
-## Client's NetSuite License
+## Client's ${platformName} License
 - Edition: ${input.license.edition}
 - Modules: ${input.license.modules.join(', ') || 'None provisioned'}
 

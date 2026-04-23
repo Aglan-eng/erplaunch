@@ -20,6 +20,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { createId } from '@paralleldrive/cuid2';
+import { findSectionLabel } from '../services/adaptorSchemaHelpers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -585,6 +586,37 @@ export async function engagementRoutes(fastify: FastifyInstance) {
         resolution: c.resolution as string,
       }));
 
+    // Platform context (Phase 7) — look up the engagement's adaptor so the
+    // advisor prompt is framed correctly for the target system.
+    const adaptorId = (check as { adaptorId?: string }).adaptorId ?? 'netsuite';
+    let platformContext: { id: string; name: string; vendor?: string; sectionLabel?: string } | undefined;
+    if (adaptorId.startsWith('custom:')) {
+      const slug = adaptorId.slice('custom:'.length);
+      const row = await db.findCustomAdaptorByFirmAndSlug(request.jwtUser.firmId, slug);
+      if (row?.status === 'PUBLISHED') {
+        const manifest = (row.parsedManifest ?? {}) as { name?: string; vendor?: string };
+        const schema = (row.parsedSchema ?? {}) as { flows?: Array<{ sections?: Array<{ id?: string; label?: string }> }> };
+        const sectionLabel = findSectionLabel(schema, sectionKey);
+        platformContext = {
+          id: adaptorId,
+          name: manifest.name ?? row.name,
+          vendor: manifest.vendor,
+          sectionLabel,
+        };
+      }
+    } else {
+      const adaptor = getAdaptorRegistry().find(adaptorId);
+      if (adaptor) {
+        const sectionLabel = findSectionLabel(adaptor.schema as unknown as { flows?: Array<{ sections?: Array<{ id?: string; label?: string }> }> }, sectionKey);
+        platformContext = {
+          id: adaptorId,
+          name: adaptor.manifest.name,
+          vendor: adaptor.manifest.vendor,
+          sectionLabel,
+        };
+      }
+    }
+
     const advisorInput = {
       sectionKey,
       answers,
@@ -594,6 +626,7 @@ export async function engagementRoutes(fastify: FastifyInstance) {
         modules: (license?.modules as string[]) || [],
       },
       conflicts: sectionConflicts,
+      platform: platformContext,
     };
 
     // Check if cached result is still fresh
