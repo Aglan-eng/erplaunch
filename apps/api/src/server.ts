@@ -159,6 +159,12 @@ const server = await buildServer();
 try {
   await server.listen({ port, host });
   console.log(`\n🚀 OFOQ API running at http://localhost:${port}\n`);
+  // One-line env check at boot — makes it easy to verify APP_URL is wired
+  // correctly in Render (password-reset + portal invite links both use it).
+  // If this prints localhost in production, outbound email links will be
+  // broken; fix the env var and redeploy.
+  console.log(`[env] APP_URL=${process.env.APP_URL ?? '(unset → default http://localhost:5173)'}`);
+  console.log(`[env] RESEND_API_KEY=${process.env.RESEND_API_KEY ? 'set' : '(unset — emails log to stdout only)'}`);
 } catch (err) {
   server.log.error(err);
   process.exit(1);

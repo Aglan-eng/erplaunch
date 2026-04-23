@@ -251,6 +251,7 @@ export async function authRoutes(fastify: FastifyInstance) {
     await tryLoginRateLimit(request, async (r) => { await recordRequestCode(r, ip, email); return { ok: true }; });
 
     const user = await findUserByEmail(email) as (Record<string, unknown> & { id: string; name: string }) | null;
+    let devResetUrl: string | null = null;
     if (user) {
       try {
         // Invalidate any stockpiled prior tokens so only the newest link works.
@@ -269,6 +270,29 @@ export async function authRoutes(fastify: FastifyInstance) {
         });
 
         const resetUrl = `${APP_URL}/reset-password?token=${raw}`;
+
+        // Operator-visible breadcrumb: log the destination origin + path so we
+        // can verify APP_URL is wired correctly in the environment. We NEVER
+        // log the raw token — grepping this in Render doesn't give you a
+        // working reset link.
+        try {
+          const parsedUrl = new URL(resetUrl);
+          request.log.info(
+            { userId: user.id, host: parsedUrl.host, path: parsedUrl.pathname },
+            'auth/request-reset: reset link prepared',
+          );
+        } catch {
+          request.log.warn({ userId: user.id, APP_URL }, 'auth/request-reset: APP_URL does not parse as a URL');
+        }
+
+        // Dev-only: surface the raw reset URL in the response body so local
+        // testing doesn't need a real email provider. NEVER enable in
+        // production — would turn an enumeration oracle into a free
+        // password-reset oracle.
+        if (process.env.NODE_ENV !== 'production') {
+          devResetUrl = resetUrl;
+        }
+
         await sendPasswordResetEmail(email, {
           userName: user.name,
           resetUrl,
@@ -281,7 +305,14 @@ export async function authRoutes(fastify: FastifyInstance) {
       }
     }
 
-    return reply.code(202).send({ data: { ok: true } });
+    return reply.code(202).send({
+      data: {
+        ok: true,
+        // Only present in non-production runs (local dev). Production
+        // responses include nothing extra — see enumeration guarantee above.
+        ...(devResetUrl ? { devResetUrl } : {}),
+      },
+    });
   });
 
   // POST /auth/reset-password — redeem a reset token.
