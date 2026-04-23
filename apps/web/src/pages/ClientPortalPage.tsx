@@ -197,8 +197,10 @@ function TodoItem({ todo, token, memberToken }: { todo: any; token: string; memb
   const qc = useQueryClient();
   const isDone = !!todo.completedAt;
 
+  // Phase 5A: portal_token cookie is the auth credential. Legacy memberToken
+  // kept only as a hint for disabled state (replaced by authenticatedMember).
   const completeMutation = useMutation({
-    mutationFn: () => api.patch(`/engagements/portal/${token}/todos/${todo.id}/complete`, { memberToken }),
+    mutationFn: () => api.patch(`/engagements/portal/${token}/todos/${todo.id}/complete`, {}),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['portal', token] }),
   });
   const reopenMutation = useMutation({
@@ -386,11 +388,17 @@ export function ClientPortalPage() {
               )}
             </div>
           ) : (
-            <div className="mt-4 flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5">
-              <User className="h-4 w-4 text-gray-400 flex-shrink-0" />
-              <p className="text-xs text-gray-500">
-                Viewing as a guest. Use the personalised link in your invite email to sign in and complete action items.
+            <div className="mt-4 flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
+              <User className="h-4 w-4 text-amber-600 flex-shrink-0" />
+              <p className="text-xs text-amber-900 flex-1">
+                Viewing as a guest. Sign in with your email to complete action items and upload files.
               </p>
+              <a
+                href={`/portal/${token}/login`}
+                className="ml-auto text-xs font-semibold bg-brand-600 text-white px-3 py-1.5 rounded-lg hover:bg-brand-700 transition-colors whitespace-nowrap"
+              >
+                Sign in
+              </a>
             </div>
           )}
         </div>

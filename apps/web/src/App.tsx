@@ -8,6 +8,8 @@ const LoginPage = lazy(() => import('./pages/LoginPage').then(m => ({ default: m
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then(m => ({ default: m.DashboardPage })));
 const WizardPage = lazy(() => import('./pages/WizardPage').then(m => ({ default: m.WizardPage })));
 const ClientPortalPage = lazy(() => import('./pages/ClientPortalPage').then(m => ({ default: m.ClientPortalPage })));
+const PortalLoginPage = lazy(() => import('./pages/PortalLoginPage').then(m => ({ default: m.PortalLoginPage })));
+const PortalVerifyPage = lazy(() => import('./pages/PortalVerifyPage').then(m => ({ default: m.PortalVerifyPage })));
 const StatusReportPage = lazy(() => import('./pages/StatusReportPage').then(m => ({ default: m.StatusReportPage })));
 const VerticalWorkspacePage = lazy(() => import('./pages/VerticalWorkspacePage').then(m => ({ default: m.VerticalWorkspacePage })));
 
@@ -57,8 +59,11 @@ function AppRoutes() {
             </RequireAuth>
           }
         />
-        {/* Public client portal — no auth required */}
+        {/* Public client portal — no auth required for GET */}
         <Route path="/portal/:token" element={<ErrorBoundary><ClientPortalPage /></ErrorBoundary>} />
+        {/* Portal sign-in — Phase 5A magic-link flow */}
+        <Route path="/portal/:token/login" element={<ErrorBoundary><PortalLoginPage /></ErrorBoundary>} />
+        <Route path="/portal/:token/verify" element={<ErrorBoundary><PortalVerifyPage /></ErrorBoundary>} />
         {/* Status report — print-optimized, auth required */}
         <Route
           path="/engagements/:id/status-report"

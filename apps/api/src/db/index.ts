@@ -1350,6 +1350,32 @@ export async function findMemberByInviteToken(inviteToken: string): Promise<{ id
   };
 }
 
+/**
+ * Lookup a CLIENT-team member by email within a specific engagement.
+ * Case-insensitive on email. Returns null if not found.
+ */
+export async function findClientMemberByEngagementAndEmail(
+  engagementId: string,
+  email: string,
+): Promise<{ id: string; name: string; role: string; email: string; engagementId: string } | null> {
+  const db = getDb();
+  const r = await db.execute({
+    sql: `SELECT id, name, role, email, engagementId FROM ProjectMember
+          WHERE engagementId = ? AND team = 'CLIENT' AND LOWER(email) = LOWER(?)
+          LIMIT 1`,
+    args: [engagementId, email],
+  });
+  if (!r.rows[0]) return null;
+  const row = r.rows[0] as Row;
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    role: row.role as string,
+    email: row.email as string,
+    engagementId: row.engagementId as string,
+  };
+}
+
 // ─── Portal Todos ─────────────────────────────────────────────────────────────
 
 export interface PortalTodo {
