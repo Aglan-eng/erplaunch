@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Zap, Download, Loader, CircleCheck, CircleX, TriangleAlert, Code, Package, Archive } from 'lucide-react';
+import { Zap, Download, Loader, CircleCheck, CircleX, TriangleAlert, Code, Package, Archive, FileText } from 'lucide-react';
 import { engagementsApi } from '@/lib/api';
 import { SectionIntroCard } from '../SectionIntroCard';
 import { Button } from '@/components/ui/Button';
@@ -23,6 +23,33 @@ interface Job {
 export function GeneratePanel({ engagementId }: GeneratePanelProps) {
   const hasBlocks = useConflictStore((s) => s.hasBlocks());
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
+
+  // Phase 6: surface the active adaptor's generator catalog so the Generate
+  // panel can (a) advertise what the pack will actually contain and
+  // (b) customize its copy for non-NetSuite engagements.
+  const adaptorQuery = useQuery({
+    queryKey: ['engagement-adaptor', engagementId],
+    queryFn: () => engagementsApi.getAdaptor(engagementId),
+    enabled: !!engagementId,
+    retry: false,
+    staleTime: 60_000,
+  });
+  const generatorsQuery = useQuery({
+    queryKey: ['engagement-generators', engagementId],
+    queryFn: () => engagementsApi.getGenerators(engagementId),
+    enabled: !!engagementId,
+    retry: false,
+    staleTime: 60_000,
+  });
+
+  const adaptorSource = adaptorQuery.data?.source ?? 'built-in';
+  const adaptorId = adaptorQuery.data?.id ?? 'netsuite';
+  const isNetSuite = adaptorId === 'netsuite';
+  const adaptorName = useMemo(() => {
+    const manifest = adaptorQuery.data?.manifest as { name?: string } | undefined;
+    return manifest?.name ?? (isNetSuite ? 'NetSuite' : 'Platform');
+  }, [adaptorQuery.data, isNetSuite]);
+  const generators = generatorsQuery.data ?? [];
 
   // Poll job status when active
   const { data: jobData } = useQuery({
@@ -60,9 +87,44 @@ export function GeneratePanel({ engagementId }: GeneratePanelProps) {
     <div className="max-w-2xl mx-auto">
       <SectionIntroCard
         title="Generate Package"
-        description="Generate a NetSuite SDF deployment package based on the business profile configuration. Resolve all blocking issues before generating."
+        description={
+          isNetSuite
+            ? 'Generate a NetSuite SDF deployment package + platform-neutral documentation (BRD, Solution Design, UAT, Training, Implementation Plan, Risk Register).'
+            : `Generate the documentation pack for this ${adaptorName} engagement — BRD, Solution Design, UAT, Training, Implementation Plan, Risk Register. NetSuite-only artifacts (SDF, SuiteScript) are skipped for non-NetSuite adaptors.`
+        }
         icon={<Zap className="h-5 w-5" />}
       />
+
+      {/* Generator catalog preview — what will land in the pack */}
+      {generators.length > 0 && (
+        <div className="mt-4 bg-white rounded-xl border border-gray-100 p-4">
+          <div className="flex items-center gap-2 mb-2.5">
+            <FileText className="h-4 w-4 text-brand-500" />
+            <h4 className="text-sm font-semibold text-gray-900">
+              {adaptorSource === 'custom' ? 'Custom adaptor catalog' : `${adaptorName} catalog`}
+            </h4>
+            <span className="text-[10px] font-mono text-gray-400">{adaptorId}</span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {generators.map((g) => (
+              <span
+                key={g.id}
+                title={`${g.label} · ${g.kind} · ${g.outputMime}`}
+                className="inline-flex items-center gap-1 text-[11px] font-semibold text-gray-700 bg-gray-50 border border-gray-200 rounded px-2 py-0.5"
+              >
+                {g.label}
+              </span>
+            ))}
+          </div>
+          {!isNetSuite && (
+            <p className="mt-2 text-[11px] text-gray-400 italic">
+              Phase 6 ships platform-neutral documents for any non-NetSuite adaptor.
+              Adaptor-native generators (Odoo XML-RPC push, Dynamics extensions,
+              etc.) land in a later phase.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Conflict summary */}
       <ConflictBanner />
@@ -96,7 +158,7 @@ export function GeneratePanel({ engagementId }: GeneratePanelProps) {
       {/* Active job status */}
       {job && (
         <div className="mt-4">
-          <JobStatusCard job={job} engagementId={engagementId} />
+          <JobStatusCard job={job} engagementId={engagementId} isNetSuite={isNetSuite} />
         </div>
       )}
 
@@ -106,7 +168,7 @@ export function GeneratePanel({ engagementId }: GeneratePanelProps) {
           <h3 className="text-sm font-semibold text-gray-700 mb-3">Previous Jobs</h3>
           <div className="space-y-2">
             {jobs.slice(0, 5).map((j: Job) => (
-              <JobStatusCard key={j.id} job={j} compact engagementId={engagementId} />
+              <JobStatusCard key={j.id} job={j} compact engagementId={engagementId} isNetSuite={isNetSuite} />
             ))}
           </div>
         </div>
@@ -115,7 +177,7 @@ export function GeneratePanel({ engagementId }: GeneratePanelProps) {
   );
 }
 
-function JobStatusCard({ job, compact, engagementId }: { job: Job; compact?: boolean; engagementId: string }) {
+function JobStatusCard({ job, compact, engagementId, isNetSuite }: { job: Job; compact?: boolean; engagementId: string; isNetSuite: boolean }) {
   const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
   return (
@@ -195,30 +257,31 @@ function JobStatusCard({ job, compact, engagementId }: { job: Job; compact?: boo
               UAT Plan
             </a>
 
-            {/* Divider */}
-            {!compact && (
-              <div className="w-full border-t border-gray-100 my-0.5" />
+            {/* NetSuite-only deployment scripts — hidden for non-NetSuite
+                adaptors where SDF + SuiteScript aren't emitted by the runner. */}
+            {isNetSuite && (
+              <>
+                {!compact && <div className="w-full border-t border-gray-100 my-0.5" />}
+                <a
+                  href={`${baseUrl}${job.outputUrl}/SDF/AccountConfiguration/features.xml`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-orange-50 border border-orange-200 px-3 py-1.5 text-xs font-medium text-orange-700 hover:bg-orange-100 transition-colors"
+                >
+                  <Package className="h-3.5 w-3.5" />
+                  SDF Config XML
+                </a>
+                <a
+                  href={`${baseUrl}${job.outputUrl}/SuiteScript/NSIX_UE_CustomisationBase.js`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-purple-50 border border-purple-200 px-3 py-1.5 text-xs font-medium text-purple-700 hover:bg-purple-100 transition-colors"
+                >
+                  <Code className="h-3.5 w-3.5" />
+                  SuiteScript
+                </a>
+              </>
             )}
-
-            {/* NetSuite deployment scripts */}
-            <a
-              href={`${baseUrl}${job.outputUrl}/SDF/AccountConfiguration/features.xml`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-lg bg-orange-50 border border-orange-200 px-3 py-1.5 text-xs font-medium text-orange-700 hover:bg-orange-100 transition-colors"
-            >
-              <Package className="h-3.5 w-3.5" />
-              SDF Config XML
-            </a>
-            <a
-              href={`${baseUrl}${job.outputUrl}/SuiteScript/NSIX_UE_CustomisationBase.js`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-lg bg-purple-50 border border-purple-200 px-3 py-1.5 text-xs font-medium text-purple-700 hover:bg-purple-100 transition-colors"
-            >
-              <Code className="h-3.5 w-3.5" />
-              SuiteScript
-            </a>
           </div>
         )}
       </div>
