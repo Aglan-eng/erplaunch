@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { r2rQuestions, p2pQuestions, o2cQuestions, mfgQuestions, rtnQuestions } from '@ofoq/shared';
 import type { Question } from '@ofoq/shared';
 import { SectionIntroCard } from '../SectionIntroCard';
@@ -9,9 +10,14 @@ import { ImageUpload } from '../ImageUpload';
 import { AIAdvisorPanel } from '../AIAdvisorPanel';
 import { useWizardProgress } from '@/hooks/useWizardProgress';
 import { useWizardStore } from '@/stores/wizardStore';
+import { engagementsApi } from '@/lib/api';
+import { bridgeAdaptorSchema } from '../adaptorBridge';
 
-// ── All question banks ────────────────────────────────────────────────────────
-const ALL_QUESTIONS: Question[] = [
+// ── NetSuite legacy banks — fallback only ────────────────────────────────────
+// Kept so an engagement can still render if the adaptor fetch fails (e.g.
+// offline dev or old data). New platforms (Odoo, custom:*) always route
+// through the bridged adaptor schema instead.
+const NETSUITE_FALLBACK_QUESTIONS: Question[] = [
   ...r2rQuestions,
   ...p2pQuestions,
   ...o2cQuestions,
@@ -66,20 +72,43 @@ export function FlowSectionStep({ sectionKey, engagementId }: FlowSectionStepPro
   const answers = useWizardStore((s) => s.answers);
   const { sectionProgress } = useWizardProgress(answers);
 
-  const meta = SECTION_META[sectionKey] ?? {
-    title: sectionKey,
-    description: '',
-  };
+  const adaptorQuery = useQuery({
+    queryKey: ['engagement-adaptor', engagementId],
+    queryFn: () => engagementsApi.getAdaptor(engagementId),
+    enabled: !!engagementId,
+    retry: false,
+    staleTime: 60_000,
+  });
 
-  // Match questions by full "flow.section" id prefix  (e.g. r2r.entities.*)
-  const questions = ALL_QUESTIONS.filter((q) => q.id.startsWith(`${sectionKey}.`));
+  // Phase 3C: if the active adaptor exposes the requested flow.section,
+  // render its questions. Otherwise fall back to the hard-coded NetSuite
+  // banks so legacy NetSuite engagements keep working unchanged.
+  const { questions, title, description } = useMemo(() => {
+    const bridged = bridgeAdaptorSchema(adaptorQuery.data?.schema);
+    const adaptorSection = bridged.get(sectionKey);
+    if (adaptorSection && adaptorSection.questions.length > 0) {
+      const meta = SECTION_META[sectionKey];
+      return {
+        questions: adaptorSection.questions,
+        title: meta?.title ?? adaptorSection.sectionLabel,
+        description: meta?.description ?? '',
+      };
+    }
+    const meta = SECTION_META[sectionKey] ?? { title: sectionKey, description: '' };
+    return {
+      questions: NETSUITE_FALLBACK_QUESTIONS.filter((q) => q.id.startsWith(`${sectionKey}.`)),
+      title: meta.title,
+      description: meta.description,
+    };
+  }, [adaptorQuery.data, sectionKey]);
+
   const progress = sectionProgress[sectionKey] ?? 0;
 
   return (
     <div className="max-w-2xl mx-auto">
       <SectionIntroCard
-        title={meta.title}
-        description={meta.description}
+        title={title}
+        description={description}
         progress={progress}
         questionCount={questions.length}
       />

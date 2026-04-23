@@ -71,7 +71,7 @@ export function AdaptorPanel({ engagementId }: { engagementId: string }) {
         <PanelStat label="Modules" value={license?.modules?.length ?? 0} icon={<Package className="h-3 w-3" />} />
       </div>
 
-      <div className="px-6 py-4 space-y-2 text-xs">
+      <div className="px-6 py-4 space-y-3 text-xs">
         <div className="flex items-center gap-2 text-gray-500">
           <Zap className="h-3 w-3 text-amber-500" />
           <span className="font-semibold text-gray-700">{phases?.defaultPhases?.length ?? 0}</span>
@@ -85,6 +85,23 @@ export function AdaptorPanel({ engagementId }: { engagementId: string }) {
             </>
           )}
         </div>
+
+        {generators.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {generators.map((g, idx) => {
+              const gen = g as { id?: string; label?: string; kind?: string };
+              return (
+                <span
+                  key={`${gen.id ?? idx}`}
+                  title={`${gen.label ?? gen.id}${gen.kind ? ` · ${gen.kind}` : ''}`}
+                  className="inline-flex items-center gap-1 text-[10px] font-semibold text-gray-600 bg-gray-100 border border-gray-200 rounded px-1.5 py-0.5"
+                >
+                  {gen.label ?? gen.id}
+                </span>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

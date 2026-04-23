@@ -38,6 +38,14 @@ export const engagementsApi = {
   get: (id: string) =>
     api.get(`/engagements/${id}`).then((r) => r.data.data),
 
+  // Generator catalog from the active adaptor (built-in or custom). Phase 3D:
+  // surfaces the list the consultant is allowed to trigger without hard-coding
+  // NetSuite-only job types in the SPA.
+  getGenerators: (id: string) =>
+    api.get<{ data: Array<{ id: string; label: string; kind: string; outputMime: string; description?: string }> }>(
+      `/engagements/${id}/generators`,
+    ).then((r) => r.data.data),
+
   // Full PlatformAdaptor for this engagement (manifest + schema + license +
   // phases + generators). Phase 3: wizard reads this instead of bundling
   // NetSuite questions statically.

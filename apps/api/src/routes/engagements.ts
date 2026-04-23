@@ -289,6 +289,30 @@ export async function engagementRoutes(fastify: FastifyInstance) {
     return reply.send({ data: updated });
   });
 
+  // GET /engagements/:id/generators — the generator catalog from the active
+  // adaptor (built-in or published custom). The frontend uses this to render
+  // a dynamic Generate panel instead of hard-coding NetSuite job types.
+  fastify.get('/engagements/:id/generators', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const engagement = await db.findEngagementById(id) as (Record<string, unknown> & { firmId: string; adaptorId?: string }) | null;
+    if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+    if (engagement.firmId !== request.jwtUser.firmId) return reply.code(403).send({ error: { code: 'FORBIDDEN' } });
+
+    const adaptorId = engagement.adaptorId ?? 'netsuite';
+    let generators: unknown[] = [];
+    if (adaptorId.startsWith('custom:')) {
+      const slug = adaptorId.slice('custom:'.length);
+      const row = await db.findCustomAdaptorByFirmAndSlug(request.jwtUser.firmId, slug);
+      if (row?.status === 'PUBLISHED' && Array.isArray(row.parsedGenerators)) {
+        generators = row.parsedGenerators as unknown[];
+      }
+    } else {
+      const adaptor = getAdaptorRegistry().find(adaptorId);
+      if (adaptor) generators = adaptor.generators;
+    }
+    return reply.send({ data: generators });
+  });
+
   // POST /engagements/:id/generate
   fastify.post('/engagements/:id/generate', async (request, reply) => {
     const { id } = request.params as { id: string };
