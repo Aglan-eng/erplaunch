@@ -19,6 +19,8 @@ export const RegisterSchema = z.object({
 
 export const CreateEngagementSchema = z.object({
   clientName: z.string().min(1).max(200),
+  /** Platform adaptor ID. Optional — defaults to 'netsuite' in the route. */
+  adaptorId: z.string().min(1).max(80).optional(),
 });
 
 export const PatchProfileSchema = z.object({

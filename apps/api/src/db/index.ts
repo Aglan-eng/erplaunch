@@ -586,13 +586,14 @@ export async function findUserById(id: string) {
 
 // ─── Engagement ───────────────────────────────────────────────────────────────
 
-export async function createEngagement(data: { firmId: string; clientName: string }) {
+export async function createEngagement(data: { firmId: string; clientName: string; adaptorId?: string }) {
   const db = getDb();
   const id = createId();
   const now = new Date().toISOString();
+  const adaptorId = data.adaptorId ?? 'netsuite';
   await db.execute({
-    sql: `INSERT INTO Engagement (id, firmId, clientName, updatedAt) VALUES (?,?,?,?)`,
-    args: [id, data.firmId, data.clientName, now],
+    sql: `INSERT INTO Engagement (id, firmId, clientName, adaptorId, updatedAt) VALUES (?,?,?,?,?)`,
+    args: [id, data.firmId, data.clientName, adaptorId, now],
   });
   // Create empty profile and license
   await db.execute({

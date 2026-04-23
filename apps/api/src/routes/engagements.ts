@@ -12,6 +12,7 @@ import {
 } from '@ofoq/shared';
 import { evaluate } from '@ofoq/rule-engine';
 import type { Phase, LicenseProfile } from '@ofoq/shared';
+import { getAdaptorRegistry } from '@ofoq/adaptor-registry';
 import * as db from '../db/index.js';
 import { generateAIAdvice, computeInputHash } from '../services/aiAdvisor.js';
 import { generateFullProfile, generateSectionSuggestions } from '../services/aiProfileGenerator.js';
@@ -37,9 +38,22 @@ export async function engagementRoutes(fastify: FastifyInstance) {
     if (!result.success) {
       return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: result.error.message } });
     }
+
+    // Adaptor validation (Phase 1B): if caller picked an adaptor, confirm it's
+    // registered. Unknown adaptor IDs are a 400, not a 500, so the SPA can
+    // surface a sensible message.
+    const registry = getAdaptorRegistry();
+    const requestedAdaptorId = result.data.adaptorId ?? 'netsuite';
+    if (!registry.has(requestedAdaptorId)) {
+      return reply.code(400).send({
+        error: { code: 'UNKNOWN_ADAPTOR', message: `Adaptor "${requestedAdaptorId}" is not available on this deployment.` },
+      });
+    }
+
     const engagement = await db.createEngagement({
       firmId: request.jwtUser.firmId,
       clientName: result.data.clientName,
+      adaptorId: requestedAdaptorId,
     });
     return reply.code(201).send({ data: engagement });
   });

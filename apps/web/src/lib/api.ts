@@ -32,8 +32,8 @@ export const authApi = {
 export const engagementsApi = {
   list: () => api.get('/engagements').then((r) => r.data.data),
 
-  create: (clientName: string) =>
-    api.post('/engagements', { clientName }).then((r) => r.data.data),
+  create: (input: { clientName: string; adaptorId?: string }) =>
+    api.post('/engagements', input).then((r) => r.data.data),
 
   get: (id: string) =>
     api.get(`/engagements/${id}`).then((r) => r.data.data),
@@ -293,6 +293,24 @@ export const engagementsApi = {
 
   deleteDataTemplateSchema: (id: string, schemaId: string) =>
     api.delete(`/engagements/${id}/data-templates/schemas/${schemaId}`).then((r) => r.data.data),
+};
+
+// ─── Adaptors (platform SPI, Phase 1B) ──────────────────────────────────────
+
+export interface AdaptorListing {
+  id: string;
+  name: string;
+  tagline?: string;
+  version: string;
+  vendor: string;
+  capabilities: string[];
+  sourceKind: 'built-in' | 'custom' | 'marketplace';
+}
+
+export const adaptorsApi = {
+  list: () => api.get<{ data: AdaptorListing[] }>('/adaptors').then((r) => r.data.data),
+  get: (id: string) =>
+    api.get(`/adaptors/${encodeURIComponent(id)}`).then((r) => r.data.data),
 };
 
 // ─── Verticals ────────────────────────────────────────────────────────────────
