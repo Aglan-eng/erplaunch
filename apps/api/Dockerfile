@@ -14,6 +14,7 @@ COPY packages/rule-engine/package.json ./packages/rule-engine/
 COPY packages/adaptor-sdk/package.json ./packages/adaptor-sdk/
 COPY packages/adaptor-registry/package.json ./packages/adaptor-registry/
 COPY packages/adaptor-netsuite/package.json ./packages/adaptor-netsuite/
+COPY packages/adaptor-odoo/package.json ./packages/adaptor-odoo/
 
 RUN pnpm install --frozen-lockfile --filter @ofoq/api... --filter "./packages/**"
 
@@ -25,6 +26,7 @@ COPY packages/rule-engine ./packages/rule-engine
 COPY packages/adaptor-sdk ./packages/adaptor-sdk
 COPY packages/adaptor-registry ./packages/adaptor-registry
 COPY packages/adaptor-netsuite ./packages/adaptor-netsuite
+COPY packages/adaptor-odoo ./packages/adaptor-odoo
 
 # Build workspace packages — api imports from their dist/ outputs
 RUN pnpm --filter "./packages/**" -r run build

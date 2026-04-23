@@ -1,0 +1,26 @@
+{
+  "name": "@ofoq/adaptor-odoo",
+  "version": "0.1.0",
+  "description": "Odoo platform adaptor. Maps ERPLaunch's engagement model onto Odoo Community + Enterprise.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@ofoq/adaptor-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@ofoq/adaptor-registry": "workspace:*",
+    "typescript": "^5.4.0",
+    "vitest": "^1.0.0"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  }
+}

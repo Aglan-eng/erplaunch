@@ -41,6 +41,9 @@ importers:
       '@ofoq/adaptor-netsuite':
         specifier: workspace:*
         version: link:../../packages/adaptor-netsuite
+      '@ofoq/adaptor-odoo':
+        specifier: workspace:*
+        version: link:../../packages/adaptor-odoo
       '@ofoq/adaptor-registry':
         specifier: workspace:*
         version: link:../../packages/adaptor-registry
@@ -248,6 +251,22 @@ importers:
       '@ofoq/shared':
         specifier: workspace:*
         version: link:../shared
+    devDependencies:
+      '@ofoq/adaptor-registry':
+        specifier: workspace:*
+        version: link:../adaptor-registry
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+      vitest:
+        specifier: ^1.0.0
+        version: 1.6.1(@types/node@20.19.39)
+
+  packages/adaptor-odoo:
+    dependencies:
+      '@ofoq/adaptor-sdk':
+        specifier: workspace:*
+        version: link:../adaptor-sdk
     devDependencies:
       '@ofoq/adaptor-registry':
         specifier: workspace:*

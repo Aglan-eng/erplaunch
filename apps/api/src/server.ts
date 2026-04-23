@@ -24,6 +24,7 @@ import { firmBrandingRoutes } from './routes/firmBranding.js';
 import { adaptorRoutes } from './routes/adaptors.js';
 import { registerBuiltinAdaptor } from '@ofoq/adaptor-registry';
 import netsuiteAdaptor from '@ofoq/adaptor-netsuite';
+import odooAdaptor from '@ofoq/adaptor-odoo';
 
 // Register built-in platform adaptors once at module load. Idempotent because
 // each adaptor has a unique `manifest.id` and the registry refuses duplicates;
@@ -31,6 +32,7 @@ import netsuiteAdaptor from '@ofoq/adaptor-netsuite';
 // on hot-reload by guarding on an env-level flag.
 if (!(globalThis as { __erplaunch_adaptors_registered?: boolean }).__erplaunch_adaptors_registered) {
   registerBuiltinAdaptor(netsuiteAdaptor);
+  registerBuiltinAdaptor(odooAdaptor);
   (globalThis as { __erplaunch_adaptors_registered?: boolean }).__erplaunch_adaptors_registered = true;
 }
 import { verticalsRoutes } from './routes/verticals.js';

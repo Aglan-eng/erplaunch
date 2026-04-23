@@ -13,10 +13,9 @@ interface NewEngagementModalProps {
 }
 
 // Shape used for "coming soon" adaptors that aren't registered on the backend
-// yet. Phase 1C will register Odoo; the rest stay disabled in the picker until
-// their adaptor packages exist.
+// yet. Adaptors that ARE registered (e.g. NetSuite, Odoo) get filtered out at
+// render time so we don't show a disabled card for a live platform.
 const COMING_SOON: Array<{ id: string; name: string; tagline: string }> = [
-  { id: 'odoo', name: 'Odoo', tagline: 'Open-source ERP — Community + Enterprise' },
   { id: 'sap', name: 'SAP S/4HANA', tagline: 'SAP flagship ERP' },
   { id: 'oracle-fusion', name: 'Oracle Fusion', tagline: 'Oracle Cloud ERP' },
   { id: 'ms-dynamics', name: 'Microsoft Dynamics 365', tagline: 'Business Central + F&O' },

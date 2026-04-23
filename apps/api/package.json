@@ -17,6 +17,7 @@
     "@fastify/static": "^7.0.0",
     "@libsql/client": "^0.17.2",
     "@ofoq/adaptor-netsuite": "workspace:*",
+    "@ofoq/adaptor-odoo": "workspace:*",
     "@ofoq/adaptor-registry": "workspace:*",
     "@ofoq/adaptor-sdk": "workspace:*",
     "@ofoq/rule-engine": "workspace:*",
