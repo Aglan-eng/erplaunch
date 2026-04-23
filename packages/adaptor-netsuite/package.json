@@ -1,0 +1,28 @@
+{
+  "name": "@ofoq/adaptor-netsuite",
+  "version": "0.1.0",
+  "description": "NetSuite platform adaptor. Wraps the existing @ofoq/shared + @ofoq/rule-engine NetSuite content as a PlatformAdaptor.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@ofoq/adaptor-sdk": "workspace:*",
+    "@ofoq/rule-engine": "workspace:*",
+    "@ofoq/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@ofoq/adaptor-registry": "workspace:*",
+    "typescript": "^5.4.0",
+    "vitest": "^1.0.0"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  }
+}

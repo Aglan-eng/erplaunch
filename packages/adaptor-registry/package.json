@@ -1,0 +1,24 @@
+{
+  "name": "@ofoq/adaptor-registry",
+  "version": "0.1.0",
+  "description": "In-process registry for platform adaptors. Built-in adaptors register at boot; custom adaptors load on demand from tenant data.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "echo \"no tests\""
+  },
+  "dependencies": {
+    "@ofoq/adaptor-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  }
+}

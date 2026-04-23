@@ -94,6 +94,9 @@ async function createTables(db: Client) {
   try { await db.execute(`ALTER TABLE Engagement ADD COLUMN verticalType TEXT`); } catch {}
   try { await db.execute(`ALTER TABLE Engagement ADD COLUMN parentEngagementId TEXT REFERENCES Engagement(id)`); } catch {}
   try { await db.execute(`ALTER TABLE Engagement ADD COLUMN verticalSettings TEXT`); } catch {}
+  // Platform adaptor (Phase 1A). Every existing engagement defaults to NetSuite
+  // since that's what the pilot was — zero behavior change from this column.
+  try { await db.execute(`ALTER TABLE Engagement ADD COLUMN adaptorId TEXT NOT NULL DEFAULT 'netsuite'`); } catch {}
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS ProjectMember (

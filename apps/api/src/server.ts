@@ -21,6 +21,18 @@ import { activityRoutes } from './routes/activity.js';
 import { portalRoutes } from './routes/portal.js';
 import { portalAuthRoutes } from './routes/portalAuth.js';
 import { firmBrandingRoutes } from './routes/firmBranding.js';
+import { adaptorRoutes } from './routes/adaptors.js';
+import { registerBuiltinAdaptor } from '@ofoq/adaptor-registry';
+import netsuiteAdaptor from '@ofoq/adaptor-netsuite';
+
+// Register built-in platform adaptors once at module load. Idempotent because
+// each adaptor has a unique `manifest.id` and the registry refuses duplicates;
+// but since registerBuiltinAdaptor is only called here, we avoid re-registering
+// on hot-reload by guarding on an env-level flag.
+if (!(globalThis as { __erplaunch_adaptors_registered?: boolean }).__erplaunch_adaptors_registered) {
+  registerBuiltinAdaptor(netsuiteAdaptor);
+  (globalThis as { __erplaunch_adaptors_registered?: boolean }).__erplaunch_adaptors_registered = true;
+}
 import { verticalsRoutes } from './routes/verticals.js';
 import { dataCollectionRoutes } from './routes/dataCollection.js';
 import { exportRoutes } from './routes/export.js';
@@ -117,6 +129,7 @@ export async function buildServer() {
   await fastify.register(portalAuthRoutes, { prefix: '/api/v1' });
   await fastify.register(portalRoutes, { prefix: '/api/v1' });
   await fastify.register(firmBrandingRoutes, { prefix: '/api/v1' });
+  await fastify.register(adaptorRoutes, { prefix: '/api/v1' });
   await fastify.register(verticalsRoutes, { prefix: '/api/v1' });
   await fastify.register(dataCollectionRoutes, { prefix: '/api/v1' });
   await fastify.register(exportRoutes, { prefix: '/api/v1' });

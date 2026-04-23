@@ -11,17 +11,23 @@ COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
 COPY apps/api/package.json ./apps/api/
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/rule-engine/package.json ./packages/rule-engine/
+COPY packages/adaptor-sdk/package.json ./packages/adaptor-sdk/
+COPY packages/adaptor-registry/package.json ./packages/adaptor-registry/
+COPY packages/adaptor-netsuite/package.json ./packages/adaptor-netsuite/
 
-RUN pnpm install --frozen-lockfile --filter @ofoq/api... --filter @ofoq/shared --filter @ofoq/rule-engine
+RUN pnpm install --frozen-lockfile --filter @ofoq/api... --filter "./packages/**"
 
 # Source layer (include the shared tsconfig the workspace packages extend)
 COPY tsconfig.base.json ./
 COPY apps/api ./apps/api
 COPY packages/shared ./packages/shared
 COPY packages/rule-engine ./packages/rule-engine
+COPY packages/adaptor-sdk ./packages/adaptor-sdk
+COPY packages/adaptor-registry ./packages/adaptor-registry
+COPY packages/adaptor-netsuite ./packages/adaptor-netsuite
 
 # Build workspace packages — api imports from their dist/ outputs
-RUN pnpm --filter @ofoq/shared build && pnpm --filter @ofoq/rule-engine build
+RUN pnpm --filter "./packages/**" -r run build
 
 # Prepare data dirs (Render mounts the persistent disk here)
 RUN mkdir -p /data/db /data/uploads /data/outputs

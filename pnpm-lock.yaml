@@ -38,6 +38,15 @@ importers:
       '@libsql/client':
         specifier: ^0.17.2
         version: 0.17.2
+      '@ofoq/adaptor-netsuite':
+        specifier: workspace:*
+        version: link:../../packages/adaptor-netsuite
+      '@ofoq/adaptor-registry':
+        specifier: workspace:*
+        version: link:../../packages/adaptor-registry
+      '@ofoq/adaptor-sdk':
+        specifier: workspace:*
+        version: link:../../packages/adaptor-sdk
       '@ofoq/rule-engine':
         specifier: workspace:*
         version: link:../../packages/rule-engine
@@ -227,6 +236,48 @@ importers:
       vitest:
         specifier: ^1.0.0
         version: 1.6.1(@types/node@20.19.39)
+
+  packages/adaptor-netsuite:
+    dependencies:
+      '@ofoq/adaptor-sdk':
+        specifier: workspace:*
+        version: link:../adaptor-sdk
+      '@ofoq/rule-engine':
+        specifier: workspace:*
+        version: link:../rule-engine
+      '@ofoq/shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      '@ofoq/adaptor-registry':
+        specifier: workspace:*
+        version: link:../adaptor-registry
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+      vitest:
+        specifier: ^1.0.0
+        version: 1.6.1(@types/node@20.19.39)
+
+  packages/adaptor-registry:
+    dependencies:
+      '@ofoq/adaptor-sdk':
+        specifier: workspace:*
+        version: link:../adaptor-sdk
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+
+  packages/adaptor-sdk:
+    dependencies:
+      zod:
+        specifier: ^3.22.0
+        version: 3.25.76
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
 
   packages/rule-engine:
     dependencies:
