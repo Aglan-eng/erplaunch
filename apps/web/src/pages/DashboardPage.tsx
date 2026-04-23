@@ -327,6 +327,13 @@ export function DashboardPage() {
 
             <span className="text-sm text-gray-600 hidden sm:block font-medium">{user?.name}</span>
             <Link
+              to="/custom-adaptors"
+              className="text-sm text-gray-500 hover:text-gray-900 px-2 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+              title="Custom platform adaptors"
+            >
+              Adaptors
+            </Link>
+            <Link
               to="/settings"
               className="text-sm text-gray-500 hover:text-gray-900 px-2 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
               title="Firm settings"

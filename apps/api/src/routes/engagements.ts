@@ -39,12 +39,21 @@ export async function engagementRoutes(fastify: FastifyInstance) {
       return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: result.error.message } });
     }
 
-    // Adaptor validation (Phase 1B): if caller picked an adaptor, confirm it's
-    // registered. Unknown adaptor IDs are a 400, not a 500, so the SPA can
-    // surface a sensible message.
+    // Adaptor validation: if caller picked an adaptor, confirm it's available
+    // to this firm. Built-in adaptors live in the process-wide registry;
+    // custom adaptors (prefix `custom:<slug>`) live per-firm in the DB.
     const registry = getAdaptorRegistry();
     const requestedAdaptorId = result.data.adaptorId ?? 'netsuite';
-    if (!registry.has(requestedAdaptorId)) {
+    const isCustom = requestedAdaptorId.startsWith('custom:');
+    if (isCustom) {
+      const slug = requestedAdaptorId.slice('custom:'.length);
+      const custom = await db.findCustomAdaptorByFirmAndSlug(request.jwtUser.firmId, slug);
+      if (!custom || custom.status !== 'PUBLISHED') {
+        return reply.code(400).send({
+          error: { code: 'UNKNOWN_ADAPTOR', message: `Custom adaptor "${slug}" is not published in your firm.` },
+        });
+      }
+    } else if (!registry.has(requestedAdaptorId)) {
       return reply.code(400).send({
         error: { code: 'UNKNOWN_ADAPTOR', message: `Adaptor "${requestedAdaptorId}" is not available on this deployment.` },
       });

@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { X } from 'lucide-react';
+import { X, Sparkles } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { engagementsApi, adaptorsApi, type AdaptorListing } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -14,13 +14,14 @@ interface NewEngagementModalProps {
 
 // Shape used for "coming soon" adaptors that aren't registered on the backend
 // yet. Adaptors that ARE registered (e.g. NetSuite, Odoo) get filtered out at
-// render time so we don't show a disabled card for a live platform.
+// render time so we don't show a disabled card for a live platform. Custom
+// adaptors are now a first-class flow at /custom-adaptors — the modal links
+// to it below instead of showing a disabled placeholder.
 const COMING_SOON: Array<{ id: string; name: string; tagline: string }> = [
   { id: 'sap', name: 'SAP S/4HANA', tagline: 'SAP flagship ERP' },
   { id: 'oracle-fusion', name: 'Oracle Fusion', tagline: 'Oracle Cloud ERP' },
   { id: 'ms-dynamics', name: 'Microsoft Dynamics 365', tagline: 'Business Central + F&O' },
   { id: 'erpnext', name: 'ERPNext', tagline: 'Open-source Python ERP' },
-  { id: 'custom', name: 'Custom / In-house system', tagline: 'Upload your own questionnaire' },
 ];
 
 export function NewEngagementModal({ open, onClose }: NewEngagementModalProps) {
@@ -118,6 +119,20 @@ export function NewEngagementModal({ open, onClose }: NewEngagementModalProps) {
               {adaptorsQuery.isLoading && (
                 <p className="mt-2 text-xs text-gray-400">Loading available platforms…</p>
               )}
+
+              {/* Bring-your-own-ERP CTA — links to the custom adaptor wizard */}
+              <Link
+                to="/custom-adaptors"
+                onClick={onClose}
+                className="mt-3 flex items-center gap-2 bg-gradient-to-br from-brand-50 to-brand-100 border border-brand-200 rounded-lg px-3 py-2.5 hover:from-brand-100 hover:to-brand-200 transition-colors"
+              >
+                <Sparkles className="h-4 w-4 text-brand-600 flex-shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold text-brand-900 leading-tight">Don't see your system?</p>
+                  <p className="text-[11px] text-brand-700 leading-tight">Upload docs — Claude drafts a custom adaptor.</p>
+                </div>
+                <span className="text-xs text-brand-600 font-semibold">→</span>
+              </Link>
             </div>
 
             <div className="flex gap-3 justify-end pt-2 border-t border-gray-100">

@@ -313,6 +313,57 @@ export const adaptorsApi = {
     api.get(`/adaptors/${encodeURIComponent(id)}`).then((r) => r.data.data),
 };
 
+// ─── Custom Adaptors (Phase 2 — firm-authored PlatformAdaptors) ─────────────
+
+export type CustomAdaptorStatus = 'DRAFT' | 'PARSING' | 'READY' | 'PUBLISHED' | 'FAILED' | 'ARCHIVED';
+
+export interface CustomAdaptor {
+  id: string;
+  firmId: string;
+  name: string;
+  slug: string;
+  status: CustomAdaptorStatus;
+  sourceDocuments: Array<{ filename: string; originalName: string; mimeType: string; size: number; uploadedAt: string }>;
+  parsedManifest: unknown;
+  parsedSchema: unknown;
+  parsedLicense: unknown;
+  parsedPhases: unknown;
+  parsedGenerators: unknown;
+  parseError: string | null;
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const customAdaptorsApi = {
+  list: () => api.get<{ data: CustomAdaptor[] }>('/custom-adaptors').then((r) => r.data.data),
+
+  create: (input: { name: string; slug: string }) =>
+    api.post<{ data: CustomAdaptor }>('/custom-adaptors', input).then((r) => r.data.data),
+
+  get: (id: string) =>
+    api.get<{ data: CustomAdaptor }>(`/custom-adaptors/${id}`).then((r) => r.data.data),
+
+  uploadDocument: (id: string, file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post<{ data: CustomAdaptor }>(`/custom-adaptors/${id}/documents`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then((r) => r.data.data);
+  },
+
+  parse: (id: string) =>
+    api.post<{ data: { id: string; status: string } }>(`/custom-adaptors/${id}/parse`).then((r) => r.data.data),
+
+  updateDraft: (id: string, patch: Partial<{ manifest: unknown; schema: unknown; license: unknown; phases: unknown; generators: unknown }>) =>
+    api.patch<{ data: CustomAdaptor }>(`/custom-adaptors/${id}/draft`, patch).then((r) => r.data.data),
+
+  publish: (id: string) =>
+    api.post<{ data: CustomAdaptor }>(`/custom-adaptors/${id}/publish`).then((r) => r.data.data),
+
+  archive: (id: string) => api.post(`/custom-adaptors/${id}/archive`),
+};
+
 // ─── Verticals ────────────────────────────────────────────────────────────────
 
 export const verticalsApi = {

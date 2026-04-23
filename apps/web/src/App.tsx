@@ -14,6 +14,7 @@ const PortalVerifyPage = lazy(() => import('./pages/PortalVerifyPage').then(m =>
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then(m => ({ default: m.SettingsPage })));
 const StatusReportPage = lazy(() => import('./pages/StatusReportPage').then(m => ({ default: m.StatusReportPage })));
 const VerticalWorkspacePage = lazy(() => import('./pages/VerticalWorkspacePage').then(m => ({ default: m.VerticalWorkspacePage })));
+const CustomAdaptorsPage = lazy(() => import('./pages/CustomAdaptorsPage').then(m => ({ default: m.CustomAdaptorsPage })));
 
 function PageLoader() {
   return (
@@ -59,6 +60,14 @@ function AppRoutes() {
           element={
             <RequireAuth>
               <ErrorBoundary><SettingsPage /></ErrorBoundary>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/custom-adaptors"
+          element={
+            <RequireAuth>
+              <ErrorBoundary><CustomAdaptorsPage /></ErrorBoundary>
             </RequireAuth>
           }
         />

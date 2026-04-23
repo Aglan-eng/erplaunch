@@ -22,6 +22,7 @@ import { portalRoutes } from './routes/portal.js';
 import { portalAuthRoutes } from './routes/portalAuth.js';
 import { firmBrandingRoutes } from './routes/firmBranding.js';
 import { adaptorRoutes } from './routes/adaptors.js';
+import { customAdaptorRoutes } from './routes/customAdaptors.js';
 import { registerBuiltinAdaptor } from '@ofoq/adaptor-registry';
 import netsuiteAdaptor from '@ofoq/adaptor-netsuite';
 import odooAdaptor from '@ofoq/adaptor-odoo';
@@ -132,6 +133,7 @@ export async function buildServer() {
   await fastify.register(portalRoutes, { prefix: '/api/v1' });
   await fastify.register(firmBrandingRoutes, { prefix: '/api/v1' });
   await fastify.register(adaptorRoutes, { prefix: '/api/v1' });
+  await fastify.register(customAdaptorRoutes, { prefix: '/api/v1' });
   await fastify.register(verticalsRoutes, { prefix: '/api/v1' });
   await fastify.register(dataCollectionRoutes, { prefix: '/api/v1' });
   await fastify.register(exportRoutes, { prefix: '/api/v1' });

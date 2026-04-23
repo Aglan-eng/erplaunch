@@ -505,6 +505,36 @@ async function createTables(db: Client) {
   `);
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_portalmagiclink_member  ON PortalMagicLink(memberId)`);
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_portalmagiclink_expires ON PortalMagicLink(expiresAt)`);
+
+  // ─── Custom Adaptors (Phase 2 — firm-authored platform adaptors) ───────────
+  // A custom adaptor is a firm-owned PlatformAdaptor produced by the "bring
+  // your own ERP" wizard: the firm uploads vendor docs / their own
+  // implementation playbook, the AI parser drafts a QuestionnaireSchema +
+  // LicenseModel + PhaseModel, and after firm review the adaptor is
+  // published. Stored here (not in an external registry file) so every
+  // lookup is tenant-scoped — custom adaptors never leak across firms.
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS CustomAdaptor (
+      id              TEXT PRIMARY KEY,
+      firmId          TEXT NOT NULL REFERENCES Firm(id) ON DELETE CASCADE,
+      name            TEXT NOT NULL,
+      slug            TEXT NOT NULL,
+      status          TEXT NOT NULL DEFAULT 'DRAFT',
+      sourceDocuments TEXT NOT NULL DEFAULT '[]',
+      parsedManifest  TEXT,
+      parsedSchema    TEXT,
+      parsedLicense   TEXT,
+      parsedPhases    TEXT,
+      parsedGenerators TEXT,
+      parseError      TEXT,
+      publishedAt     TEXT,
+      createdAt       TEXT NOT NULL DEFAULT (datetime('now')),
+      updatedAt       TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (firmId, slug)
+    )
+  `);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_customadaptor_firm   ON CustomAdaptor(firmId)`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_customadaptor_status ON CustomAdaptor(status)`);
 }
 
 // ─── Helper types ─────────────────────────────────────────────────────────────
@@ -1749,6 +1779,169 @@ export async function deleteDataFile(id: string) {
   const file = r.rows[0] ? parseRow<Row>(r.rows[0] as Row) : null;
   await db.execute({ sql: `DELETE FROM DataFile WHERE id = ?`, args: [id] });
   return file;
+}
+
+// ─── Custom Adaptor (Phase 2) ────────────────────────────────────────────────
+
+export type CustomAdaptorStatus = 'DRAFT' | 'PARSING' | 'READY' | 'PUBLISHED' | 'FAILED' | 'ARCHIVED';
+
+export interface CustomAdaptorRow {
+  id: string;
+  firmId: string;
+  name: string;
+  slug: string;
+  status: CustomAdaptorStatus;
+  sourceDocuments: Array<{ filename: string; originalName: string; mimeType: string; size: number; uploadedAt: string }>;
+  parsedManifest: unknown;
+  parsedSchema: unknown;
+  parsedLicense: unknown;
+  parsedPhases: unknown;
+  parsedGenerators: unknown;
+  parseError: string | null;
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function createCustomAdaptor(data: {
+  firmId: string;
+  name: string;
+  slug: string;
+}): Promise<CustomAdaptorRow> {
+  const db = getDb();
+  const id = createId();
+  await db.execute({
+    sql: `INSERT INTO CustomAdaptor (id, firmId, name, slug, status) VALUES (?, ?, ?, ?, 'DRAFT')`,
+    args: [id, data.firmId, data.name, data.slug],
+  });
+  const row = await findCustomAdaptorById(id);
+  if (!row) throw new Error('custom adaptor insert failed');
+  return row;
+}
+
+export async function findCustomAdaptorById(id: string): Promise<CustomAdaptorRow | null> {
+  const db = getDb();
+  const r = await db.execute({ sql: `SELECT * FROM CustomAdaptor WHERE id = ?`, args: [id] });
+  if (!r.rows[0]) return null;
+  return parseRow<CustomAdaptorRow>(r.rows[0] as Row);
+}
+
+export async function findCustomAdaptorByFirmAndSlug(firmId: string, slug: string): Promise<CustomAdaptorRow | null> {
+  const db = getDb();
+  const r = await db.execute({
+    sql: `SELECT * FROM CustomAdaptor WHERE firmId = ? AND slug = ?`,
+    args: [firmId, slug],
+  });
+  if (!r.rows[0]) return null;
+  return parseRow<CustomAdaptorRow>(r.rows[0] as Row);
+}
+
+export async function listCustomAdaptorsForFirm(firmId: string): Promise<CustomAdaptorRow[]> {
+  const db = getDb();
+  const r = await db.execute({
+    sql: `SELECT * FROM CustomAdaptor WHERE firmId = ? AND status != 'ARCHIVED' ORDER BY createdAt DESC`,
+    args: [firmId],
+  });
+  return r.rows.map((row) => parseRow<CustomAdaptorRow>(row as Row));
+}
+
+export async function listPublishedCustomAdaptorsForFirm(firmId: string): Promise<CustomAdaptorRow[]> {
+  const db = getDb();
+  const r = await db.execute({
+    sql: `SELECT * FROM CustomAdaptor WHERE firmId = ? AND status = 'PUBLISHED' ORDER BY createdAt DESC`,
+    args: [firmId],
+  });
+  return r.rows.map((row) => parseRow<CustomAdaptorRow>(row as Row));
+}
+
+export async function appendCustomAdaptorDocument(
+  id: string,
+  doc: { filename: string; originalName: string; mimeType: string; size: number },
+): Promise<CustomAdaptorRow> {
+  const row = await findCustomAdaptorById(id);
+  if (!row) throw new Error('custom adaptor not found');
+  const docs = Array.isArray(row.sourceDocuments) ? row.sourceDocuments : [];
+  docs.push({ ...doc, uploadedAt: new Date().toISOString() });
+  const db = getDb();
+  await db.execute({
+    sql: `UPDATE CustomAdaptor SET sourceDocuments = ?, updatedAt = datetime('now') WHERE id = ?`,
+    args: [JSON.stringify(docs), id],
+  });
+  const updated = await findCustomAdaptorById(id);
+  if (!updated) throw new Error('custom adaptor update failed');
+  return updated;
+}
+
+export async function updateCustomAdaptorStatus(
+  id: string,
+  status: CustomAdaptorStatus,
+  parseError?: string | null,
+): Promise<CustomAdaptorRow> {
+  const db = getDb();
+  await db.execute({
+    sql: `UPDATE CustomAdaptor SET status = ?, parseError = ?, updatedAt = datetime('now') WHERE id = ?`,
+    args: [status, parseError ?? null, id],
+  });
+  const updated = await findCustomAdaptorById(id);
+  if (!updated) throw new Error('custom adaptor not found');
+  return updated;
+}
+
+export async function savePlatformAdaptorDraft(
+  id: string,
+  parsed: {
+    manifest: unknown;
+    schema: unknown;
+    license: unknown;
+    phases: unknown;
+    generators: unknown;
+  },
+): Promise<CustomAdaptorRow> {
+  const db = getDb();
+  await db.execute({
+    sql: `
+      UPDATE CustomAdaptor
+         SET parsedManifest   = ?,
+             parsedSchema     = ?,
+             parsedLicense    = ?,
+             parsedPhases     = ?,
+             parsedGenerators = ?,
+             status           = 'READY',
+             parseError       = NULL,
+             updatedAt        = datetime('now')
+       WHERE id = ?
+    `,
+    args: [
+      JSON.stringify(parsed.manifest),
+      JSON.stringify(parsed.schema),
+      JSON.stringify(parsed.license),
+      JSON.stringify(parsed.phases),
+      JSON.stringify(parsed.generators),
+      id,
+    ],
+  });
+  const updated = await findCustomAdaptorById(id);
+  if (!updated) throw new Error('custom adaptor save failed');
+  return updated;
+}
+
+export async function publishCustomAdaptor(id: string): Promise<CustomAdaptorRow> {
+  const db = getDb();
+  await db.execute({
+    sql: `UPDATE CustomAdaptor SET status = 'PUBLISHED', publishedAt = datetime('now'), updatedAt = datetime('now') WHERE id = ?`,
+    args: [id],
+  });
+  const updated = await findCustomAdaptorById(id);
+  if (!updated) throw new Error('custom adaptor not found');
+  return updated;
+}
+
+export async function archiveCustomAdaptor(id: string): Promise<void> {
+  const db = getDb();
+  await db.execute({
+    sql: `UPDATE CustomAdaptor SET status = 'ARCHIVED', updatedAt = datetime('now') WHERE id = ?`,
+    args: [id],
+  });
 }
 
 
