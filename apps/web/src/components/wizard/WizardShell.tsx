@@ -182,7 +182,11 @@ export function WizardShell() {
   // If navigation carried a section hint (e.g. from the Stage Gate Modal), jump to it
   useEffect(() => {
     const stateSection = (location.state as { section?: string } | null)?.section;
-    if (stateSection && ALL_SECTION_KEYS.has(stateSection)) {
+    if (!stateSection) return;
+    const [flowPrefix, sectionId] = stateSection.split('.');
+    const isAdaptorFlowSection =
+      !!sectionId && ['r2r', 'p2p', 'o2c', 'mfg', 'rtn'].includes(flowPrefix);
+    if (ALL_SECTION_KEYS.has(stateSection) || isAdaptorFlowSection) {
       setCurrentSection(stateSection);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -350,8 +354,15 @@ export function WizardShell() {
       return <SummaryView />;
     }
 
-    // Any recognised flow.section key → generic FlowSectionStep
-    if (ALL_SECTION_KEYS.has(currentSection)) {
+    // Any recognised flow.section key → generic FlowSectionStep. Either the
+    // NetSuite legacy whitelist, or any "<flow>.<section>" pair where flow is
+    // one of the wizard's known prefixes (r2r/p2p/o2c/mfg/rtn) — the latter
+    // lets adaptor-authored sections (odoo.company, myerp.sales, etc.) render
+    // without us having to maintain a static enumeration per adaptor.
+    const [flowPrefix, sectionId] = currentSection.split('.');
+    const isAdaptorFlowSection =
+      !!sectionId && ['r2r', 'p2p', 'o2c', 'mfg', 'rtn'].includes(flowPrefix);
+    if (ALL_SECTION_KEYS.has(currentSection) || isAdaptorFlowSection) {
       return (
         <FlowSectionStep sectionKey={currentSection} engagementId={engagementId} />
       );
@@ -377,6 +388,7 @@ export function WizardShell() {
 
       <div className="flex flex-1 overflow-hidden">
         <WizardSidebar
+          engagementId={engagementId!}
           sectionProgress={sectionProgress}
           licenseComplete={licenseComplete}
           projectSetupComplete={projectSetupComplete}
