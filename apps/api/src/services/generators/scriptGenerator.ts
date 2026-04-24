@@ -138,62 +138,13 @@ define(['N/currentRecord', 'N/log', 'N/ui/dialog'], (currentRecord, log, dialog)
     files['NSIX_CS_FormValidation.js'] = clientScript;
   }
 
-  // 5. Conditional: Approval Chain Workflow
-  const billApprovalRequired = ans(answers, 'p2p.bills.billApprovalRequired') === true;
-
-  if (billApprovalRequired || poApprovalRequired) {
-    const workflowXml = `<?xml version="1.0" encoding="UTF-8"?>
-<workflow
-  name="NSIX Approval Chain"
-  recordtype="vendorbill"
-  runasadmin="F"
-  initoncreate="T"
-  inittriggerdefinition="BEFORESUBMIT"
-  xmlns="urn:workflow.webservices.netsuite.com">
-  <initcondition>
-    <formula>true</formula>
-  </initcondition>
-  <workflowstates>
-    <workflowstate name="Pending Approval" positionx="100" positiony="100">
-      <workflowactions triggertype="ONENTRY">
-        <sendemailaction>
-          <recipient type="ROLE" role="3"/>
-          <subject>Approval Required: ${clientName} Bill Pending</subject>
-          <body>A new vendor bill requires your approval. Please review in NetSuite.</body>
-        </sendemailaction>
-      </workflowactions>
-      <workflowtransitions>
-        <workflowtransition tostate="Approved">
-          <initcondition>
-            <formula>{{custbody_nsix_je_approval_status}} = 'Approved'</formula>
-          </initcondition>
-        </workflowtransition>
-        <workflowtransition tostate="Rejected">
-          <initcondition>
-            <formula>{{custbody_nsix_je_approval_status}} = 'Rejected'</formula>
-          </initcondition>
-        </workflowtransition>
-      </workflowtransitions>
-    </workflowstate>
-    <workflowstate name="Approved" positionx="300" positiony="100">
-      <workflowactions triggertype="ONENTRY">
-        <setfieldvalueaction>
-          <field name="approvalstatus" value="2"/>
-        </setfieldvalueaction>
-      </workflowactions>
-    </workflowstate>
-    <workflowstate name="Rejected" positionx="300" positiony="200">
-      <workflowactions triggertype="ONENTRY">
-        <setfieldvalueaction>
-          <field name="approvalstatus" value="3"/>
-        </setfieldvalueaction>
-      </workflowactions>
-    </workflowstate>
-  </workflowstates>
-</workflow>`;
-
-    files['NSIX_WF_ApprovalChain.xml'] = workflowXml;
-  }
+  // Phase 6 note: we previously emitted an NSIX_WF_ApprovalChain.xml here
+  // based on bill/PO approval triggers. The XML used a SOAP webservices
+  // namespace and a <sendemailaction> shape that SDF rejects outright —
+  // Oracle's own guidance is explicit: author workflows in the NetSuite UI
+  // and export via SDF, don't hand-write them. The approval flow is now
+  // described in prose in the Solution Design document so the consultant
+  // can build it in the UI before deploy.
 
   return files;
 }

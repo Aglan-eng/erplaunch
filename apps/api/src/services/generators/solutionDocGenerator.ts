@@ -211,7 +211,40 @@ export function generateSolutionDoc(data: SolutionDocData): string {
   if (answers['o2c.salesOrders.soApprovalRequired'] === true) {
     doc += `| Workflow | SO Approval | Route Sales Orders to approval based on value or type |\n`;
   }
-  doc += `\n---\n\n`;
+  doc += `\n`;
+
+  // ── SECTION 4.3: Approval Workflows — manual implementation ─────────────
+  // Phase 6: we no longer ship hand-written workflow XML (SDF rejects the
+  // SOAP webservices namespace and the <sendemailaction> shape). Instead
+  // the consultant authors these in the NetSuite UI, then exports via SDF
+  // for source-controlled promotion to higher environments.
+  const poApproval = answers['p2p.purchasing.poApprovalRequired'] === true;
+  const billApproval = answers['p2p.bills.billApprovalRequired'] === true;
+  const soApproval = answers['o2c.salesOrders.soApprovalRequired'] === true;
+  if (poApproval || billApproval || soApproval) {
+    doc += `### 4.3 Approval Workflows — Manual Implementation Required\n\n`;
+    doc += `The following approval workflows must be authored in the NetSuite UI `;
+    doc += `(Customization → Workflow → Workflows → New). Oracle guidance is to `;
+    doc += `build workflows in the UI and export them via SDF rather than hand-write `;
+    doc += `the XML; the approval actions (email, state transitions, role routing) `;
+    doc += `use platform objects the SDF validator will only accept when they come `;
+    doc += `from a UI export.\n\n`;
+    doc += `| Workflow | Record Type | Trigger | Notes |\n| :--- | :--- | :--- | :--- |\n`;
+    if (poApproval) {
+      doc += `| PO Approval | Purchase Order | Before Submit | Route to Procurement Manager on threshold; escalate to CFO above the second tier. Use role-based recipients, not hard-coded user IDs. |\n`;
+    }
+    if (billApproval) {
+      doc += `| Bill Approval | Vendor Bill | Before Submit | Pair with the \`custbody_nsix_three_way_match_status\` field so bills can only progress past Pending Approval once a 3-way match is recorded. |\n`;
+    }
+    if (soApproval) {
+      doc += `| Sales Order Approval | Sales Order | Before Submit | Route by order value or customer credit tier. Wire a transition to a "Credit Hold" state when the customer has an overdue AR balance. |\n`;
+    }
+    doc += `\n**Checklist for the consultant:** (1) build the workflow in the UI of the lowest environment, `;
+    doc += `(2) run end-to-end with a test record, (3) export via \`suitecloud object:import --type workflow\`, `;
+    doc += `(4) commit the exported XML into the SDF bundle for promotion.\n\n`;
+  }
+
+  doc += `---\n\n`;
 
   // ── SECTION 6: Roles & Permissions ──────────────────────────────────────────
   doc += `## 5. User Roles & Access\n\n`;
