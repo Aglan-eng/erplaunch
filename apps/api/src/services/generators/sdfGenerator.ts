@@ -14,6 +14,17 @@ export interface PendingListValues {
   label: string;
 }
 
+/** A custom segment that was triggered by wizard answers but intentionally
+ *  NOT emitted as XML (Phase 5). Valid segment authoring requires a
+ *  companion customrecordtype + a <recordtype> linkage that the wizard
+ *  doesn't collect today — rather than ship a broken half, the generator
+ *  surfaces each segment here so the BRD can ask the consultant to create
+ *  them in the NetSuite UI. */
+export interface PendingSegmentValues {
+  scriptid: string;
+  label: string;
+}
+
 /** Return shape for generateSDFPackage. `files` is the on-disk bundle
  *  (same Record<path, body> shape callers had before Phase 4). Everything
  *  else is metadata the generator surfaces so downstream (BRD / Solution
@@ -21,6 +32,7 @@ export interface PendingListValues {
 export interface SDFPackageResult {
   files: Record<string, string>;
   pendingListValues: PendingListValues[];
+  pendingSegments: PendingSegmentValues[];
 }
 
 /** Helper: look up a flat dot-key answer (e.g. 'r2r.fiscalClose.autoLockAfterApproval') — fixed v2 */
@@ -107,6 +119,7 @@ export function generateSDFPackage(data: SDFData): SDFPackageResult {
   const { modules, answers, clientName = 'NSIXClient' } = data;
   const files: Record<string, string> = {};
   const pendingListValues: PendingListValues[] = [];
+  const pendingSegments: PendingSegmentValues[] = [];
 
   const allFeatures = deriveFeatures(modules, answers);
   const alwaysRequired = new Set(['CUSTOMRECORDS', 'SUITESCRIPT']);
@@ -165,6 +178,20 @@ export function generateSDFPackage(data: SDFData): SDFPackageResult {
   // don't need a DOM parser just to check for a sibling text node.
   const mappings = getMappingsForAnswers(answers);
   for (const m of mappings) {
+    // Fix #5: never emit customsegment XML. A valid segment also needs a
+    // companion customrecordtype + <recordtype> linkage that the wizard
+    // doesn't collect; shipping half of that pair fails deploy. Record the
+    // segment in pendingSegments instead so the BRD generator asks the
+    // consultant to create them in the NetSuite UI.
+    if (m.output.type === 'customsegment') {
+      pendingSegments.push({
+        scriptid: m.output.scriptid,
+        label: extractLabel(m.output.template) ?? m.output.scriptid,
+      });
+      continue;
+    }
+    // Fix #4: customlist with no <customvalue> entries fails deploy. Skip
+    // + route to pendingListValues.
     if (m.output.type === 'customlist' && !hasCustomValues(m.output.template)) {
       pendingListValues.push({
         scriptid: m.output.scriptid,
@@ -179,7 +206,7 @@ export function generateSDFPackage(data: SDFData): SDFPackageResult {
   // 4. FileCabinet directory placeholder
   files['FileCabinet/SuiteScripts/NSIX/.gitkeep'] = '';
 
-  return { files, pendingListValues };
+  return { files, pendingListValues, pendingSegments };
 }
 
 /** True when the template's <customvalues> block contains at least one

@@ -13,6 +13,47 @@ import { normalizeXml, readFixture } from './_helpers.js';
  * generated bundle and the fixture.
  */
 
+describe('sdfGenerator: Fix #5 — drop customsegment XML, surface pendingSegments for BRD', () => {
+  it('does NOT emit any cseg_*.xml file even when every segment trigger fires', () => {
+    const result = generateSDFPackage({
+      modules: [],
+      answers: {
+        'r2r.segmentation.useDepartments': true,
+        'r2r.segmentation.useClasses': true,
+        'r2r.segmentation.useLocations': true,
+      },
+      clientName: 'FixtureTest',
+    });
+    const segFiles = Object.keys(result.files).filter((k) => /cseg_/i.test(k));
+    expect(segFiles, 'No cseg_*.xml files should land on disk').toEqual([]);
+  });
+
+  it('surfaces the 3 segments with labels so the BRD can prompt the consultant', () => {
+    const result = generateSDFPackage({
+      modules: [],
+      answers: {
+        'r2r.segmentation.useDepartments': true,
+        'r2r.segmentation.useClasses': true,
+        'r2r.segmentation.useLocations': true,
+      },
+      clientName: 'FixtureTest',
+    });
+    expect(result.pendingSegments).toBeDefined();
+    expect(result.pendingSegments.length).toBe(3);
+    const scriptids = result.pendingSegments.map((p) => p.scriptid).sort();
+    expect(scriptids).toEqual(['cseg_nsix_class', 'cseg_nsix_department', 'cseg_nsix_location']);
+    // Each should carry a human label so BRD rendering looks reasonable.
+    for (const seg of result.pendingSegments) {
+      expect(seg.label.length, `${seg.scriptid} missing label`).toBeGreaterThan(0);
+    }
+  });
+
+  it('returns an empty pendingSegments when no segment triggers fire', () => {
+    const result = generateSDFPackage({ modules: [], answers: {}, clientName: 'FixtureTest' });
+    expect(result.pendingSegments).toEqual([]);
+  });
+});
+
 describe('sdfGenerator: Fix #4 — customlist is skipped when it has no values; surfaces pending list', () => {
   it('does NOT emit customlist_*.xml when the wizard has not supplied values', () => {
     const result = generateSDFPackage({
