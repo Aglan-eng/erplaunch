@@ -13,11 +13,48 @@ import { normalizeXml, readFixture } from './_helpers.js';
  * generated bundle and the fixture.
  */
 
+describe('sdfGenerator: Fix #4 — customlist is skipped when it has no values; surfaces pending list', () => {
+  it('does NOT emit customlist_*.xml when the wizard has not supplied values', () => {
+    const result = generateSDFPackage({
+      modules: [],
+      answers: { 'o2c.pricing.multiplePriceLevels': true },
+      clientName: 'FixtureTest',
+    });
+    // Old shape had a customlist_*.xml under Objects/ — new shape must omit it
+    // entirely when the list would be empty.
+    const listFiles = Object.keys(result.files).filter((k) => /customlist_/i.test(k));
+    expect(listFiles, 'No customlist_*.xml should be emitted when no values are supplied').toEqual([]);
+  });
+
+  it('surfaces the pending list so the BRD generator can prompt the consultant', () => {
+    const result = generateSDFPackage({
+      modules: [],
+      answers: { 'o2c.pricing.multiplePriceLevels': true },
+      clientName: 'FixtureTest',
+    });
+    expect(result.pendingListValues).toBeDefined();
+    expect(result.pendingListValues.map((p) => p.scriptid)).toContain('customlist_nsix_price_levels');
+  });
+
+  it('result.files dictionary still round-trips as a Record<string,string>', () => {
+    // Callers (generation.ts) iterate with Object.entries — guard that shape.
+    const result = generateSDFPackage({
+      modules: [],
+      answers: {},
+      clientName: 'FixtureTest',
+    });
+    expect(typeof result.files).toBe('object');
+    for (const v of Object.values(result.files)) {
+      expect(typeof v).toBe('string');
+    }
+  });
+});
+
 describe('sdfGenerator: Fix #3 — stop emitting AccountConfiguration/features.xml', () => {
   it('does NOT emit AccountConfiguration/features.xml', () => {
     // Any answer combination that would previously have triggered feature
     // derivation — must not land as a standalone features.xml on disk.
-    const files = generateSDFPackage({
+    const { files } = generateSDFPackage({
       modules: ['MULTICURRENCY', 'WORK_ORDERS', 'DEMAND_PLANNING'],
       answers: {
         'r2r.currencies.isMultiCurrency': true,
@@ -34,7 +71,7 @@ describe('sdfGenerator: Fix #3 — stop emitting AccountConfiguration/features.x
   });
 
   it('manifest.xml still carries the <dependencies><features> block (single source of truth)', () => {
-    const files = generateSDFPackage({
+    const { files } = generateSDFPackage({
       modules: ['MULTICURRENCY'],
       answers: { 'r2r.currencies.isMultiCurrency': true },
       clientName: 'FixtureTest',
@@ -50,7 +87,7 @@ describe('sdfGenerator: Fix #3 — stop emitting AccountConfiguration/features.x
 
 describe('sdfGenerator: Fix #1 — customrecordtype root element', () => {
   it('emits <customrecordtype> (not <customrecord>) with the Oracle-required children', () => {
-    const files = generateSDFPackage({
+    const { files } = generateSDFPackage({
       modules: [],
       answers: {
         // Only this answer is set to minimise unrelated mappings in the bundle.
@@ -80,7 +117,7 @@ describe('sdfGenerator: Fix #1 — customrecordtype root element', () => {
   });
 
   it('emits <transactionbodycustomfield> for custbody_* (Fix #2) with label + fieldtype required-first', () => {
-    const files = generateSDFPackage({
+    const { files } = generateSDFPackage({
       modules: [],
       answers: { 'p2p.receiving.threeWayMatch': true },
       clientName: 'FixtureTest',
@@ -96,7 +133,7 @@ describe('sdfGenerator: Fix #1 — customrecordtype root element', () => {
   });
 
   it('emits <transactionbodycustomfield> for every custbody_* mapping, never <othercustomfield>', () => {
-    const files = generateSDFPackage({
+    const { files } = generateSDFPackage({
       modules: [],
       answers: {
         'r2r.journalEntries.approvalRequired': true,
@@ -122,7 +159,7 @@ describe('sdfGenerator: Fix #1 — customrecordtype root element', () => {
   it('emits <customrecordtype> for every customrecord_* mapping, never <customrecord>', () => {
     // Flip on every mapping trigger so every customrecord in the registry
     // fires — catches a template we might have missed during the rewrite.
-    const files = generateSDFPackage({
+    const { files } = generateSDFPackage({
       modules: ['MANUFACTURING', 'WORK_ORDERS'],
       answers: {
         'mfg.productionFlow.type': 'WIP_ROUTINGS',

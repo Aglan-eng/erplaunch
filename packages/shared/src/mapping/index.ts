@@ -207,11 +207,18 @@ export const SDF_MAPPING_REGISTRY: SDFMapping[] = [
     output: {
       type: 'customlist',
       scriptid: 'customlist_nsix_price_levels',
+      // Phase 4 shape note: <label> replaces the invalid <name>; the list
+      // is only emitted when <customvalues> has at least one entry —
+      // sdfGenerator.ts handles the skip. The wizard does not yet collect
+      // values, so today this mapping always lands in pendingListValues and
+      // the BRD generator asks the consultant to fill them in.
       template: `
-        <customlist scriptid="customlist_nsix_price_levels">
-          <description>NSIX-managed list of configured price levels for customer pricing tiers.</description>
-          <name>NSIX Price Levels</name>
-        </customlist>
+<customlist scriptid="customlist_nsix_price_levels">
+  <label>NSIX Price Levels</label>
+  <description>NSIX-managed list of configured price levels for customer pricing tiers.</description>
+  <customvalues>
+  </customvalues>
+</customlist>
       `,
     },
   },

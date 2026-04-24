@@ -122,7 +122,7 @@ export async function processJob(jobId: string, db: DbModule) {
       await fs.mkdir(sdfDir, { recursive: true });
       await fs.mkdir(ssDir, { recursive: true });
 
-      const sdfFiles = generateSDFPackage({
+      const { files: sdfFiles } = generateSDFPackage({
         modules: license.modules ?? [],
         answers,
         clientName: eng.clientName as string,

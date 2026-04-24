@@ -6,6 +6,23 @@ export interface SDFData {
   clientName?: string;
 }
 
+/** A customlist the generator wanted to emit but skipped because the wizard
+ *  didn't supply any values. The BRD generator consumes this to tell the
+ *  consultant which lists they still need to populate manually. */
+export interface PendingListValues {
+  scriptid: string;
+  label: string;
+}
+
+/** Return shape for generateSDFPackage. `files` is the on-disk bundle
+ *  (same Record<path, body> shape callers had before Phase 4). Everything
+ *  else is metadata the generator surfaces so downstream (BRD / Solution
+ *  Design) can render the gaps. */
+export interface SDFPackageResult {
+  files: Record<string, string>;
+  pendingListValues: PendingListValues[];
+}
+
 /** Helper: look up a flat dot-key answer (e.g. 'r2r.fiscalClose.autoLockAfterApproval') — fixed v2 */
 function ans(answers: Record<string, any>, key: string): any {
   return answers[key];
@@ -86,9 +103,10 @@ function deriveFeatures(modules: string[], answers: Record<string, any>): string
   return Array.from(features);
 }
 
-export function generateSDFPackage(data: SDFData): Record<string, string> {
+export function generateSDFPackage(data: SDFData): SDFPackageResult {
   const { modules, answers, clientName = 'NSIXClient' } = data;
   const files: Record<string, string> = {};
+  const pendingListValues: PendingListValues[] = [];
 
   const allFeatures = deriveFeatures(modules, answers);
   const alwaysRequired = new Set(['CUSTOMRECORDS', 'SUITESCRIPT']);
@@ -138,14 +156,42 @@ export function generateSDFPackage(data: SDFData): Record<string, string> {
   files['deploy.xml'] = deployXml;
 
   // 3. Objects Mapping
+  //
+  // Fix #4: customlists with no <customvalue> entries are invalid Oracle
+  // SDF — the deploy step rejects them. Rather than ship a broken file, we
+  // skip emission and record the list in `pendingListValues` so the BRD
+  // generator can ask the consultant to fill them in manually. The
+  // "empty-list" detection is a narrow regex against the template — we
+  // don't need a DOM parser just to check for a sibling text node.
   const mappings = getMappingsForAnswers(answers);
-  mappings.forEach(m => {
+  for (const m of mappings) {
+    if (m.output.type === 'customlist' && !hasCustomValues(m.output.template)) {
+      pendingListValues.push({
+        scriptid: m.output.scriptid,
+        label: extractLabel(m.output.template) ?? m.output.scriptid,
+      });
+      continue;
+    }
     const filename = `Objects/${m.output.scriptid}.xml`;
     files[filename] = `<?xml version="1.0" encoding="UTF-8"?>\n${m.output.template.trim()}`;
-  });
+  }
 
   // 4. FileCabinet directory placeholder
   files['FileCabinet/SuiteScripts/NSIX/.gitkeep'] = '';
 
-  return files;
+  return { files, pendingListValues };
+}
+
+/** True when the template's <customvalues> block contains at least one
+ *  <customvalue> child element. Narrow regex — we only need "is there
+ *  substance inside the container" not a full XML parse. */
+function hasCustomValues(template: string): boolean {
+  return /<customvalue\b/.test(template);
+}
+
+/** Pull the <label> text out of a template so the BRD can render a friendly
+ *  name for the consultant. Returns null if the template has no label. */
+function extractLabel(template: string): string | null {
+  const match = template.match(/<label>([^<]+)<\/label>/);
+  return match ? match[1].trim() : null;
 }
