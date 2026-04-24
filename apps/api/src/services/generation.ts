@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import type * as dbModule from '../db/index.js';
 import { generateBRD, generateBRDHtml } from './generators/brdGenerator.js';
 import { generateSDFPackage } from './generators/sdfGenerator.js';
+import { validateSDFBundle, isValidationEnabled } from './generators/sdfValidator.js';
 import { generateScripts } from './generators/scriptGenerator.js';
 import { generateRiskRegister } from './generators/riskGenerator.js';
 import { generateUATPlan, generateUATPlanHtml } from './generators/uatGenerator.js';
@@ -127,6 +128,19 @@ export async function processJob(jobId: string, db: DbModule) {
         answers,
         clientName: eng.clientName as string,
       });
+
+      // Phase 8: structural SDF validation gate. Fails the job loudly if any
+      // generated XML file would be rejected by Oracle's schema — catches
+      // regressions to Fixes #1–#6 before they ever hit disk. Default on;
+      // opt out with SDF_VALIDATE=0 for local debugging only.
+      if (isValidationEnabled()) {
+        const validation = validateSDFBundle(sdfFiles);
+        if (!validation.ok) {
+          const payload = JSON.stringify(validation.errors, null, 2);
+          throw new Error(`SDF validation failed with ${validation.errors.length} error(s):\n${payload}`);
+        }
+      }
+
       for (const [relPath, content] of Object.entries(sdfFiles)) {
         const fullPath = path.join(sdfDir, relPath);
         await fs.mkdir(path.dirname(fullPath), { recursive: true });
