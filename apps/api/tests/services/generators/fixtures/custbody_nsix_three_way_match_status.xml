@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<transactionbodycustomfield scriptid="custbody_nsix_three_way_match_status">
+  <label>3-Way Match Status</label>
+  <fieldtype>SELECT</fieldtype>
+  <selectrecordtype>-224</selectrecordtype>
+  <appliestopurchaseorder>T</appliestopurchaseorder>
+</transactionbodycustomfield>

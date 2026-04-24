@@ -80,13 +80,12 @@ export const SDF_MAPPING_REGISTRY: SDFMapping[] = [
       type: 'customfield',
       scriptid: 'custbody_nsix_je_approval_status',
       template: `
-        <othercustomfield scriptid="custbody_nsix_je_approval_status">
-          <appliestojournal>T</appliestojournal>
-          <description>Tracks approval status for journal entries requiring authorization.</description>
-          <fieldtype>SELECT</fieldtype>
-          <label>JE Approval Status</label>
-          <selectrecordtype>-224</selectrecordtype>
-        </othercustomfield>
+<transactionbodycustomfield scriptid="custbody_nsix_je_approval_status">
+  <label>JE Approval Status</label>
+  <fieldtype>SELECT</fieldtype>
+  <selectrecordtype>-224</selectrecordtype>
+  <appliestojournal>T</appliestojournal>
+</transactionbodycustomfield>
       `,
     },
   },
@@ -154,13 +153,12 @@ export const SDF_MAPPING_REGISTRY: SDFMapping[] = [
       type: 'customfield',
       scriptid: 'custbody_nsix_three_way_match_status',
       template: `
-        <othercustomfield scriptid="custbody_nsix_three_way_match_status">
-          <appliestopurchaseorder>T</appliestopurchaseorder>
-          <description>Indicates whether a PO has completed 3-way matching (PO, receipt, invoice).</description>
-          <fieldtype>SELECT</fieldtype>
-          <label>3-Way Match Status</label>
-          <selectrecordtype>-224</selectrecordtype>
-        </othercustomfield>
+<transactionbodycustomfield scriptid="custbody_nsix_three_way_match_status">
+  <label>3-Way Match Status</label>
+  <fieldtype>SELECT</fieldtype>
+  <selectrecordtype>-224</selectrecordtype>
+  <appliestopurchaseorder>T</appliestopurchaseorder>
+</transactionbodycustomfield>
       `,
     },
   },

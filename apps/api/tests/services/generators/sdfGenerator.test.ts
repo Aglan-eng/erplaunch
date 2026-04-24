@@ -44,6 +44,46 @@ describe('sdfGenerator: Fix #1 — customrecordtype root element', () => {
     expect(normalizeXml(got!)).toBe(normalizeXml(readFixture('customrecord_nsix_purchase_req.xml')));
   });
 
+  it('emits <transactionbodycustomfield> for custbody_* (Fix #2) with label + fieldtype required-first', () => {
+    const files = generateSDFPackage({
+      modules: [],
+      answers: { 'p2p.receiving.threeWayMatch': true },
+      clientName: 'FixtureTest',
+    });
+    const got = files['Objects/custbody_nsix_three_way_match_status.xml'];
+    expect(got).toBeDefined();
+    expect(got).toContain('<transactionbodycustomfield scriptid="custbody_nsix_three_way_match_status">');
+    expect(got).not.toContain('<othercustomfield');
+    expect(got).not.toContain('<description>');
+    // SELECT field requires selectrecordtype to be present.
+    expect(got).toContain('<selectrecordtype>-224</selectrecordtype>');
+    expect(normalizeXml(got!)).toBe(normalizeXml(readFixture('custbody_nsix_three_way_match_status.xml')));
+  });
+
+  it('emits <transactionbodycustomfield> for every custbody_* mapping, never <othercustomfield>', () => {
+    const files = generateSDFPackage({
+      modules: [],
+      answers: {
+        'r2r.journalEntries.approvalRequired': true,
+        'p2p.receiving.threeWayMatch': true,
+      },
+      clientName: 'FixtureTest',
+    });
+    const custbodyFiles = Object.entries(files).filter(([name]) =>
+      name.startsWith('Objects/custbody_'),
+    );
+    expect(custbodyFiles.length).toBeGreaterThanOrEqual(2);
+    for (const [name, body] of custbodyFiles) {
+      expect(body, `${name} still uses <othercustomfield>`).not.toContain('<othercustomfield');
+      expect(body, `${name} missing <transactionbodycustomfield> root`).toContain('<transactionbodycustomfield ');
+      expect(body, `${name} still has forbidden <description>`).not.toContain('<description>');
+      // label + fieldtype are required. (selectrecordtype is only required
+      // for SELECT/MULTISELECT fieldtypes — checked above per-field.)
+      expect(body, `${name} missing <label>`).toMatch(/<label>[^<]+<\/label>/);
+      expect(body, `${name} missing <fieldtype>`).toMatch(/<fieldtype>[^<]+<\/fieldtype>/);
+    }
+  });
+
   it('emits <customrecordtype> for every customrecord_* mapping, never <customrecord>', () => {
     // Flip on every mapping trigger so every customrecord in the registry
     // fires — catches a template we might have missed during the rewrite.
