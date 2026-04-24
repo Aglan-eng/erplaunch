@@ -13,6 +13,41 @@ import { normalizeXml, readFixture } from './_helpers.js';
  * generated bundle and the fixture.
  */
 
+describe('sdfGenerator: Fix #3 — stop emitting AccountConfiguration/features.xml', () => {
+  it('does NOT emit AccountConfiguration/features.xml', () => {
+    // Any answer combination that would previously have triggered feature
+    // derivation — must not land as a standalone features.xml on disk.
+    const files = generateSDFPackage({
+      modules: ['MULTICURRENCY', 'WORK_ORDERS', 'DEMAND_PLANNING'],
+      answers: {
+        'r2r.currencies.isMultiCurrency': true,
+        'r2r.segmentation.useDepartments': true,
+        'p2p.purchasing.usePurchaseOrders': true,
+      },
+      clientName: 'FixtureTest',
+    });
+    expect(files['AccountConfiguration/features.xml']).toBeUndefined();
+    // No other path under AccountConfiguration/ should carry features either.
+    for (const key of Object.keys(files)) {
+      expect(key, `unexpected feature-like file emitted: ${key}`).not.toMatch(/features\.xml$/i);
+    }
+  });
+
+  it('manifest.xml still carries the <dependencies><features> block (single source of truth)', () => {
+    const files = generateSDFPackage({
+      modules: ['MULTICURRENCY'],
+      answers: { 'r2r.currencies.isMultiCurrency': true },
+      clientName: 'FixtureTest',
+    });
+    const manifest = files['manifest.xml'];
+    expect(manifest).toBeDefined();
+    expect(manifest).toContain('<dependencies>');
+    expect(manifest).toContain('<features>');
+    expect(manifest).toContain('MULTICURRENCY');
+    expect(manifest).toContain('</features>');
+  });
+});
+
 describe('sdfGenerator: Fix #1 — customrecordtype root element', () => {
   it('emits <customrecordtype> (not <customrecord>) with the Oracle-required children', () => {
     const files = generateSDFPackage({

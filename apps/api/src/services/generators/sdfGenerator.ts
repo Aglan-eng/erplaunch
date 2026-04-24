@@ -112,12 +112,21 @@ export function generateSDFPackage(data: SDFData): Record<string, string> {
 
   files['manifest.xml'] = manifestXml;
 
-  // 2. Deploy XML
+  // 2. Deploy XML.
+  //
+  // Fix #3: we used to emit an AccountConfiguration/features.xml file with
+  // the wrong shape (<feature id="X">T</feature> instead of the valid
+  // <feature label="..."><id>X</id><status>ENABLED</status></feature>
+  // form). The simplest pilot-safe move is to drop the feature file
+  // entirely — the manifest's <dependencies><features> block above already
+  // tells SuiteCloud which features the bundle needs, and feature
+  // toggling itself is an account-admin task done out-of-band.
+  //
+  // Because there are no AccountConfiguration/* files anymore, we drop the
+  // corresponding <configuration> path from deploy.xml too; keeping it
+  // would make `suitecloud project:validate` complain about the empty dir.
   let deployXml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
   deployXml += `<deploy>\n`;
-  deployXml += `  <configuration>\n`;
-  deployXml += `    <path>~/AccountConfiguration/*</path>\n`;
-  deployXml += `  </configuration>\n`;
   deployXml += `  <files>\n`;
   deployXml += `    <path>~/FileCabinet/SuiteScripts/NSIX/*</path>\n`;
   deployXml += `  </files>\n`;
@@ -128,23 +137,14 @@ export function generateSDFPackage(data: SDFData): Record<string, string> {
 
   files['deploy.xml'] = deployXml;
 
-  // 3. Features XML
-  let featuresXml = `<?xml version="1.0" encoding="UTF-8"?>\n<features>\n`;
-  for (const f of allFeatures) {
-    featuresXml += `  <feature id="${f}">T</feature>\n`;
-  }
-  featuresXml += `</features>`;
-
-  files['AccountConfiguration/features.xml'] = featuresXml;
-
-  // 4. Objects Mapping
+  // 3. Objects Mapping
   const mappings = getMappingsForAnswers(answers);
   mappings.forEach(m => {
     const filename = `Objects/${m.output.scriptid}.xml`;
     files[filename] = `<?xml version="1.0" encoding="UTF-8"?>\n${m.output.template.trim()}`;
   });
 
-  // 5. FileCabinet directory placeholder
+  // 4. FileCabinet directory placeholder
   files['FileCabinet/SuiteScripts/NSIX/.gitkeep'] = '';
 
   return files;
