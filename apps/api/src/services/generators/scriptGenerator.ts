@@ -9,6 +9,18 @@ function ans(answers: Record<string, any>, key: string): any {
   return answers[key];
 }
 
+/**
+ * Phase 7 banner. Prepended to every generated .js file so a developer
+ * opening the bundle sees immediately that the handlers are stubs. The
+ * exact text is mirrored byte-for-byte in scriptAndSolutionDoc.test.ts —
+ * edit one, edit the other.
+ */
+const STARTER_SCAFFOLDING_BANNER = `/**
+ * ⚠ STARTER SCAFFOLDING — NOT A WORKING IMPLEMENTATION
+ * The handler bodies below are intentionally empty. A NetSuite
+ * developer must implement the logic before this file is deployed.
+ */`;
+
 export function generateScripts(data: ScriptData): Record<string, string> {
   const { clientName, answers, modules } = data;
   const files: Record<string, string> = {};
@@ -145,6 +157,16 @@ define(['N/currentRecord', 'N/log', 'N/ui/dialog'], (currentRecord, log, dialog)
   // and export via SDF, don't hand-write them. The approval flow is now
   // described in prose in the Solution Design document so the consultant
   // can build it in the UI before deploy.
+
+  // Phase 7: prepend the scaffolding banner to every .js file. Done at the
+  // end of the function — one pass over the file map instead of touching
+  // every individual template literal above, so future handlers pick up
+  // the banner automatically with no extra wiring.
+  for (const name of Object.keys(files)) {
+    if (name.endsWith('.js')) {
+      files[name] = `${STARTER_SCAFFOLDING_BANNER}\n${files[name]}`;
+    }
+  }
 
   return files;
 }

@@ -10,6 +10,47 @@ import { generateSolutionDoc } from '../../../src/services/generators/solutionDo
  * NetSuite UI and export them via SDF — don't write them from scratch.
  */
 
+/**
+ * Phase 7 — every generated .js file starts with a prominent banner that
+ * warns the deploying developer these files are scaffolding only. The
+ * banner text is pinned byte-for-byte: any edit must land in this test
+ * plus the generator, which is the signal we want for a regression.
+ */
+const STARTER_BANNER = `/**
+ * ⚠ STARTER SCAFFOLDING — NOT A WORKING IMPLEMENTATION
+ * The handler bodies below are intentionally empty. A NetSuite
+ * developer must implement the logic before this file is deployed.
+ */`;
+
+describe('scriptGenerator: Fix #7 — STARTER SCAFFOLDING banner on every generated .js', () => {
+  it('prepends the banner to every .js file in the bundle', () => {
+    const files = generateScripts({
+      clientName: 'Aurora Foods',
+      modules: [],
+      answers: {
+        'p2p.purchasing.poApprovalRequired': true,
+        'p2p.bills.billApprovalRequired': true,
+        'o2c.salesOrders.soApprovalRequired': true,
+        'r2r.currencies.isMultiCurrency': true,
+      },
+    });
+    const jsFiles = Object.entries(files).filter(([k]) => k.endsWith('.js'));
+    expect(jsFiles.length, 'expected at least one .js file in the scaffold bundle').toBeGreaterThan(0);
+    for (const [name, body] of jsFiles) {
+      expect(body.startsWith(STARTER_BANNER), `${name} does not start with the STARTER SCAFFOLDING banner`).toBe(true);
+    }
+  });
+
+  it('banner appears exactly once per file (no double-prepend)', () => {
+    const files = generateScripts({ clientName: 'Aurora Foods', modules: [], answers: {} });
+    for (const [name, body] of Object.entries(files)) {
+      if (!name.endsWith('.js')) continue;
+      const occurrences = body.split('STARTER SCAFFOLDING').length - 1;
+      expect(occurrences, `${name} has the banner marker ${occurrences} times, expected 1`).toBe(1);
+    }
+  });
+});
+
 describe('scriptGenerator: Fix #6 — no hand-written workflow XML is emitted', () => {
   it('never emits NSIX_WF_ApprovalChain.xml even when bill + PO approval triggers fire', () => {
     const files = generateScripts({
