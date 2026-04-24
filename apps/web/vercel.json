@@ -1,10 +1,13 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
-  "buildCommand": "pnpm --filter @ofoq/shared build && pnpm --filter @ofoq/web build",
+  "buildCommand": "pnpm --filter @ofoq/shared build && pnpm --filter @ofoq/landing build && pnpm --filter @ofoq/web build && node apps/web/scripts/merge-landing.mjs",
   "outputDirectory": "dist",
   "installCommand": "corepack enable && pnpm install --frozen-lockfile",
   "rewrites": [
-    { "source": "/((?!assets/|favicon.ico|index.html).*)", "destination": "/index.html" }
+    {
+      "source": "/((?!assets/|favicon\\.svg|favicon\\.ico|styles\\.css|chat\\.js|robots\\.txt|sitemap\\.xml|og-image\\.png|apple-touch-icon\\.png|index\\.html|app\\.html).*)",
+      "destination": "/app.html"
+    }
   ]
 }
