@@ -101,12 +101,11 @@ export const SDF_MAPPING_REGISTRY: SDFMapping[] = [
       type: 'customrecord',
       scriptid: 'customrecord_nsix_wip_log',
       template: `
-        <customrecord scriptid="customrecord_nsix_wip_log">
-          <description>Log for WIP activities triggered by WIP_ROUTINGS production flow.</description>
-          <iconbase64></iconbase64>
-          <isordered>T</isordered>
-          <recordname>NSIX WIP Log</recordname>
-        </customrecord>
+<customrecordtype scriptid="customrecord_nsix_wip_log">
+  <recordname>NSIX WIP Log</recordname>
+  <customrecordcustomfields>
+  </customrecordcustomfields>
+</customrecordtype>
       `,
     },
   },
@@ -121,11 +120,11 @@ export const SDF_MAPPING_REGISTRY: SDFMapping[] = [
       type: 'customrecord',
       scriptid: 'customrecord_nsix_po_approval_log',
       template: `
-        <customrecord scriptid="customrecord_nsix_po_approval_log">
-          <description>Tracks PO approval workflow steps and approver decisions.</description>
-          <isordered>F</isordered>
-          <recordname>NSIX PO Approval Log</recordname>
-        </customrecord>
+<customrecordtype scriptid="customrecord_nsix_po_approval_log">
+  <recordname>NSIX PO Approval Log</recordname>
+  <customrecordcustomfields>
+  </customrecordcustomfields>
+</customrecordtype>
       `,
     },
   },
@@ -138,11 +137,11 @@ export const SDF_MAPPING_REGISTRY: SDFMapping[] = [
       type: 'customrecord',
       scriptid: 'customrecord_nsix_purchase_req',
       template: `
-        <customrecord scriptid="customrecord_nsix_purchase_req">
-          <description>Purchase requisition record for pre-PO approval workflows.</description>
-          <isordered>T</isordered>
-          <recordname>NSIX Purchase Requisition</recordname>
-        </customrecord>
+<customrecordtype scriptid="customrecord_nsix_purchase_req">
+  <recordname>NSIX Purchase Requisition</recordname>
+  <customrecordcustomfields>
+  </customrecordcustomfields>
+</customrecordtype>
       `,
     },
   },
@@ -174,11 +173,11 @@ export const SDF_MAPPING_REGISTRY: SDFMapping[] = [
       type: 'customrecord',
       scriptid: 'customrecord_nsix_expense_report',
       template: `
-        <customrecord scriptid="customrecord_nsix_expense_report">
-          <description>Employee expense report record for capturing and approving staff expense claims.</description>
-          <isordered>T</isordered>
-          <recordname>NSIX Expense Report</recordname>
-        </customrecord>
+<customrecordtype scriptid="customrecord_nsix_expense_report">
+  <recordname>NSIX Expense Report</recordname>
+  <customrecordcustomfields>
+  </customrecordcustomfields>
+</customrecordtype>
       `,
     },
   },
@@ -229,11 +228,11 @@ export const SDF_MAPPING_REGISTRY: SDFMapping[] = [
       type: 'customrecord',
       scriptid: 'customrecord_nsix_rev_rec_schedule',
       template: `
-        <customrecord scriptid="customrecord_nsix_rev_rec_schedule">
-          <description>Revenue recognition schedule for deferred income tracking and recognition events.</description>
-          <isordered>T</isordered>
-          <recordname>NSIX Revenue Recognition Schedule</recordname>
-        </customrecord>
+<customrecordtype scriptid="customrecord_nsix_rev_rec_schedule">
+  <recordname>NSIX Revenue Recognition Schedule</recordname>
+  <customrecordcustomfields>
+  </customrecordcustomfields>
+</customrecordtype>
       `,
     },
   },
@@ -248,11 +247,11 @@ export const SDF_MAPPING_REGISTRY: SDFMapping[] = [
       type: 'customrecord',
       scriptid: 'customrecord_nsix_dunning_schedule',
       template: `
-        <customrecord scriptid="customrecord_nsix_dunning_schedule">
-          <description>Dunning schedule configuration record defining letter timing, escalation levels, and messaging for overdue AR.</description>
-          <isordered>T</isordered>
-          <recordname>NSIX Dunning Schedule</recordname>
-        </customrecord>
+<customrecordtype scriptid="customrecord_nsix_dunning_schedule">
+  <recordname>NSIX Dunning Schedule</recordname>
+  <customrecordcustomfields>
+  </customrecordcustomfields>
+</customrecordtype>
       `,
     },
   },
