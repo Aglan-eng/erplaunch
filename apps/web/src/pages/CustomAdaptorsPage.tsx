@@ -8,6 +8,7 @@ import {
 import { customAdaptorsApi, type CustomAdaptor, type CustomAdaptorStatus } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { toSlug, resolveCreatePayload } from './customAdaptorsHelpers';
 
 // Which draft field the JSON editor is focused on — mirrors the five (soon
 // six, with rules) subtrees of PlatformAdaptor that PATCH /draft accepts.
@@ -539,8 +540,14 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
   const [slugDirty, setSlugDirty] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Take name + slug as mutate variables instead of reading them from
+  // closure. The previous shape `mutationFn: () => create({ slug })` closed
+  // over the React `slug` state, which was empty when the user relied on the
+  // auto-derived slug (slugDirty=false) — the API got `{ slug: '' }` and
+  // 400'd on the SlugRegex Zod check, showing a "slug must be 3-40 chars"
+  // error for a field the user could plainly see was filled.
   const createMutation = useMutation({
-    mutationFn: () => customAdaptorsApi.create({ name: name.trim(), slug: slug.trim() }),
+    mutationFn: (vars: { name: string; slug: string }) => customAdaptorsApi.create(vars),
     onSuccess: (row) => onCreated(row),
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { error?: { message?: string } } }; message?: string }).response?.data?.error?.message ?? (err as { message?: string }).message ?? 'Could not create adaptor.';
@@ -568,10 +575,15 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
           onSubmit={(e) => {
             e.preventDefault();
             setError(null);
-            if (!name.trim()) return;
-            if (!displaySlug) return;
-            if (!slugDirty) setSlug(displaySlug);
-            createMutation.mutate();
+            // Resolve {name, slug} synchronously from the inputs we already
+            // have — never read `slug` from React state closure here, that
+            // was the bug.
+            const payload = resolveCreatePayload({ name, slug, slugDirty });
+            if (!payload) return;
+            // Keep local state aligned with what we just sent so a
+            // subsequent re-render shows the auto-derived slug as committed.
+            if (!slugDirty) setSlug(payload.slug);
+            createMutation.mutate(payload);
           }}
           className="space-y-4"
         >
@@ -619,12 +631,4 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
   );
 }
 
-function toSlug(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .trim()
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .slice(0, 40);
-}
+// toSlug now lives in ./customAdaptorsHelpers — imported at the top.
