@@ -42,6 +42,25 @@ export const authApi = {
 
   requestEmailVerification: () =>
     api.post('/auth/request-email-verification').then((r) => r.data),
+
+  // Phase 21 — Google OAuth. Probe is a lightweight GET that returns
+  // {available: boolean} so the UI can hide the button when the API
+  // hasn't been configured with Google credentials.
+  googleAvailable: () =>
+    api.get<{ data: { available: boolean } }>('/auth/google/available')
+      .then((r) => r.data.data.available)
+      .catch(() => false),
+
+  /**
+   * Returns the absolute URL to start the Google OAuth flow. We expose
+   * this as a getter (not a method that POSTs) because the browser must
+   * NAVIGATE to this URL — fetch/XHR can't follow Google's redirect to
+   * the consent screen. Use as `<a href={authApi.googleStartUrl()}>`.
+   */
+  googleStartUrl: () => {
+    const base = import.meta.env.VITE_API_URL ?? '';
+    return `${base}/api/v1/auth/google/start`;
+  },
 };
 
 // ─── Engagements ─────────────────────────────────────────────────────────────

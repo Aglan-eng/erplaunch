@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
 
 /**
  * Self-serve firm signup. Creates a Firm + an admin User in one request
@@ -95,6 +96,7 @@ export function SignupPage() {
         </div>
 
         <div className="bg-white rounded-2xl shadow-xl p-6">
+          <GoogleSignInButton label="Sign up with Google" dividerLabel="or sign up with email" />
           <form onSubmit={onSubmit} className="space-y-4" noValidate>
             <Input
               id="firmName"

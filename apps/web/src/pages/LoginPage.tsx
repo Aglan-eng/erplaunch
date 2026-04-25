@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
 
 export function LoginPage() {
   const { login } = useAuth();
@@ -58,6 +59,7 @@ export function LoginPage() {
         </div>
 
         <div className="bg-white rounded-2xl shadow-xl p-6">
+          <GoogleSignInButton />
           <form onSubmit={handleSubmit} className="space-y-4">
             <Input
               id="email"
@@ -109,3 +111,4 @@ export function LoginPage() {
     </div>
   );
 }
+
