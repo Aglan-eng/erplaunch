@@ -73,6 +73,11 @@ async function createTables(db: Client) {
       createdAt    TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
+  // Idempotent ALTER for the Google OAuth sub claim. Stored once and used
+  // as the primary key for re-login (an email change in Google never breaks
+  // the link, unlike matching on email). Indexed for the lookup hot path.
+  try { await db.execute(`ALTER TABLE User ADD COLUMN googleSub TEXT`); } catch {}
+  try { await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS idx_user_googleSub ON User(googleSub) WHERE googleSub IS NOT NULL`); } catch {}
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS Engagement (
@@ -653,6 +658,68 @@ export async function findUserById(id: string) {
   const user = parseRow<Row>(r.rows[0] as Row);
   const firm = await findFirmById(user.firmId as string);
   return { ...user, firm };
+}
+
+// ─── Google OAuth helpers ────────────────────────────────────────────────────
+
+/** Look up a user by their Google OIDC `sub` claim. Used on every Google
+ *  re-login as the primary lookup — matching by email second. Returns the
+ *  user with the firm joined, or null when no link exists yet. */
+export async function findUserByGoogleSub(sub: string) {
+  const db = getDb();
+  const r = await db.execute({ sql: `SELECT * FROM User WHERE googleSub = ?`, args: [sub] });
+  if (!r.rows[0]) return null;
+  const user = parseRow<Row>(r.rows[0] as Row);
+  const firm = await findFirmById(user.firmId as string);
+  return { ...user, firm };
+}
+
+/** Attach a Google identity to an existing email-signup user. Last-write-wins:
+ *  if the user previously had a different sub, the old link is dropped. The
+ *  unique index on googleSub means binding the same sub to a different user
+ *  later would error — handled at the route layer with a clearer message. */
+export async function linkUserGoogleSub(userId: string, sub: string) {
+  const db = getDb();
+  await db.execute({ sql: `UPDATE User SET googleSub = ? WHERE id = ?`, args: [sub, userId] });
+}
+
+/** First-time Google sign-up: create a new firm with the user as ADMIN
+ *  and the Google sub already linked. Password is set to a random
+ *  unguessable hash so password login is impossible until the user runs
+ *  "Forgot password" to set one (the email column is the link).
+ *
+ *  Caller is expected to have already collision-checked the firm slug and
+ *  email; this function does no validation beyond the schema constraints. */
+export async function createGoogleUserAndFirm(args: {
+  email: string;
+  name: string;
+  firmName: string;
+  firmSlug: string;
+  googleSub: string;
+}): Promise<{ user: Row & { firm: unknown }; firm: Row } | null> {
+  const firm = await createFirm({ name: args.firmName, slug: args.firmSlug });
+  if (!firm) return null;
+  // Use a node-built-in dynamic import so this module stays light (no top
+  // -level bcrypt import needed for the rest of db/index.ts).
+  const bcrypt = (await import('bcryptjs')).default;
+  const crypto = (await import('crypto')).default;
+  const unguessable = crypto.randomBytes(48).toString('hex');
+  const passwordHash = await bcrypt.hash(unguessable, 10);
+
+  const db = getDb();
+  const id = createId();
+  await db.execute({
+    sql: `INSERT INTO User (id, firmId, email, name, passwordHash, role, googleSub) VALUES (?,?,?,?,?,?,?)`,
+    args: [id, firm.id as string, args.email, args.name, passwordHash, 'ADMIN', args.googleSub],
+  });
+  // Google has already verified the email — mark it verified so we don't
+  // send a verification email to a user who proved ownership via OAuth.
+  await db.execute({
+    sql: `UPDATE User SET emailVerifiedAt = ? WHERE id = ?`,
+    args: [new Date().toISOString(), id],
+  });
+  const user = await findUserById(id);
+  return user ? { user: user as Row & { firm: unknown }, firm } : null;
 }
 
 // ─── Engagement ───────────────────────────────────────────────────────────────
