@@ -78,6 +78,19 @@ Prioritized. Top of list ships first.
 - Add a `GET /api/v1/admin/rate-limits` that returns current Redis counters (auth-required, platform-admin role).
 - Simple React page showing top 10 keys by count for the last hour.
 
+### 8. Google OAuth sign-in
+
+- Pilot ships email+password only. Google OAuth was scoped during pilot week and explicitly deferred — adding a third-party redirect dependency 2 days before a design-partner demo is a bad risk/reward trade.
+- API: `@fastify/oauth2` plugin + Google provider config, `/api/v1/auth/google/start` + `/api/v1/auth/google/callback`, JWT cookie issuance on success.
+- DB: add `googleSub` column to `users` for idempotent re-login (match by `googleSub` first, fall back to email).
+- UI: "Continue with Google" button on `LoginPage.tsx` + `SignupPage.tsx`.
+- Env vars: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL`. Caller registers OAuth app in Google Cloud Console.
+- Sign-in semantics:
+  - Existing user (matched by `googleSub` or email): JWT issued, no firm change.
+  - New email never seen before: mirror email-signup flow — create a new firm with the user as admin. "Accept invite" landing is a separate later flow.
+- Tests: unit test for the callback's user-upsert branch, 1 integration test for the happy path.
+- Estimate: ~1–2 hours of work, 4 commits (API, DB migration, UI, tests).
+
 ---
 
 ## Future — quarters out
