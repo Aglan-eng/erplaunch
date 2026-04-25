@@ -78,18 +78,15 @@ Prioritized. Top of list ships first.
 - Add a `GET /api/v1/admin/rate-limits` that returns current Redis counters (auth-required, platform-admin role).
 - Simple React page showing top 10 keys by count for the last hour.
 
-### 8. Google OAuth sign-in
+### 8. Google OAuth sign-in — **shipped (Phase 21)**
 
-- Pilot ships email+password only. Google OAuth was scoped during pilot week and explicitly deferred — adding a third-party redirect dependency 2 days before a design-partner demo is a bad risk/reward trade.
-- API: `@fastify/oauth2` plugin + Google provider config, `/api/v1/auth/google/start` + `/api/v1/auth/google/callback`, JWT cookie issuance on success.
-- DB: add `googleSub` column to `users` for idempotent re-login (match by `googleSub` first, fall back to email).
-- UI: "Continue with Google" button on `LoginPage.tsx` + `SignupPage.tsx`.
-- Env vars: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL`. Caller registers OAuth app in Google Cloud Console.
-- Sign-in semantics:
-  - Existing user (matched by `googleSub` or email): JWT issued, no firm change.
-  - New email never seen before: mirror email-signup flow — create a new firm with the user as admin. "Accept invite" landing is a separate later flow.
-- Tests: unit test for the callback's user-upsert branch, 1 integration test for the happy path.
-- Estimate: ~1–2 hours of work, 4 commits (API, DB migration, UI, tests).
+- DB: `User.googleSub` column + unique partial index. Helpers: `findUserByGoogleSub`, `linkUserGoogleSub`, `createGoogleUserAndFirm` (sets `emailVerifiedAt`, stores unguessable random bcrypt hash so password login is impossible until "Forgot password" is used).
+- API: `@fastify/oauth2@^7` (pinned for Fastify 4 compat); `/api/v1/auth/google/start` + `/api/v1/auth/google/callback`; thin route wrapping `services/googleAuthService.resolveGoogleSignIn` which handles the three branches (re-login by sub, link existing email-signup user, create new firm).
+- UI: `<GoogleSignInButton/>` component, probes `/auth/google/available` and self-hides when unconfigured. Drops on LoginPage + SignupPage.
+- Env: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL`. All three or none — module is a no-op (probe only) when any is missing. Documented in `docs/deploy/RENDER_ENV.md`.
+- Tests: 13 service-level unit tests covering all three branches + edge cases (slug collision, short names, sub-vs-email precedence) + 7 route integration tests covering configured/unconfigured paths.
+- Failure handling: every error redirects to `${APP_URL}/login?error=<reason>` and increments `auth_google_total{outcome=...}` for `/metrics`.
+- See commits: `38ea394` (DB), `cb3a485` (API), `1914cb5` (UI).
 
 ---
 

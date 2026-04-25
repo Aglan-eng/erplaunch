@@ -30,6 +30,26 @@ Every production environment variable the `erplaunch-api` Render service reads, 
 | `AI_PROVIDER` | | `anthropic` | Only `anthropic` is wired today. |
 | `JWT_EXPIRES_IN` | Consultant token lifetime. | `24h` | |
 
+## Google OAuth (Phase 21 — optional, all-or-nothing)
+
+All three must be present for Google sign-in to register. Missing any one ⇒ `/auth/google/start` returns 404 and the SPA hides the "Continue with Google" button via the `/auth/google/available` probe. No partial state.
+
+| Variable | Purpose | Where to get it |
+|---|---|---|
+| `GOOGLE_CLIENT_ID` | OAuth 2.0 Client ID — public, embedded in every redirect URL. | Google Cloud Console → APIs & Services → Credentials → OAuth 2.0 Client IDs. |
+| `GOOGLE_CLIENT_SECRET` | Server-side secret. **Treat like a password** — rotate if exposed (Reset Secret button on the same Credentials page). | Same screen as Client ID. Click **Add Secret** / **Reset Secret**. |
+| `GOOGLE_CALLBACK_URL` | Where Google redirects after consent. Must be in the OAuth client's **Authorised redirect URIs** allowlist. Production: `https://erplaunch-api.onrender.com/api/v1/auth/google/callback`. | Same screen — paste the prod URL into Authorised redirect URIs. |
+
+OAuth client Authorised JavaScript origins (set in Google Cloud Console — they're not env vars):
+- `https://erplaunch-web.vercel.app` (prod SPA)
+- `http://localhost:5173` (Vite dev — only if you do local OAuth testing)
+
+Authorised redirect URIs:
+- `https://erplaunch-api.onrender.com/api/v1/auth/google/callback` (prod)
+- `http://localhost:3000/api/v1/auth/google/callback` (local API dev)
+
+**Rotation**: Reset Secret in Google Cloud Console → paste new value into Render `GOOGLE_CLIENT_SECRET` → save (Render auto-restarts). Old secret invalidates immediately. No user impact — existing JWT cookies remain valid; only new sign-ins go through the rotated secret.
+
 ## Unused in pilot (set to blank or omit)
 
 `JWT_REFRESH_SECRET`, `JWT_REFRESH_EXPIRES_IN`, `TWILIO_*`, `SENDGRID_*` — reserved for the channels/refresh workstreams post-pilot. Safe to leave blank.

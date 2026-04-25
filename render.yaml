@@ -48,6 +48,15 @@ services:
         sync: false
       - key: TWILIO_VERIFY_SERVICE_SID
         sync: false
+      # Google OAuth (Phase 21). All three must be set for "Continue with
+      # Google" to register; missing any one disables the feature cleanly.
+      # Get values from Google Cloud Console → APIs & Services → Credentials.
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_CALLBACK_URL
+        value: https://erplaunch-api.onrender.com/api/v1/auth/google/callback
       # Wiring — CORS_ORIGIN accepts a comma-separated allowlist so we can
       # support both the canonical web URL and any legacy preview URLs during
       # cutover. APP_URL is the canonical one used for outbound email links.
