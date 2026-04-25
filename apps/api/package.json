@@ -15,6 +15,7 @@
     "@fastify/cors": "^9.0.0",
     "@fastify/jwt": "^8.0.0",
     "@fastify/multipart": "^8.3.0",
+    "@fastify/oauth2": "^7.9.0",
     "@fastify/static": "^7.0.0",
     "@libsql/client": "^0.17.2",
     "@ofoq/adaptor-netsuite": "workspace:*",

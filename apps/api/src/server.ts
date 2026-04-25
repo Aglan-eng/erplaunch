@@ -13,6 +13,7 @@ import queuePlugin from './plugins/queue.js';
 import requestIdPlugin from './plugins/requestId.js';
 import { metricsRoutes } from './routes/metrics.js';
 import { authRoutes } from './routes/auth.js';
+import { googleAuthRoutes } from './routes/googleAuth.js';
 import { engagementRoutes } from './routes/engagements.js';
 import { riskRoutes } from './routes/risks.js';
 import { issueRoutes } from './routes/issues.js';
@@ -128,6 +129,10 @@ export async function buildServer() {
   });
 
   await fastify.register(authRoutes, { prefix: '/api/v1' });
+  // Google OAuth routes — module is a no-op when GOOGLE_CLIENT_ID/SECRET/CALLBACK
+  // env vars aren't set, except for the /auth/google/available probe which
+  // always returns {available: false} so the UI can hide the button.
+  await fastify.register(googleAuthRoutes, { prefix: '/api/v1' });
   await fastify.register(engagementRoutes, { prefix: '/api/v1' });
   await fastify.register(riskRoutes, { prefix: '/api/v1' });
   await fastify.register(issueRoutes, { prefix: '/api/v1' });
