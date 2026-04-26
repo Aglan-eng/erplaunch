@@ -7,7 +7,8 @@
     "start": "tsx src/server.ts",
     "seed": "tsx src/seed.ts",
     "seed:odoo": "tsx src/seed-odoo.ts",
-    "test": "vitest run"
+    "test": "rimraf tsconfig.tsbuildinfo && tsc --noEmit && vitest run",
+    "test:notypecheck": "vitest run"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.88.0",
