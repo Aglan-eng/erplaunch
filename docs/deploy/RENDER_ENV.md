@@ -83,3 +83,5 @@ Authorised redirect URIs:
 ## Last reviewed
 
 2026-04-22 — Phase 5A cutover (portal magic-link + firm branding landed).
+
+Verified post-OAuth-rotation 2026-04-26 — Google sign-in confirmed working in prod.

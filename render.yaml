@@ -57,11 +57,13 @@ services:
         sync: false
       - key: GOOGLE_CALLBACK_URL
         value: https://erplaunch-api.onrender.com/api/v1/auth/google/callback
-      # Wiring — CORS_ORIGIN accepts a comma-separated allowlist so we can
-      # support both the canonical web URL and any legacy preview URLs during
-      # cutover. APP_URL is the canonical one used for outbound email links.
+      # Wiring — CORS_ORIGIN is the canonical SPA origin only. The two
+      # legacy aliases (erplaunch.vercel.app, erplaunch-api.vercel.app)
+      # were trimmed 2026-04-26 after Google OAuth went live; neither
+      # resolved to a working host. APP_URL mirrors this for outbound
+      # email links.
       - key: CORS_ORIGIN
-        value: https://erplaunch-web.vercel.app,https://erplaunch.vercel.app,https://erplaunch-api.vercel.app
+        value: https://erplaunch-web.vercel.app
       - key: APP_URL
         value: https://erplaunch-web.vercel.app
       # Portal tunables (defaults are fine, override if needed)
