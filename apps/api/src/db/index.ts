@@ -599,9 +599,47 @@ function parseRow<T>(row: Row): T {
   return result as T;
 }
 
+// ─── Firm + User row shapes ──────────────────────────────────────────────────
+//
+// Explicit interfaces so callers don't have to read column names off a
+// `Record<string, unknown>` and TypeScript's spread doesn't collapse the
+// record's index signature when we return `{ ...user, firm }`. Every
+// field below is a real DB column (one ALTER per optional). New columns
+// land here AND in the migrations above.
+
+export interface FirmRow {
+  id: string;
+  name: string;
+  plan: string;
+  slug: string;
+  createdAt: string;
+  displayName: string | null;
+  logoUrl: string | null;
+  primaryColor: string | null;
+  secondaryColor: string | null;
+  supportEmail: string | null;
+}
+
+export interface UserRow {
+  id: string;
+  firmId: string;
+  email: string;
+  name: string;
+  passwordHash: string;
+  role: string;
+  createdAt: string;
+  googleSub: string | null;
+  emailVerifiedAt: string | null;
+}
+
+/** User joined with their firm. The shape returned by find* helpers below. */
+export interface UserWithFirm extends UserRow {
+  firm: FirmRow | null;
+}
+
 // ─── Firm ─────────────────────────────────────────────────────────────────────
 
-export async function createFirm(data: { name: string; slug: string; plan?: string }) {
+export async function createFirm(data: { name: string; slug: string; plan?: string }): Promise<FirmRow | null> {
   const db = getDb();
   const id = createId();
   await db.execute({
@@ -611,23 +649,23 @@ export async function createFirm(data: { name: string; slug: string; plan?: stri
   return findFirmById(id);
 }
 
-export async function findFirmById(id: string) {
+export async function findFirmById(id: string): Promise<FirmRow | null> {
   const db = getDb();
   const r = await db.execute({ sql: `SELECT * FROM Firm WHERE id = ?`, args: [id] });
-  return r.rows[0] ? parseRow<Row>(r.rows[0] as Row) : null;
+  return r.rows[0] ? parseRow<FirmRow>(r.rows[0] as Row) : null;
 }
 
-export async function findFirmBySlug(slug: string) {
+export async function findFirmBySlug(slug: string): Promise<FirmRow | null> {
   const db = getDb();
   const r = await db.execute({ sql: `SELECT * FROM Firm WHERE slug = ?`, args: [slug] });
-  return r.rows[0] ? parseRow<Row>(r.rows[0] as Row) : null;
+  return r.rows[0] ? parseRow<FirmRow>(r.rows[0] as Row) : null;
 }
 
 // ─── User ─────────────────────────────────────────────────────────────────────
 
 export async function createUser(data: {
   firmId: string; email: string; name: string; passwordHash: string; role?: string;
-}) {
+}): Promise<UserWithFirm | null> {
   const db = getDb();
   const id = createId();
   await db.execute({
@@ -642,21 +680,24 @@ export async function resetUserPassword(email: string, passwordHash: string) {
   await db.execute({ sql: `UPDATE User SET passwordHash = ? WHERE email = ?`, args: [passwordHash, email] });
 }
 
-export async function findUserByEmail(email: string) {
+/** Read a User row + its Firm. We type parseRow as UserRow (named props,
+ *  not a Record) so the `{ ...user, firm }` return preserves the row's
+ *  static-side keys instead of collapsing to `{ firm }`. */
+export async function findUserByEmail(email: string): Promise<UserWithFirm | null> {
   const db = getDb();
   const r = await db.execute({ sql: `SELECT * FROM User WHERE email = ?`, args: [email] });
   if (!r.rows[0]) return null;
-  const user = parseRow<Row>(r.rows[0] as Row);
-  const firm = await findFirmById(user.firmId as string);
+  const user = parseRow<UserRow>(r.rows[0] as Row);
+  const firm = await findFirmById(user.firmId);
   return { ...user, firm };
 }
 
-export async function findUserById(id: string) {
+export async function findUserById(id: string): Promise<UserWithFirm | null> {
   const db = getDb();
   const r = await db.execute({ sql: `SELECT * FROM User WHERE id = ?`, args: [id] });
   if (!r.rows[0]) return null;
-  const user = parseRow<Row>(r.rows[0] as Row);
-  const firm = await findFirmById(user.firmId as string);
+  const user = parseRow<UserRow>(r.rows[0] as Row);
+  const firm = await findFirmById(user.firmId);
   return { ...user, firm };
 }
 
@@ -665,12 +706,12 @@ export async function findUserById(id: string) {
 /** Look up a user by their Google OIDC `sub` claim. Used on every Google
  *  re-login as the primary lookup — matching by email second. Returns the
  *  user with the firm joined, or null when no link exists yet. */
-export async function findUserByGoogleSub(sub: string) {
+export async function findUserByGoogleSub(sub: string): Promise<UserWithFirm | null> {
   const db = getDb();
   const r = await db.execute({ sql: `SELECT * FROM User WHERE googleSub = ?`, args: [sub] });
   if (!r.rows[0]) return null;
-  const user = parseRow<Row>(r.rows[0] as Row);
-  const firm = await findFirmById(user.firmId as string);
+  const user = parseRow<UserRow>(r.rows[0] as Row);
+  const firm = await findFirmById(user.firmId);
   return { ...user, firm };
 }
 
@@ -696,7 +737,7 @@ export async function createGoogleUserAndFirm(args: {
   firmName: string;
   firmSlug: string;
   googleSub: string;
-}): Promise<{ user: Row & { firm: unknown }; firm: Row } | null> {
+}): Promise<{ user: UserWithFirm; firm: FirmRow } | null> {
   const firm = await createFirm({ name: args.firmName, slug: args.firmSlug });
   if (!firm) return null;
   // Use a node-built-in dynamic import so this module stays light (no top
@@ -710,7 +751,7 @@ export async function createGoogleUserAndFirm(args: {
   const id = createId();
   await db.execute({
     sql: `INSERT INTO User (id, firmId, email, name, passwordHash, role, googleSub) VALUES (?,?,?,?,?,?,?)`,
-    args: [id, firm.id as string, args.email, args.name, passwordHash, 'ADMIN', args.googleSub],
+    args: [id, firm.id, args.email, args.name, passwordHash, 'ADMIN', args.googleSub],
   });
   // Google has already verified the email — mark it verified so we don't
   // send a verification email to a user who proved ownership via OAuth.
@@ -719,7 +760,7 @@ export async function createGoogleUserAndFirm(args: {
     args: [new Date().toISOString(), id],
   });
   const user = await findUserById(id);
-  return user ? { user: user as Row & { firm: unknown }, firm } : null;
+  return user ? { user, firm } : null;
 }
 
 // ─── Engagement ───────────────────────────────────────────────────────────────

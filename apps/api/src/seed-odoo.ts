@@ -63,7 +63,7 @@ async function main(): Promise<void> {
   const db = getDb();
 
   // ── Firm ────────────────────────────────────────────────────────────────
-  let firm = await findFirmBySlug(FIRM_SLUG) as Record<string, unknown> | null;
+  let firm = await findFirmBySlug(FIRM_SLUG);
   if (!firm) {
     firm = await createFirm({ name: FIRM_NAME, slug: FIRM_SLUG, plan: 'STARTER' });
     if (!firm) throw new Error('failed to create demo firm');
@@ -71,16 +71,16 @@ async function main(): Promise<void> {
   } else {
     console.log(`[seed-odoo] reusing firm "${FIRM_NAME}" (${FIRM_SLUG})`);
   }
-  const firmId = firm.id as string;
+  const firmId = firm.id;
 
   // ── Admin user ──────────────────────────────────────────────────────────
-  let user = await findUserByEmail(USER_EMAIL) as Record<string, unknown> | null;
+  let user = await findUserByEmail(USER_EMAIL);
   if (!user) {
     const passwordHash = await bcrypt.hash(USER_PASSWORD, 10);
     user = await createUser({ firmId, email: USER_EMAIL, name: USER_NAME, passwordHash, role: 'CONSULTANT' });
     if (!user) throw new Error('failed to create demo user');
     console.log(`[seed-odoo] created user ${USER_EMAIL}`);
-  } else if ((user.firmId as string) !== firmId) {
+  } else if (user.firmId !== firmId) {
     throw new Error(`user ${USER_EMAIL} already exists but belongs to a different firm — pick another USER_EMAIL`);
   } else {
     console.log(`[seed-odoo] reusing user ${USER_EMAIL}`);

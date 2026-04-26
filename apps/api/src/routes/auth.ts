@@ -222,7 +222,7 @@ export async function authRoutes(fastify: FastifyInstance) {
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
-    let user: Record<string, unknown> | null = null;
+    let user: Awaited<ReturnType<typeof createUser>> = null;
     try {
       user = await createUser({
         firmId: firm.id,

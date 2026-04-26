@@ -23,6 +23,7 @@ import {
   linkUserGoogleSub,
   createGoogleUserAndFirm,
   findFirmBySlug,
+  type UserWithFirm,
 } from '../db/index.js';
 
 export type ResolveAction = 're-login' | 'linked' | 'created';
@@ -95,7 +96,7 @@ export async function resolveGoogleSignIn(profile: GoogleProfile): Promise<Resol
   // Branch 2: existing email-signup user. Link the sub once and proceed.
   const byEmail = await findUserByEmail(profile.email);
   if (byEmail) {
-    await linkUserGoogleSub(byEmail.id as string, profile.sub);
+    await linkUserGoogleSub(byEmail.id, profile.sub);
     // Re-fetch so the returned record carries the now-linked sub —
     // matters for tests asserting on action='linked'.
     const fresh = await findUserByEmail(profile.email);
@@ -125,13 +126,13 @@ export async function resolveGoogleSignIn(profile: GoogleProfile): Promise<Resol
   return shapeResolved(created.user, 'created');
 }
 
-function shapeResolved(user: Record<string, unknown>, action: ResolveAction): ResolvedGoogleUser {
+function shapeResolved(user: UserWithFirm, action: ResolveAction): ResolvedGoogleUser {
   return {
-    id: user.id as string,
-    email: user.email as string,
-    name: user.name as string,
-    role: user.role as string,
-    firmId: user.firmId as string,
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    firmId: user.firmId,
     firm: user.firm,
     action,
   };
