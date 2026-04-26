@@ -23,6 +23,14 @@
  */
 
 import type { FastifyInstance } from 'fastify';
+// @fastify/oauth2 v7 ships as CJS with `export = fastifyOauth2` plus a
+// namespace+const merge. Under module:node16 + esModuleInterop, the
+// default-import value is typed as `typeof fastifyOauth2` (the namespace),
+// not the FastifyOauth2 plugin function — so `oauth2.GOOGLE_CONFIGURATION`
+// resolves via the namespace's `fastifyOauth2` const re-export instead of
+// the top-level value. Runtime: `module.exports.fastifyOauth2 = fastifyOauth2`
+// (index.js:707) is the same plugin instance with GOOGLE_CONFIGURATION
+// attached at index.js:626. Both layers agree on this access path.
 import oauth2 from '@fastify/oauth2';
 import { resolveGoogleSignIn } from '../services/googleAuthService.js';
 import { incrementCounter } from '../services/metrics.js';
@@ -64,7 +72,7 @@ export async function googleAuthRoutes(fastify: FastifyInstance) {
 
   // Register the @fastify/oauth2 plugin scoped to this route module so
   // the global fastify instance stays clean.
-  await fastify.register(oauth2, {
+  await fastify.register(oauth2.fastifyOauth2, {
     name: 'googleOAuth2',
     scope: ['openid', 'profile', 'email'],
     credentials: {
@@ -72,7 +80,7 @@ export async function googleAuthRoutes(fastify: FastifyInstance) {
         id: process.env.GOOGLE_CLIENT_ID!,
         secret: process.env.GOOGLE_CLIENT_SECRET!,
       },
-      auth: oauth2.GOOGLE_CONFIGURATION,
+      auth: oauth2.fastifyOauth2.GOOGLE_CONFIGURATION,
     },
     startRedirectPath: '/auth/google/start',
     callbackUri: process.env.GOOGLE_CALLBACK_URL!,
