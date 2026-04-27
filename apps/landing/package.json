@@ -9,7 +9,7 @@
     "preview": "npx -y serve public -l 4173"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.88.0"
+    "@anthropic-ai/sdk": "^0.91.1"
   },
   "devDependencies": {
     "tailwindcss": "^3.4.0",
