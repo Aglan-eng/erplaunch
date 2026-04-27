@@ -1,0 +1,13 @@
+{
+  "name": "@ofoq/web-e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:prod": "playwright test --reporter=list"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "@types/node": "^20.19.39"
+  }
+}

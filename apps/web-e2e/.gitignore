@@ -1,0 +1,7 @@
+# Playwright test artefacts — runs against prod, screenshots saved into
+# screenshots/ get hand-copied to NSIX/PROD_DEMO_SCREENSHOTS/ when they're
+# the design-partner demo artefact. Trace + video output is throwaway.
+node_modules/
+screenshots/
+test-results/
+playwright-report/
