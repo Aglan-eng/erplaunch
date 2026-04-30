@@ -12,6 +12,7 @@ import { generateUATPlan, generateUATPlanHtml } from './generators/uatGenerator.
 import { generateSolutionDoc, generateSolutionDocHtml } from './generators/solutionDocGenerator.js';
 import { generateTrainingManual, generateTrainingManualHtml } from './generators/trainingManualGenerator.js';
 import { generateImplementationPlanHtml } from './generators/planGenerator.js';
+import { generateOdooConfigurationPlan, generateOdooConfigurationPlanHtml } from './generators/odooConfigurationPlanGenerator.js';
 import { convertHtmlToPdf } from './pdfService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -230,6 +231,30 @@ export async function processJob(jobId: string, db: DbModule) {
       for (const [filename, content] of Object.entries(scriptFiles)) {
         await fs.writeFile(path.join(ssDir, filename), content);
       }
+    } else {
+      // ── 2b. Non-NetSuite build artefact: Configuration Plan ────────────────
+      // Replaces the NetSuite-only SDF + SuiteScript bundle for Odoo and any
+      // future / firm-authored adaptor (custom:*). Module install plan,
+      // l10n_<country> localisation, fiscal year setup, and multi-company
+      // checklist — the concrete steps the consultant takes after Discovery
+      // sign-off on a non-NetSuite platform.
+      const configPlanData = {
+        clientName: eng.clientName as string,
+        adaptor: adaptorCtx,
+        license: brdData.license,
+        answers,
+        comments,
+        images,
+        aiAdvice,
+      };
+      await fs.writeFile(
+        path.join(docDir, 'Configuration_Plan.md'),
+        generateOdooConfigurationPlan(configPlanData),
+      );
+      await fs.writeFile(
+        path.join(docDir, 'Configuration_Plan.html'),
+        generateOdooConfigurationPlanHtml(configPlanData),
+      );
     }
 
     // ── 3. Manifest: record which artifacts actually landed ─────────────────
@@ -240,7 +265,15 @@ export async function processJob(jobId: string, db: DbModule) {
       clientName: eng.clientName as string,
       completedAt: new Date().toISOString(),
       artifacts: {
-        documentation: ['BRD.md', 'BRD.html', 'BRD.pdf', 'Risk_Register.md', 'UAT_Plan.md', 'UAT_Plan.html', 'Solution_Design.html', 'Training_Manual.html', 'Implementation_Plan.html'],
+        documentation: [
+          'BRD.md', 'BRD.html', 'BRD.pdf',
+          'Risk_Register.md',
+          'UAT_Plan.md', 'UAT_Plan.html',
+          'Solution_Design.html',
+          'Training_Manual.html',
+          'Implementation_Plan.html',
+          ...(isNetSuite ? [] : ['Configuration_Plan.md', 'Configuration_Plan.html']),
+        ],
         ...(isNetSuite ? { sdf: 'SDF/', suiteScript: 'SuiteScript/' } : {}),
       },
     };
