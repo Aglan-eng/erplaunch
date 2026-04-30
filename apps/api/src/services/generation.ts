@@ -184,6 +184,7 @@ export async function processJob(jobId: string, db: DbModule) {
       path.join(docDir, 'Implementation_Plan.html'),
       generateImplementationPlanHtml({
         clientName: eng.clientName as string,
+        adaptor: adaptorCtx,
         license: brdData.license,
         answers,
         conflicts: eng.conflicts ?? [],
