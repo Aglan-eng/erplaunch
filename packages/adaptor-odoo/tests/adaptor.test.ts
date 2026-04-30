@@ -20,11 +20,12 @@ describe('odooAdaptor: manifest', () => {
 });
 
 describe('odooAdaptor: schema', () => {
-  it('exposes FOUNDATION first followed by the five canonical flows', () => {
+  it('exposes FOUNDATION + TAX before the five canonical flows', () => {
     const ids = odooAdaptor.schema.flows.map((f) => f.id);
-    // Pack 1 — Foundation flow gates everything downstream and renders
-    // before R2R in the wizard sidebar.
-    expect(ids).toEqual(['FOUNDATION', 'R2R', 'P2P', 'O2C', 'PRODUCTION', 'RETURNS']);
+    // Pack 1 — Foundation gates everything downstream.
+    // Pack 2 — Tax engine sits between Foundation and R2R because tax
+    // behavior + fiscal positions drive every accounting transaction.
+    expect(ids).toEqual(['FOUNDATION', 'TAX', 'R2R', 'P2P', 'O2C', 'PRODUCTION', 'RETURNS']);
   });
 
   it('every flow has at least one section with at least one question', () => {
@@ -552,5 +553,315 @@ describe('AdaptorRegistry with Odoo', () => {
     const reg = new AdaptorRegistry();
     reg.register(odooAdaptor);
     expect(() => reg.register(odooAdaptor)).toThrow(/already registered/);
+  });
+});
+
+// ─── Pack 2 — Tax Engine ─────────────────────────────────────────────────────
+
+describe('odooAdaptor: Pack 2 — TAX flow shape', () => {
+  const tax = odooAdaptor.schema.flows.find((f) => f.id === 'TAX');
+
+  it('TAX flow exists with the expected label + description', () => {
+    expect(tax).toBeDefined();
+    expect(tax!.label).toBe('Tax Engine');
+    expect(tax!.description).toMatch(/tax|fiscal|withholding|e-invoicing/i);
+  });
+
+  it('renders four sections in the documented order', () => {
+    const ids = (tax!.sections as Array<{ id: string; order: number }>)
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .map((s) => s.id);
+    expect(ids).toEqual(['behavior', 'exemptions', 'advanced', 'compliance']);
+  });
+
+  it('Default Tax Behavior — 4 questions with the right ids + types', () => {
+    const sec = tax!.sections.find((s) => s.id === 'behavior')!;
+    expect(sec.label).toBe('Default Tax Behavior');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('odoo.tax.salesPriceMode')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('odoo.tax.salesPriceMode')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['EXCLUDED', 'INCLUDED']);
+    expect(byId.get('odoo.tax.purchasePriceMode')?.inputType).toBe('SINGLE_SELECT');
+    expect(byId.get('odoo.tax.defaultSalesTax')?.inputType).toBe('TEXT');
+    expect(byId.get('odoo.tax.defaultPurchaseTax')?.inputType).toBe('TEXT');
+  });
+
+  it('Exemptions & Special Categories — 4 questions with the right ids + types', () => {
+    const sec = tax!.sections.find((s) => s.id === 'exemptions')!;
+    expect(sec.label).toBe('Exemptions & Special Categories');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('odoo.tax.hasExemptCustomers')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('odoo.tax.exemptCategories')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('odoo.tax.hasReducedRates')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('odoo.tax.reducedRateCategories')?.inputType).toBe('TEXTAREA');
+  });
+
+  it('Advanced Tax Mechanics — 5 questions with the right ids + types', () => {
+    const sec = tax!.sections.find((s) => s.id === 'advanced')!;
+    expect(sec.label).toBe('Advanced Tax Mechanics');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('odoo.tax.reverseCharge')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('odoo.tax.withholding')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('odoo.tax.regionalVariation')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('odoo.tax.fiscalPositions')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('odoo.tax.fiscalPositionList')?.inputType).toBe('TEXTAREA');
+  });
+
+  it('Compliance & E-invoicing — 3 questions with the right ids + types', () => {
+    const sec = tax!.sections.find((s) => s.id === 'compliance')!;
+    expect(sec.label).toBe('Compliance & E-invoicing');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('odoo.tax.einvoicingRequired')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('odoo.tax.einvoicingRequired')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['NO', 'UNSURE', 'YES']);
+    expect(byId.get('odoo.tax.einvoicingSystem')?.inputType).toBe('TEXT');
+    expect(byId.get('odoo.tax.taxFilingPeriodicity')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('odoo.tax.taxFilingPeriodicity')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['ANNUAL', 'MONTHLY', 'QUARTERLY']);
+  });
+});
+
+describe('odooAdaptor: Pack 2 — Tax rules registered in odoo-rules', () => {
+  const ids = odooAdaptor.rules.rules.map((r) => r.id);
+
+  it('R1 price-mode-mismatch', () => {
+    expect(ids).toContain('odoo.tax.price-mode-mismatch');
+  });
+  it('R2 e-invoicing yes needs l10n', () => {
+    expect(ids).toContain('odoo.tax.einvoicing-yes-needs-l10n');
+  });
+  it('R3 reverse-charge needs base accounting', () => {
+    expect(ids).toContain('odoo.tax.reverse-charge-needs-base-accounting');
+  });
+  it('R4 withholding needs CoA accounts', () => {
+    expect(ids).toContain('odoo.tax.withholding-needs-coa-accounts');
+  });
+  it('R5 fiscal positions need list', () => {
+    expect(ids).toContain('odoo.tax.fiscal-positions-need-list');
+  });
+  it('R6 b2c price-mode on services-only license (INFO)', () => {
+    expect(ids).toContain('odoo.tax.b2c-mode-on-services-only');
+  });
+  it('R7 regional variation needs multiple tax codes (INFO)', () => {
+    expect(ids).toContain('odoo.tax.regional-variation-needs-multiple-tax-codes');
+  });
+  it('R8 exempt customers need fiscal position', () => {
+    expect(ids).toContain('odoo.tax.exempt-customers-need-fiscal-position');
+  });
+});
+
+describe('odooAdaptor: Pack 2 — Tax rule evaluation', () => {
+  it('R1 fires when sales=INCLUDED and purchase=EXCLUDED (or vice versa)', () => {
+    const a = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.tax.salesPriceMode': 'INCLUDED',
+        'odoo.tax.purchasePriceMode': 'EXCLUDED',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(a.find((c) => c.id === 'odoo.tax.price-mode-mismatch')?.severity).toBe('WARN');
+
+    const b = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.tax.salesPriceMode': 'EXCLUDED',
+        'odoo.tax.purchasePriceMode': 'INCLUDED',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(b.find((c) => c.id === 'odoo.tax.price-mode-mismatch')).toBeDefined();
+  });
+
+  it('R1 does NOT fire when both modes match', () => {
+    const c = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.tax.salesPriceMode': 'EXCLUDED',
+        'odoo.tax.purchasePriceMode': 'EXCLUDED',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(c.map((x) => x.id)).not.toContain('odoo.tax.price-mode-mismatch');
+  });
+
+  it('R2 fires (BLOCK) when einvoicing=YES and no l10n_<country> module is licensed', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.tax.einvoicingRequired': 'YES',
+        'odoo.foundation.primaryCountry': 'SA',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: ['BASE_ACCOUNTING'] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.tax.einvoicing-yes-needs-l10n');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R2 does NOT fire when einvoicing=YES AND a known l10n module is in the license', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.tax.einvoicingRequired': 'YES',
+        'odoo.foundation.primaryCountry': 'SA',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: ['BASE_ACCOUNTING', 'l10n_sa'] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.tax.einvoicing-yes-needs-l10n');
+  });
+
+  it('R3 fires (BLOCK) when reverseCharge=true AND neither BASE nor ENTERPRISE Accounting is licensed', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'odoo.tax.reverseCharge': true, 'odoo.company.fiscalYearStart': '01-01' },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.tax.reverse-charge-needs-base-accounting');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R3 does NOT fire when BASE_ACCOUNTING is licensed', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'odoo.tax.reverseCharge': true, 'odoo.company.fiscalYearStart': '01-01' },
+      license: { edition: 'ENTERPRISE', modules: ['BASE_ACCOUNTING'] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.tax.reverse-charge-needs-base-accounting');
+  });
+
+  it('R3 does NOT fire when ENTERPRISE_ACCOUNTING is licensed', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'odoo.tax.reverseCharge': true, 'odoo.company.fiscalYearStart': '01-01' },
+      license: { edition: 'ENTERPRISE', modules: ['ENTERPRISE_ACCOUNTING'] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.tax.reverse-charge-needs-base-accounting');
+  });
+
+  it('R4 fires (WARN) when withholding=true', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'odoo.tax.withholding': true, 'odoo.company.fiscalYearStart': '01-01' },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.tax.withholding-needs-coa-accounts');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R4 does NOT fire when withholding is false', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'odoo.tax.withholding': false, 'odoo.company.fiscalYearStart': '01-01' },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.tax.withholding-needs-coa-accounts');
+  });
+
+  it('R5 fires (WARN) when fiscalPositions=true and fiscalPositionList is empty', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.tax.fiscalPositions': true,
+        'odoo.tax.fiscalPositionList': '',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.tax.fiscal-positions-need-list');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R5 does NOT fire when fiscalPositionList is populated', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.tax.fiscalPositions': true,
+        'odoo.tax.fiscalPositionList': 'Domestic\nExport — GCC',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.tax.fiscal-positions-need-list');
+  });
+
+  it('R6 fires (INFO) when salesPriceMode=INCLUDED and no POS / eCommerce module is licensed', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'odoo.tax.salesPriceMode': 'INCLUDED', 'odoo.company.fiscalYearStart': '01-01' },
+      license: { edition: 'ENTERPRISE', modules: ['BASE_ACCOUNTING'] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.tax.b2c-mode-on-services-only');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('INFO');
+  });
+
+  it('R6 does NOT fire when ECOMMERCE is licensed', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'odoo.tax.salesPriceMode': 'INCLUDED', 'odoo.company.fiscalYearStart': '01-01' },
+      license: { edition: 'ENTERPRISE', modules: ['ECOMMERCE'] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.tax.b2c-mode-on-services-only');
+  });
+
+  it('R6 does NOT fire when POINT_OF_SALE is licensed', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'odoo.tax.salesPriceMode': 'INCLUDED', 'odoo.company.fiscalYearStart': '01-01' },
+      license: { edition: 'ENTERPRISE', modules: ['POINT_OF_SALE'] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.tax.b2c-mode-on-services-only');
+  });
+
+  it('R7 fires (INFO) when regionalVariation=true and fiscalPositionList is empty', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.tax.regionalVariation': true,
+        'odoo.tax.fiscalPositionList': '',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.tax.regional-variation-needs-multiple-tax-codes');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('INFO');
+  });
+
+  it('R7 does NOT fire when regionalVariation=true AND fiscalPositionList has entries', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.tax.regionalVariation': true,
+        'odoo.tax.fiscalPositionList': 'Region A\nRegion B',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id))
+      .not.toContain('odoo.tax.regional-variation-needs-multiple-tax-codes');
+  });
+
+  it('R8 fires (WARN) when hasExemptCustomers=true and fiscalPositions=false', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.tax.hasExemptCustomers': true,
+        'odoo.tax.fiscalPositions': false,
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.tax.exempt-customers-need-fiscal-position');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R8 does NOT fire when hasExemptCustomers=true AND fiscalPositions=true', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.tax.hasExemptCustomers': true,
+        'odoo.tax.fiscalPositions': true,
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id))
+      .not.toContain('odoo.tax.exempt-customers-need-fiscal-position');
   });
 });

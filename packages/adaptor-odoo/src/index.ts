@@ -35,6 +35,11 @@ const schema: QuestionnaireSchema = {
     // wizard so the consultant locks in these decisions before
     // R2R/P2P/O2C/Production/Returns.
     buildFoundationFlow(),
+    // Pack 2 — Tax engine. Sits between Foundation and R2R because tax
+    // behavior + fiscal positions drive every accounting transaction.
+    // The #1 thing implementations get wrong post-go-live, per the
+    // research that shaped this pack.
+    buildTaxFlow(),
     buildR2RFlow(),
     buildP2PFlow(),
     buildO2CFlow(),
@@ -184,6 +189,167 @@ function buildFoundationFlow(): FlowDefinition {
             inputType: 'TEXT',
             required: false,
             label: 'Group reporting currency (ISO 4217, e.g., USD, EUR, AED) — required if multi-currency',
+          },
+        ],
+      },
+    ],
+  };
+}
+
+// ─── Pack 2 — Tax Engine ─────────────────────────────────────────────────────
+//
+// 16 questions across 4 sections. Every Odoo accounting transaction
+// reads from this configuration: default tax behavior on sales/purchase
+// prices, exempt-customer handling via fiscal positions, withholding,
+// regional variation, and country-specific e-invoicing. Per the research
+// that shaped this pack, tax engine is the #1 thing implementations get
+// wrong post-go-live — gating these decisions early avoids the build-then-
+// reconfigure trap.
+function buildTaxFlow(): FlowDefinition {
+  return {
+    id: 'TAX',
+    label: 'Tax Engine',
+    description: 'Tax behavior, defaults, fiscal positions, withholding, e-invoicing — the configuration surface that drives correct VAT/GST handling.',
+    sections: [
+      {
+        id: 'behavior',
+        label: 'Default Tax Behavior',
+        order: 1,
+        questions: [
+          {
+            id: 'odoo.tax.salesPriceMode',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'Default tax behavior on customer-facing prices',
+            options: [
+              { value: 'INCLUDED', label: 'Tax-included (B2C, retail, restaurant — price IS final price)' },
+              { value: 'EXCLUDED', label: 'Tax-excluded (B2B — tax added on top of price)' },
+            ],
+          },
+          {
+            id: 'odoo.tax.purchasePriceMode',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'Default tax behavior on supplier-facing prices',
+            options: [
+              { value: 'INCLUDED', label: 'Included' },
+              { value: 'EXCLUDED', label: 'Excluded' },
+            ],
+          },
+          {
+            id: 'odoo.tax.defaultSalesTax',
+            inputType: 'TEXT',
+            required: true,
+            label: "Default Sales Tax (rate name + percent, e.g., 'VAT 15%' or 'GST 5%' or 'None')",
+          },
+          {
+            id: 'odoo.tax.defaultPurchaseTax',
+            inputType: 'TEXT',
+            required: true,
+            label: 'Default Purchase Tax (rate name + percent)',
+          },
+        ],
+      },
+      {
+        id: 'exemptions',
+        label: 'Exemptions & Special Categories',
+        order: 2,
+        questions: [
+          {
+            id: 'odoo.tax.hasExemptCustomers',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'Will any customer be tax-exempt? (export, free zone, NGO, government)',
+          },
+          {
+            id: 'odoo.tax.exemptCategories',
+            inputType: 'TEXTAREA',
+            required: false,
+            label: 'If yes — list tax-exempt customer categories (one per line)',
+          },
+          {
+            id: 'odoo.tax.hasReducedRates',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'Are there reduced or zero-rated tax categories? (food, medical, books, exports)',
+          },
+          {
+            id: 'odoo.tax.reducedRateCategories',
+            inputType: 'TEXTAREA',
+            required: false,
+            label: 'If yes — list reduced/zero-rated categories with rates (one per line)',
+          },
+        ],
+      },
+      {
+        id: 'advanced',
+        label: 'Advanced Tax Mechanics',
+        order: 3,
+        questions: [
+          {
+            id: 'odoo.tax.reverseCharge',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'Reverse-charge mechanism in scope? (cross-border services, import VAT)',
+          },
+          {
+            id: 'odoo.tax.withholding',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'Withholding tax in scope? (services, contractor payments, royalties)',
+          },
+          {
+            id: 'odoo.tax.regionalVariation',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'Do tax codes vary by region within the country? (state-level GST, provincial VAT)',
+          },
+          {
+            id: 'odoo.tax.fiscalPositions',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'Will fiscal positions be needed? (different tax rules per customer/supplier group)',
+          },
+          {
+            id: 'odoo.tax.fiscalPositionList',
+            inputType: 'TEXTAREA',
+            required: false,
+            label: "If yes — list fiscal positions (e.g., 'Domestic', 'Export — GCC', 'Free Zone', 'Reverse-charge EU B2B')",
+          },
+        ],
+      },
+      {
+        id: 'compliance',
+        label: 'Compliance & E-invoicing',
+        order: 4,
+        questions: [
+          {
+            id: 'odoo.tax.einvoicingRequired',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'Is e-invoicing mandatory in your country?',
+            options: [
+              { value: 'YES',    label: 'Yes' },
+              { value: 'NO',     label: 'No' },
+              { value: 'UNSURE', label: 'Unsure — research needed' },
+            ],
+          },
+          {
+            id: 'odoo.tax.einvoicingSystem',
+            inputType: 'TEXT',
+            required: false,
+            label: 'If yes — name of the e-invoicing system (e.g., Italy SDI, Mexico CFDI, Spain Veri*Factu, Saudi ZATCA, Egypt ETA, France PPF)',
+          },
+          {
+            id: 'odoo.tax.taxFilingPeriodicity',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'Tax filing periodicity',
+            options: [
+              { value: 'MONTHLY',   label: 'Monthly' },
+              { value: 'QUARTERLY', label: 'Quarterly' },
+              { value: 'ANNUAL',    label: 'Annual' },
+            ],
           },
         ],
       },
@@ -725,6 +891,171 @@ const rules: RulePack = {
           questionId: 'odoo.foundation.primaryCountry',
           values: ['IT', 'MX', 'ES', 'FR', 'SA', 'EG', 'BR', 'IN', 'TR', 'DE', 'PL'],
         },
+      },
+    },
+
+    // ── Pack 2 — Tax Engine rules ─────────────────────────────────────────
+
+    // R1: Sales / Purchase price modes diverge. Margin reporting on
+    // inter-flow transactions (dropship, intercompany) becomes
+    // inconsistent. Expressed as the OR of the two asymmetric pairs
+    // because the rule DSL doesn't have a direct cross-question
+    // inequality operator.
+    {
+      id: 'odoo.tax.price-mode-mismatch',
+      type: 'CONFIG_CONFLICT',
+      severity: 'WARN',
+      questionIds: ['odoo.tax.salesPriceMode', 'odoo.tax.purchasePriceMode'],
+      message: 'Sales and Purchase price modes differ. Margin reporting on inter-flow transactions (e.g., dropship, intercompany) will be inconsistent.',
+      resolution: 'Align both to the same mode unless this is intentional and documented in fiscal positions.',
+      when: {
+        any: [
+          { all: [
+            { answerEquals: { questionId: 'odoo.tax.salesPriceMode',    value: 'INCLUDED' } },
+            { answerEquals: { questionId: 'odoo.tax.purchasePriceMode', value: 'EXCLUDED' } },
+          ] },
+          { all: [
+            { answerEquals: { questionId: 'odoo.tax.salesPriceMode',    value: 'EXCLUDED' } },
+            { answerEquals: { questionId: 'odoo.tax.purchasePriceMode', value: 'INCLUDED' } },
+          ] },
+        ],
+      },
+    },
+
+    // R2: e-invoicing required but no localisation module licensed. The
+    // ideal trigger is "no l10n_<primaryCountry-lowercased> module" but
+    // the DSL has no dynamic module-name composition. The current
+    // approximation: fire when none of the e-invoicing-mandate-country
+    // l10n modules is in the license. Misses cases where the customer
+    // licensed l10n_us but is in IT — but Pack 1's R7 already flags
+    // those primary-country values, so the consultant is unlikely to
+    // miss the country/module mismatch in practice.
+    {
+      id: 'odoo.tax.einvoicing-yes-needs-l10n',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: ['odoo.tax.einvoicingRequired', 'odoo.foundation.primaryCountry'],
+      message: 'E-invoicing is mandatory but the country localization module is not in the module list.',
+      resolution: 'Add l10n_<country> to the license modules. Pack 3 (Localization) provides the country-to-module mapping.',
+      when: {
+        all: [
+          { answerEquals: { questionId: 'odoo.tax.einvoicingRequired', value: 'YES' } },
+          { not: {
+            licenseHasAnyModule: [
+              'l10n_it', 'l10n_mx', 'l10n_es', 'l10n_fr', 'l10n_sa',
+              'l10n_eg', 'l10n_br', 'l10n_in', 'l10n_tr', 'l10n_de',
+              'l10n_pl', 'l10n_us', 'l10n_uk', 'l10n_ae', 'l10n_ca',
+              'l10n_au', 'l10n_ch', 'l10n_jo', 'l10n_kw', 'l10n_qa',
+              'l10n_bh', 'l10n_om', 'l10n_generic_coa',
+            ],
+          } },
+        ],
+      },
+    },
+
+    // R3: Reverse-charge requires Accounting (Community BASE_ACCOUNTING
+    // or Enterprise ENTERPRISE_ACCOUNTING).
+    {
+      id: 'odoo.tax.reverse-charge-needs-base-accounting',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: ['odoo.tax.reverseCharge'],
+      message: 'Reverse-charge requires Accounting (Community or Enterprise) — base accounting module not provisioned.',
+      resolution: 'Add Accounting module to the license.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.tax.reverseCharge' } },
+          { not: { licenseHasAnyModule: ['BASE_ACCOUNTING', 'ENTERPRISE_ACCOUNTING'] } },
+        ],
+      },
+    },
+
+    // R4: Withholding-tax — reminder to ensure the chart-of-accounts
+    // template includes withholding accounts. Cross-cuts with the COA
+    // template question; we surface as a WARN whenever withholding is
+    // checked, regardless of COA template, because both LOCALIZATION
+    // and CUSTOM templates need to be verified.
+    {
+      id: 'odoo.tax.withholding-needs-coa-accounts',
+      type: 'DATA_WARNING',
+      severity: 'WARN',
+      questionIds: ['odoo.tax.withholding', 'odoo.coa.template'],
+      message: "Withholding tax requires dedicated chart-of-accounts entries (typically a 'Withholding Tax Payable' liability and a 'Withholding Tax Receivable' asset).",
+      resolution: 'Confirm the COA template includes withholding accounts, or add them during Configuration phase before first transaction.',
+      when: { answerTruthy: { questionId: 'odoo.tax.withholding' } },
+    },
+
+    // R5: Fiscal positions flagged but list is empty.
+    {
+      id: 'odoo.tax.fiscal-positions-need-list',
+      type: 'DATA_WARNING',
+      severity: 'WARN',
+      questionIds: ['odoo.tax.fiscalPositions', 'odoo.tax.fiscalPositionList'],
+      message: 'Fiscal positions flagged true but no positions are listed.',
+      resolution: 'List the specific fiscal positions in the field, or set fiscalPositions to false.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.tax.fiscalPositions' } },
+          { answerFalsy: { questionId: 'odoo.tax.fiscalPositionList' } },
+        ],
+      },
+    },
+
+    // R6: Tax-included sales pricing is typical for retail / POS /
+    // restaurant / eCommerce. If none of those are licensed, gently
+    // nudge the consultant to confirm the choice — it's a legitimate
+    // configuration but more often a misclick by a B2B-only firm.
+    {
+      id: 'odoo.tax.b2c-mode-on-services-only',
+      type: 'DATA_WARNING',
+      severity: 'INFO',
+      questionIds: ['odoo.tax.salesPriceMode'],
+      message: 'Tax-included pricing is typical for retail/POS/restaurant/eCommerce. None of those modules are in scope.',
+      resolution: 'Confirm tax-included is intentional for this engagement; for B2B-only deals, tax-excluded is standard.',
+      when: {
+        all: [
+          { answerEquals: { questionId: 'odoo.tax.salesPriceMode', value: 'INCLUDED' } },
+          { not: { licenseHasAnyModule: ['POINT_OF_SALE', 'ECOMMERCE'] } },
+        ],
+      },
+    },
+
+    // R7: Regional tax variation usually needs multiple fiscal positions
+    // (one per region/state). Same line-count limitation as Pack 1's R4
+    // — for now we fire on the empty-list case. The "< 2 entries"
+    // edge case is a future enhancement once the SDK gains a
+    // line-count operator.
+    {
+      id: 'odoo.tax.regional-variation-needs-multiple-tax-codes',
+      type: 'DATA_WARNING',
+      severity: 'INFO',
+      questionIds: ['odoo.tax.regionalVariation', 'odoo.tax.fiscalPositionList'],
+      message: 'Regional tax variation typically requires multiple fiscal positions (one per region/state).',
+      resolution: 'Add fiscal positions matching the regions, or document why a single position covers all regions.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.tax.regionalVariation' } },
+          { answerFalsy:  { questionId: 'odoo.tax.fiscalPositionList' } },
+        ],
+      },
+    },
+
+    // R8: Exempt customers without fiscal positions enabled. Standard
+    // Odoo pattern is one 'Exempt' fiscal position that maps default
+    // taxes to zero. Without fiscal positions, the consultant has to
+    // override taxes per-customer, which is brittle.
+    {
+      id: 'odoo.tax.exempt-customers-need-fiscal-position',
+      type: 'DATA_WARNING',
+      severity: 'WARN',
+      questionIds: ['odoo.tax.hasExemptCustomers', 'odoo.tax.fiscalPositions'],
+      message: "Tax-exempt customers are typically handled via fiscal positions (one position 'Exempt' that maps default taxes to zero).",
+      resolution: "Enable fiscal positions and add an 'Exempt' fiscal position, OR document the alternative approach (e.g., tax overrides on customer master).",
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.tax.hasExemptCustomers' } },
+          { answerFalsy:  { questionId: 'odoo.tax.fiscalPositions' } },
+        ],
       },
     },
   ],

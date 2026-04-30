@@ -386,3 +386,188 @@ describe('Odoo engagement — Pack 1 Foundation rules through the route', () => 
       .not.toContain('odoo.foundation.country-mandates-einvoicing');
   });
 });
+
+// ─── Pack 2 — Tax Engine rules through the route ─────────────────────────────
+
+describe('Odoo engagement — Pack 2 Tax rules through the route', () => {
+  it('R1: salesPriceMode=INCLUDED + purchasePriceMode=EXCLUDED fires price-mode-mismatch (WARN)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'Mismatched Price Mode Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.tax.salesPriceMode': 'INCLUDED',
+        'odoo.tax.purchasePriceMode': 'EXCLUDED',
+        'odoo.company.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.tax.price-mode-mismatch');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('WARN');
+  });
+
+  it('R2: einvoicing=YES with no l10n module licensed fires einvoicing-yes-needs-l10n (BLOCK)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'No-l10n Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: ['BASE_ACCOUNTING'] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.tax.einvoicingRequired': 'YES',
+        'odoo.foundation.primaryCountry': 'SA',
+        'odoo.company.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.tax.einvoicing-yes-needs-l10n');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('BLOCK');
+  });
+
+  it('R3: reverseCharge=true without Accounting module fires reverse-charge-needs-base-accounting (BLOCK)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'No-Accounting Reverse-Charge Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.tax.reverseCharge': true,
+        'odoo.company.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.tax.reverse-charge-needs-base-accounting');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('BLOCK');
+  });
+
+  it('R4: withholding=true fires withholding-needs-coa-accounts (WARN)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'Withholding Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: ['BASE_ACCOUNTING'] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.tax.withholding': true,
+        'odoo.company.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.tax.withholding-needs-coa-accounts');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('WARN');
+  });
+
+  it('R5: fiscalPositions=true with empty fiscalPositionList fires fiscal-positions-need-list (WARN)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'Empty Fiscal Positions Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.tax.fiscalPositions': true,
+        'odoo.tax.fiscalPositionList': '',
+        'odoo.company.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.tax.fiscal-positions-need-list');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('WARN');
+  });
+
+  it('R6: salesPriceMode=INCLUDED with no POS / eCommerce module fires b2c-mode-on-services-only (INFO)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'B2C-mode Services-only Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: ['BASE_ACCOUNTING'] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.tax.salesPriceMode': 'INCLUDED',
+        'odoo.company.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.tax.b2c-mode-on-services-only');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('INFO');
+  });
+
+  it('R7: regionalVariation=true with empty fiscalPositionList fires regional-variation-needs-multiple-tax-codes (INFO)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'Regional Variation Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.tax.regionalVariation': true,
+        'odoo.tax.fiscalPositionList': '',
+        'odoo.company.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.tax.regional-variation-needs-multiple-tax-codes');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('INFO');
+  });
+
+  it('R8: hasExemptCustomers=true with fiscalPositions=false fires exempt-customers-need-fiscal-position (WARN)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'Exempt-no-position Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.tax.hasExemptCustomers': true,
+        'odoo.tax.fiscalPositions': false,
+        'odoo.company.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.tax.exempt-customers-need-fiscal-position');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('WARN');
+  });
+});
