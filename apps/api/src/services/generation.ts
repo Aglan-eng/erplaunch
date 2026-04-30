@@ -161,7 +161,7 @@ export async function processJob(jobId: string, db: DbModule) {
     });
     await fs.writeFile(path.join(docDir, 'Risk_Register.md'), riskContent);
 
-    const uatData = { clientName: eng.clientName as string, answers, comments, images, aiAdvice };
+    const uatData = { clientName: eng.clientName as string, adaptor: adaptorCtx, answers, comments, images, aiAdvice };
     await fs.writeFile(path.join(docDir, 'UAT_Plan.md'), generateUATPlan(uatData));
     await fs.writeFile(path.join(docDir, 'UAT_Plan.html'), generateUATPlanHtml(uatData));
 
