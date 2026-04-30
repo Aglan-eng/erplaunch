@@ -1,9 +1,13 @@
 import MarkdownIt from 'markdown-it';
+import type { AdaptorContext } from './brdGenerator.js';
 
 const md = new MarkdownIt({ html: true, typographer: true });
 
 export interface SolutionDocData {
   clientName: string;
+  /** Adaptor context — required so prose flexes per platform. Same shape
+   *  as BRDData.adaptor, built upstream in services/generation.ts. */
+  adaptor: AdaptorContext;
   license: { edition: string; modules: string[] };
   answers: Record<string, any>;
   conflicts: any[];
@@ -13,10 +17,11 @@ export interface SolutionDocData {
 }
 
 export function generateSolutionDoc(data: SolutionDocData): string {
-  const { clientName, license, answers, conflicts } = data;
+  const { clientName, adaptor, license, answers, conflicts } = data;
   const now = new Date().toLocaleDateString();
   const blocks = conflicts.filter(c => c.severity === 'BLOCK');
   const warnings = conflicts.filter(c => c.severity === 'WARN');
+  const isNetSuite = adaptor.id === 'netsuite';
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   const yn = (key: string) => answers[key] === true ? 'Yes' : answers[key] === false ? 'No' : '—';
@@ -58,26 +63,26 @@ export function generateSolutionDoc(data: SolutionDocData): string {
   let doc = '';
 
   // ── SECTION 1: Document Control ────────────────────────────────────────────
-  doc += `# NetSuite Solution Design Document\n\n`;
+  doc += `# ${adaptor.name} Solution Design Document\n\n`;
   doc += `## Document Control\n\n`;
   doc += `| Field | Detail |\n| :--- | :--- |\n`;
   doc += `| **Client** | ${clientName} |\n`;
   doc += `| **Document Status** | Draft |\n`;
-  doc += `| **Prepared By** | Ofoq NetSuite Accelerator |\n`;
+  doc += `| **Prepared By** | ERPLaunch |\n`;
   doc += `| **Date** | ${now} |\n`;
-  doc += `| **License Edition** | ${license.edition.replace('_', ' ')} |\n`;
+  doc += `| **License Edition** | ${adaptor.editionLabel} |\n`;
   doc += `| **Modules Provisioned** | ${license.modules.join(', ') || '—'} |\n\n`;
 
   doc += `### Revision History\n\n`;
   doc += `| Version | Date | Author | Change Description |\n| :--- | :--- | :--- | :--- |\n`;
-  doc += `| 1.0 | ${now} | Ofoq Accelerator | Initial auto-generated draft |\n\n`;
+  doc += `| 1.0 | ${now} | ERPLaunch | Initial auto-generated draft |\n\n`;
 
   doc += `---\n\n`;
 
   // ── SECTION 2: Project Overview ─────────────────────────────────────────────
   doc += `## 1. Project Overview\n\n`;
   doc += `### 1.1 Background\n\n`;
-  doc += `This Solution Design Document (SDD) defines the agreed configuration of NetSuite for **${clientName}**. `;
+  doc += `This Solution Design Document (SDD) defines the agreed configuration of ${adaptor.name} for **${clientName}**. `;
   doc += `It serves as the single source of truth between the implementation team and the client, covering functional design decisions, `;
   doc += `system behaviour, and technical specifications for all in-scope workstreams.\n\n`;
 
@@ -94,7 +99,7 @@ export function generateSolutionDoc(data: SolutionDocData): string {
 
   doc += `### 1.3 Assumptions & Constraints\n\n`;
   doc += `- All configuration is based on answers captured during the discovery workshop.\n`;
-  doc += `- NetSuite ${license.edition.replace('_', ' ')} edition is confirmed.\n`;
+  doc += `- ${adaptor.editionLabel} edition is confirmed.\n`;
   doc += `- Sandbox availability is assumed prior to configuration start.\n`;
   if (blocks.length > 0) doc += `- **${blocks.length} blocking configuration issue(s) remain open** — see Section 7.\n`;
   doc += `\n---\n\n`;
@@ -103,7 +108,12 @@ export function generateSolutionDoc(data: SolutionDocData): string {
   doc += `## 2. Organisational & Account Setup\n\n`;
   doc += `### 2.1 Entity Structure\n\n`;
   doc += `| Setting | Configuration |\n| :--- | :--- |\n`;
-  doc += `| Multi-Entity / OneWorld | ${yn('r2r.entities.multiEntity')} |\n`;
+  // OneWorld is the NetSuite product name for multi-entity; other adaptors
+  // call this "Multi-Company" (Odoo), "Inter-Company" (SAP), etc. We surface
+  // the platform-agnostic label and only annotate with the NetSuite-specific
+  // term when the adaptor is NetSuite.
+  const multiEntityLabel = isNetSuite ? 'Multi-Entity / OneWorld' : 'Multi-Entity / Multi-Company';
+  doc += `| ${multiEntityLabel} | ${yn('r2r.entities.multiEntity')} |\n`;
   doc += `| Multi-Currency | ${yn('r2r.currencies.isMultiCurrency')} |\n`;
   doc += `| Base Currency | ${val('r2r.currencies.baseCurrency')} |\n`;
   doc += `| Fiscal Year Start | ${val('r2r.accountingPeriods.fiscalYearStart')} |\n`;
@@ -192,56 +202,70 @@ export function generateSolutionDoc(data: SolutionDocData): string {
 
   doc += `---\n\n`;
 
-  // ── SECTION 5: Technical Specifications ─────────────────────────────────────
+  // ── SECTION 4: Technical Specifications ─────────────────────────────────────
+  // Two voices: NetSuite has SDF + SuiteScript + UI-authored Workflow exports,
+  // a platform-specific build pipeline. Non-NetSuite adaptors get a neutral
+  // placeholder until the per-adaptor configuration generator lands (Phase 4
+  // of the cross-platform fix introduces an Odoo-specific equivalent).
   doc += `## 4. Technical Specifications\n\n`;
-  doc += `### 4.1 Custom Objects (SDF)\n\n`;
-  doc += `The following custom records and fields will be generated as NetSuite SDF XML objects:\n\n`;
-  doc += `| Object Type | Record ID | Purpose |\n| :--- | :--- | :--- |\n`;
-  if (answers['mfg.productionFlow.type'] === 'WIP_ROUTINGS') {
-    doc += `| Custom Record | customrecord_nsix_wip_log | WIP Production Log |\n`;
-  }
-  doc += `| Custom Form | Standard per workstream | To be defined during build phase |\n\n`;
+  if (isNetSuite) {
+    doc += `### 4.1 Custom Objects (SDF)\n\n`;
+    doc += `The following custom records and fields will be generated as NetSuite SDF XML objects:\n\n`;
+    doc += `| Object Type | Record ID | Purpose |\n| :--- | :--- | :--- |\n`;
+    if (answers['mfg.productionFlow.type'] === 'WIP_ROUTINGS') {
+      doc += `| Custom Record | customrecord_nsix_wip_log | WIP Production Log |\n`;
+    }
+    doc += `| Custom Form | Standard per workstream | To be defined during build phase |\n\n`;
 
-  doc += `### 4.2 SuiteScript Customisations\n\n`;
-  doc += `| Script Type | Trigger | Business Purpose |\n| :--- | :--- | :--- |\n`;
-  doc += `| User Event | Before Submit | Validation and auto-population of standard fields |\n`;
-  if (answers['p2p.purchasing.poApprovalRequired'] === true) {
-    doc += `| Workflow | PO Approval | Route PO to approval based on threshold rules |\n`;
-  }
-  if (answers['o2c.salesOrders.soApprovalRequired'] === true) {
-    doc += `| Workflow | SO Approval | Route Sales Orders to approval based on value or type |\n`;
-  }
-  doc += `\n`;
+    doc += `### 4.2 SuiteScript Customisations\n\n`;
+    doc += `| Script Type | Trigger | Business Purpose |\n| :--- | :--- | :--- |\n`;
+    doc += `| User Event | Before Submit | Validation and auto-population of standard fields |\n`;
+    if (answers['p2p.purchasing.poApprovalRequired'] === true) {
+      doc += `| Workflow | PO Approval | Route PO to approval based on threshold rules |\n`;
+    }
+    if (answers['o2c.salesOrders.soApprovalRequired'] === true) {
+      doc += `| Workflow | SO Approval | Route Sales Orders to approval based on value or type |\n`;
+    }
+    doc += `\n`;
 
-  // ── SECTION 4.3: Approval Workflows — manual implementation ─────────────
-  // Phase 6: we no longer ship hand-written workflow XML (SDF rejects the
-  // SOAP webservices namespace and the <sendemailaction> shape). Instead
-  // the consultant authors these in the NetSuite UI, then exports via SDF
-  // for source-controlled promotion to higher environments.
-  const poApproval = answers['p2p.purchasing.poApprovalRequired'] === true;
-  const billApproval = answers['p2p.bills.billApprovalRequired'] === true;
-  const soApproval = answers['o2c.salesOrders.soApprovalRequired'] === true;
-  if (poApproval || billApproval || soApproval) {
-    doc += `### 4.3 Approval Workflows — Manual Implementation Required\n\n`;
-    doc += `The following approval workflows must be authored in the NetSuite UI `;
-    doc += `(Customization → Workflow → Workflows → New). Oracle guidance is to `;
-    doc += `build workflows in the UI and export them via SDF rather than hand-write `;
-    doc += `the XML; the approval actions (email, state transitions, role routing) `;
-    doc += `use platform objects the SDF validator will only accept when they come `;
-    doc += `from a UI export.\n\n`;
-    doc += `| Workflow | Record Type | Trigger | Notes |\n| :--- | :--- | :--- | :--- |\n`;
-    if (poApproval) {
-      doc += `| PO Approval | Purchase Order | Before Submit | Route to Procurement Manager on threshold; escalate to CFO above the second tier. Use role-based recipients, not hard-coded user IDs. |\n`;
+    // ── SECTION 4.3: Approval Workflows — manual implementation ─────────────
+    // Phase 6: we no longer ship hand-written workflow XML (SDF rejects the
+    // SOAP webservices namespace and the <sendemailaction> shape). Instead
+    // the consultant authors these in the NetSuite UI, then exports via SDF
+    // for source-controlled promotion to higher environments.
+    const poApproval = answers['p2p.purchasing.poApprovalRequired'] === true;
+    const billApproval = answers['p2p.bills.billApprovalRequired'] === true;
+    const soApproval = answers['o2c.salesOrders.soApprovalRequired'] === true;
+    if (poApproval || billApproval || soApproval) {
+      doc += `### 4.3 Approval Workflows — Manual Implementation Required\n\n`;
+      doc += `The following approval workflows must be authored in the NetSuite UI `;
+      doc += `(Customization → Workflow → Workflows → New). Oracle guidance is to `;
+      doc += `build workflows in the UI and export them via SDF rather than hand-write `;
+      doc += `the XML; the approval actions (email, state transitions, role routing) `;
+      doc += `use platform objects the SDF validator will only accept when they come `;
+      doc += `from a UI export.\n\n`;
+      doc += `| Workflow | Record Type | Trigger | Notes |\n| :--- | :--- | :--- | :--- |\n`;
+      if (poApproval) {
+        doc += `| PO Approval | Purchase Order | Before Submit | Route to Procurement Manager on threshold; escalate to CFO above the second tier. Use role-based recipients, not hard-coded user IDs. |\n`;
+      }
+      if (billApproval) {
+        doc += `| Bill Approval | Vendor Bill | Before Submit | Pair with the \`custbody_nsix_three_way_match_status\` field so bills can only progress past Pending Approval once a 3-way match is recorded. |\n`;
+      }
+      if (soApproval) {
+        doc += `| Sales Order Approval | Sales Order | Before Submit | Route by order value or customer credit tier. Wire a transition to a "Credit Hold" state when the customer has an overdue AR balance. |\n`;
+      }
+      doc += `\n**Checklist for the consultant:** (1) build the workflow in the UI of the lowest environment, `;
+      doc += `(2) run end-to-end with a test record, (3) export via \`suitecloud object:import --type workflow\`, `;
+      doc += `(4) commit the exported XML into the SDF bundle for promotion.\n\n`;
     }
-    if (billApproval) {
-      doc += `| Bill Approval | Vendor Bill | Before Submit | Pair with the \`custbody_nsix_three_way_match_status\` field so bills can only progress past Pending Approval once a 3-way match is recorded. |\n`;
-    }
-    if (soApproval) {
-      doc += `| Sales Order Approval | Sales Order | Before Submit | Route by order value or customer credit tier. Wire a transition to a "Credit Hold" state when the customer has an overdue AR balance. |\n`;
-    }
-    doc += `\n**Checklist for the consultant:** (1) build the workflow in the UI of the lowest environment, `;
-    doc += `(2) run end-to-end with a test record, (3) export via \`suitecloud object:import --type workflow\`, `;
-    doc += `(4) commit the exported XML into the SDF bundle for promotion.\n\n`;
+  } else {
+    // Platform-neutral placeholder. The Phase-4 follow-up replaces this with
+    // an adaptor-specific generator (e.g. odooConfigurationPlanGenerator)
+    // that lists module install plan, l10n_<country>, fiscal year setup,
+    // multi-company config, and Studio XML export notes.
+    doc += `### 4.1 Configuration Approach\n\n`;
+    doc += `Detailed configuration steps for ${adaptor.name} will be provided in the platform-specific configuration plan accompanying this document. `;
+    doc += `Section 7 (Deployment & Go-Live) summarises the build-phase hand-off; the configuration plan itself enumerates module install order, localisation packages, and any studio / customisation exports.\n\n`;
   }
 
   doc += `---\n\n`;
@@ -272,7 +296,7 @@ export function generateSolutionDoc(data: SolutionDocData): string {
   // ── SECTION 8: Go-Live Plan ──────────────────────────────────────────────────
   doc += `## 7. Deployment & Go-Live Plan\n\n`;
   doc += `| Phase | Activity | Owner | Status |\n| :--- | :--- | :--- | :--- |\n`;
-  doc += `| Discovery | Business requirements captured | Ofoq Consultant | ✅ Complete |\n`;
+  doc += `| Discovery | Business requirements captured | ERPLaunch Consultant | ✅ Complete |\n`;
   doc += `| Design | Solution document reviewed & signed | Client + Consultant | ☐ Pending |\n`;
   doc += `| Build | Configuration in Sandbox | Implementation Team | ☐ Not Started |\n`;
   doc += `| UAT | User acceptance testing | Client Business Users | ☐ Not Started |\n`;
@@ -285,8 +309,8 @@ export function generateSolutionDoc(data: SolutionDocData): string {
   doc += `| Role | Name | Signature | Date |\n| :--- | :--- | :--- | :--- |\n`;
   doc += `| Client Project Sponsor | | | |\n`;
   doc += `| Client Finance Lead | | | |\n`;
-  doc += `| Implementation Lead (Ofoq) | | | |\n`;
-  doc += `| NetSuite Project Manager | | | |\n\n`;
+  doc += `| Implementation Lead (ERPLaunch) | | | |\n`;
+  doc += `| ${adaptor.name} Project Manager | | | |\n\n`;
 
   return doc;
 }
@@ -300,6 +324,9 @@ export function generateSolutionDocHtml(data: SolutionDocData): string {
     data.answers['mfg.productionFlow.type'] !== undefined ? 'MFG' : null,
     data.answers['rtn.customerReturns.useRMA'] !== undefined ? 'RTN' : null,
   ].filter(Boolean);
+
+  const adaptorName = data.adaptor.name;
+  const editionLabel = data.adaptor.editionLabel;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -341,17 +368,17 @@ export function generateSolutionDocHtml(data: SolutionDocData): string {
 <body>
   <div class="page">
     <div class="header">
-      <div class="header-badge">NetSuite Implementation</div>
+      <div class="header-badge">${adaptorName} Implementation</div>
       <h1>Solution Design Document</h1>
       <div class="sub">${data.clientName}</div>
       <div class="badges">
-        <span class="badge">📋 ${data.license.edition.replace('_', ' ')}</span>
+        <span class="badge">📋 ${editionLabel}</span>
         ${activeFlows.map(f => `<span class="badge">✓ ${f}</span>`).join('')}
         <span class="badge">📅 ${new Date().toLocaleDateString()}</span>
       </div>
     </div>
     ${content}
-    <div class="footer">Generated by Ofoq NetSuite Accelerator &copy; ${new Date().getFullYear()} — Confidential</div>
+    <div class="footer">Generated by ERPLaunch &copy; ${new Date().getFullYear()} — Confidential</div>
   </div>
 </body>
 </html>`;
