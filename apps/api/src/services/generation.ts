@@ -177,7 +177,7 @@ export async function processJob(jobId: string, db: DbModule) {
     };
     await fs.writeFile(path.join(docDir, 'Solution_Design.html'), generateSolutionDocHtml(sddData));
 
-    const trainingData = { clientName: eng.clientName as string, answers, comments, images, aiAdvice };
+    const trainingData = { clientName: eng.clientName as string, adaptor: adaptorCtx, answers, comments, images, aiAdvice };
     await fs.writeFile(path.join(docDir, 'Training_Manual.html'), generateTrainingManualHtml(trainingData));
 
     await fs.writeFile(

@@ -1,9 +1,17 @@
 import MarkdownIt from 'markdown-it';
+import type { AdaptorContext } from './brdGenerator.js';
 
 const md = new MarkdownIt({ html: true, typographer: true });
 
 export interface TrainingManualData {
   clientName: string;
+  /** Adaptor context — required so prose flexes per platform. The
+   *  detailed training modules in this generator are NetSuite-specific
+   *  (menu paths, transaction names) and only render when the adaptor
+   *  is NetSuite; other adaptors get a platform-neutral placeholder
+   *  pointing at the per-adaptor training that will be issued
+   *  separately. */
+  adaptor: AdaptorContext;
   answers: Record<string, any>;
   comments?: any[];
   images?: any[];
@@ -207,53 +215,76 @@ function renderModules(modules: TrainingModule[], data: TrainingManualData): str
 }
 
 export function generateTrainingManual(data: TrainingManualData): string {
-  const { clientName, answers } = data;
+  const { clientName, adaptor, answers } = data;
+  const isNetSuite = adaptor.id === 'netsuite';
   const modules = buildModules(answers);
   const now = new Date().toLocaleDateString();
 
-  let doc = `# NetSuite Training Manual\n\n`;
-  doc += `**Client:** ${clientName}  \n**Date:** ${now}  \n**Prepared by:** Ofoq NetSuite Accelerator\n\n`;
+  let doc = `# ${adaptor.name} Training Manual\n\n`;
+  doc += `**Client:** ${clientName}  \n**Date:** ${now}  \n**Prepared by:** ERPLaunch\n\n`;
   doc += `---\n\n`;
 
   doc += `## Introduction\n\n`;
-  doc += `This Training Manual has been prepared specifically for **${clientName}** based on the business processes configured during the NetSuite discovery and design phases. `;
-  doc += `Each module addresses a specific business role and the associated NetSuite transactions they will perform day-to-day.\n\n`;
+  doc += `This Training Manual has been prepared specifically for **${clientName}** based on the business processes configured during the ${adaptor.name} discovery and design phases. `;
+  doc += `Each module addresses a specific business role and the associated ${adaptor.name} transactions they will perform day-to-day.\n\n`;
 
-  doc += `### How to Use This Manual\n\n`;
-  doc += `- Work through modules relevant to your role.\n`;
-  doc += `- Each step can be followed directly in the NetSuite Sandbox environment during training.\n`;
-  doc += `- The **NetSuite Navigation** column shows the exact menu path to reach each screen.\n\n`;
-  doc += `---\n\n`;
+  if (isNetSuite) {
+    // Detailed step-by-step training is NetSuite-only for now. Each step
+    // references a specific NetSuite menu path; localising to other adaptors
+    // is a per-adaptor follow-up (Odoo training would live in a separate
+    // generator with its own menu vocabulary).
+    doc += `### How to Use This Manual\n\n`;
+    doc += `- Work through modules relevant to your role.\n`;
+    doc += `- Each step can be followed directly in the NetSuite Sandbox environment during training.\n`;
+    doc += `- The **NetSuite Navigation** column shows the exact menu path to reach each screen.\n\n`;
+    doc += `---\n\n`;
 
-  doc += `## Table of Contents\n\n`;
-  modules.forEach(m => {
-    doc += `- [${m.id}: ${m.title}](#${m.id.toLowerCase()}-${m.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')})\n`;
-  });
-  doc += `\n---\n\n`;
+    doc += `## Table of Contents\n\n`;
+    modules.forEach(m => {
+      doc += `- [${m.id}: ${m.title}](#${m.id.toLowerCase()}-${m.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')})\n`;
+    });
+    doc += `\n---\n\n`;
 
-  doc += `## Training Modules\n\n`;
-  doc += renderModules(modules, data);
+    doc += `## Training Modules\n\n`;
+    doc += renderModules(modules, data);
 
-  doc += `---\n\n`;
-  doc += `## Quick Reference Card\n\n`;
-  doc += `| Task | NetSuite Path |\n| :--- | :--- |\n`;
-  doc += `| Create Journal Entry | Transactions > Financial > Make Journal Entries |\n`;
-  if (answers['p2p.purchasing.usePurchaseOrders']) {
-    doc += `| Create Purchase Order | Transactions > Purchases > Enter Purchase Orders |\n`;
+    doc += `---\n\n`;
+    doc += `## Quick Reference Card\n\n`;
+    doc += `| Task | NetSuite Path |\n| :--- | :--- |\n`;
+    doc += `| Create Journal Entry | Transactions > Financial > Make Journal Entries |\n`;
+    if (answers['p2p.purchasing.usePurchaseOrders']) {
+      doc += `| Create Purchase Order | Transactions > Purchases > Enter Purchase Orders |\n`;
+    }
+    if (Object.keys(answers).some(k => k.startsWith('o2c.'))) {
+      doc += `| Create Sales Order | Transactions > Sales > Enter Sales Orders |\n`;
+    }
+    if (Object.keys(answers).some(k => k.startsWith('mfg.'))) {
+      doc += `| Create Work Order | Transactions > Manufacturing > Enter Work Orders |\n`;
+    }
+    if (answers['rtn.customerReturns.useRMA']) {
+      doc += `| Create Return Authorization | Transactions > Sales > Enter Return Authorizations |\n`;
+    }
+    doc += `| Run a Report | Reports > [Module] > [Report Name] |\n`;
+    doc += `| Global Search | Search bar at the top-right of any page |\n\n`;
+  } else {
+    // Platform-neutral placeholder. The Phase-4 follow-up replaces this
+    // with an adaptor-specific training generator that knows the menu
+    // vocabulary of the target platform. For now we acknowledge that
+    // detailed step-by-step training for ${adaptor.name} will be
+    // delivered separately so the consultant doesn't ship an empty
+    // training manual.
+    doc += `### How to Use This Manual\n\n`;
+    doc += `Detailed step-by-step ${adaptor.name} training will be issued separately as part of the platform-specific configuration plan that accompanies this engagement. `;
+    doc += `That document includes role-specific menu paths, transaction screens, and the day-to-day flows your team will perform in ${adaptor.name}.\n\n`;
+    doc += `In the interim, this manual records the participants who will receive training; the per-module step-by-step content is intentionally omitted until the configuration plan is finalised.\n\n`;
+    doc += `---\n\n`;
+
+    // Note: we do NOT enumerate the wizard-derived `modules` here because
+    // their titles ("NetSuite Navigation & Basics", etc.) are
+    // NetSuite-specific by design. The Phase-4 per-adaptor training
+    // generator will produce platform-correct module titles.
   }
-  if (Object.keys(answers).some(k => k.startsWith('o2c.'))) {
-    doc += `| Create Sales Order | Transactions > Sales > Enter Sales Orders |\n`;
-  }
-  if (Object.keys(answers).some(k => k.startsWith('mfg.'))) {
-    doc += `| Create Work Order | Transactions > Manufacturing > Enter Work Orders |\n`;
-  }
-  if (answers['rtn.customerReturns.useRMA']) {
-    doc += `| Create Return Authorization | Transactions > Sales > Enter Return Authorizations |\n`;
-  }
-  doc += `| Run a Report | Reports > [Module] > [Report Name] |\n`;
-  doc += `| Global Search | Search bar at the top-right of any page |\n\n`;
 
-  doc += `---\n\n`;
   doc += `## Training Sign-off\n\n`;
   doc += `| Participant Name | Role | Date Trained | Trainer Initials |\n| :--- | :--- | :--- | :--- |\n`;
   doc += `| | | | |\n| | | | |\n| | | | |\n\n`;
@@ -304,7 +335,7 @@ export function generateTrainingManualHtml(data: TrainingManualData): string {
 <body>
   <div class="page">
     <div class="header">
-      <div class="header-badge">NetSuite Implementation</div>
+      <div class="header-badge">${data.adaptor.name} Implementation</div>
       <h1>Training Manual</h1>
       <div class="sub">${data.clientName}</div>
       <div class="badges">
@@ -314,7 +345,7 @@ export function generateTrainingManualHtml(data: TrainingManualData): string {
       </div>
     </div>
     ${content}
-    <div class="footer">Generated by Ofoq NetSuite Accelerator &copy; ${new Date().getFullYear()} — For Training Use Only</div>
+    <div class="footer">Generated by ERPLaunch &copy; ${new Date().getFullYear()} — For Training Use Only</div>
   </div>
 </body>
 </html>`;
