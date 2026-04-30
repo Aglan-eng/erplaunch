@@ -188,3 +188,201 @@ describe('Odoo engagement — PATCH /profile fires answer-driven rules', () => {
     expect(hit?.severity).toBe('WARN');
   });
 });
+
+// ─── Pack 1 — Foundation rules through the route ─────────────────────────────
+//
+// Each test seeds the triggering combination via PATCH /profile (and
+// PUT /license where needed) and asserts the rule id surfaces in the
+// route's response. Mirrors the per-rule list in pack-1.
+
+describe('Odoo engagement — Pack 1 Foundation rules through the route', () => {
+  it('R1: deployment=ONLINE + ENTERPRISE_STUDIO in license fires online-disallows-custom-modules (BLOCK)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'Online Studio Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: ['ENTERPRISE_STUDIO'] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.foundation.deploymentMode': 'ONLINE',
+        'odoo.company.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.foundation.online-disallows-custom-modules');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('BLOCK');
+  });
+
+  it('R3: deployment=ODOOSH on COMMUNITY edition fires odoosh-requires-enterprise (BLOCK)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'Odoo.sh Community Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'COMMUNITY', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.foundation.deploymentMode': 'ODOOSH',
+        'odoo.foundation.edition': 'COMMUNITY',
+        'odoo.company.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.foundation.odoosh-requires-enterprise');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('BLOCK');
+  });
+
+  it('R4: multiCompany=true + empty entityList fires multi-company-needs-entities (WARN)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'Multi-Co Empty Entities Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.foundation.multiCompany': true,
+        'odoo.foundation.entityList': '',
+        'odoo.company.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.foundation.multi-company-needs-entities');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('WARN');
+  });
+
+  it('R4: filling entityList clears the conflict on next save', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'Multi-Co Fix Entities Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: [] },
+    });
+    // First save — empty entityList → R4 fires.
+    await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.foundation.multiCompany': true,
+        'odoo.foundation.entityList': '',
+        'odoo.company.fiscalYearStart': '01-01',
+      } },
+    });
+    // Second save — entityList populated → R4 should clear.
+    const fixed = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.foundation.multiCompany': true,
+        'odoo.foundation.entityList': 'Sahel Holding, AE, AED\nSahel Trading, EG, EGP',
+        'odoo.company.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = fixed.json() as { data: { conflicts: Array<{ id: string }> } };
+    expect(body.data.conflicts.map((c) => c.id))
+      .not.toContain('odoo.foundation.multi-company-needs-entities');
+  });
+
+  it('R5: multiCurrency=true + empty reportingCurrency fires multi-currency-needs-reporting-currency (BLOCK)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'Multi-FX Empty Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.foundation.multiCurrency': true,
+        'odoo.foundation.reportingCurrency': '',
+        'odoo.company.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.foundation.multi-currency-needs-reporting-currency');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('BLOCK');
+  });
+
+  it('R6: ONLINE + Y3 users > 50 fires online-cost-warning-at-scale (INFO)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'Big-Online Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.foundation.deploymentMode': 'ONLINE',
+        'odoo.foundation.usersInternalY3': 75,
+        'odoo.company.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.foundation.online-cost-warning-at-scale');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('INFO');
+  });
+
+  it('R7: primaryCountry=SA fires country-mandates-einvoicing (INFO)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'Saudi E-Invoice Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.foundation.primaryCountry': 'SA',
+        'odoo.company.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.foundation.country-mandates-einvoicing');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('INFO');
+  });
+
+  it('R7: primaryCountry=US does NOT fire country-mandates-einvoicing', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'US No-Mandate Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.foundation.primaryCountry': 'US',
+        'odoo.company.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string }> } };
+    expect(body.data.conflicts.map((c) => c.id))
+      .not.toContain('odoo.foundation.country-mandates-einvoicing');
+  });
+});

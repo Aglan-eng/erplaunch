@@ -30,6 +30,11 @@ import { SDK_VERSION } from '@ofoq/adaptor-sdk';
 const schema: QuestionnaireSchema = {
   version: '1.0.0',
   flows: [
+    // Pack 1 — Foundation gates everything downstream (deployment, edition,
+    // geography, multi-entity / multi-currency). Renders first in the
+    // wizard so the consultant locks in these decisions before
+    // R2R/P2P/O2C/Production/Returns.
+    buildFoundationFlow(),
     buildR2RFlow(),
     buildP2PFlow(),
     buildO2CFlow(),
@@ -37,6 +42,154 @@ const schema: QuestionnaireSchema = {
     buildReturnsFlow(),
   ],
 };
+
+// ─── Pack 1 — Foundation & Deployment Architecture ───────────────────────────
+//
+// 15 questions across 4 sections. The R2R "company" section keeps its
+// existing odoo.company.multiCompany / currency / fiscalYearStart questions
+// for now — Pack 1 introduces parallel odoo.foundation.* questions
+// intentionally to stay non-breaking. Duplicate-rationalization is a
+// future pack.
+function buildFoundationFlow(): FlowDefinition {
+  return {
+    id: 'FOUNDATION',
+    label: 'Project Foundation',
+    description: 'Deployment, edition, geography, and entity structure decisions that gate everything downstream.',
+    sections: [
+      {
+        id: 'deployment',
+        label: 'Deployment & Licensing',
+        order: 1,
+        questions: [
+          {
+            id: 'odoo.foundation.deploymentMode',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'Hosting & deployment mode',
+            options: [
+              { value: 'ONLINE',     label: 'Odoo Online (SaaS — managed by Odoo, no custom code allowed)' },
+              { value: 'ODOOSH',     label: 'Odoo.sh (PaaS — managed cloud with Git-based custom modules)' },
+              { value: 'SELFHOSTED', label: 'Self-hosted (own server, full control, you manage backups)' },
+            ],
+          },
+          {
+            id: 'odoo.foundation.edition',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'Edition',
+            options: [
+              { value: 'COMMUNITY',  label: 'Community' },
+              { value: 'ENTERPRISE', label: 'Enterprise' },
+            ],
+          },
+          {
+            id: 'odoo.foundation.usersInternalY1',
+            inputType: 'NUMBER',
+            required: true,
+            label: 'Number of internal users at go-live (Year 1)',
+            help: {
+              title: 'Who counts as an internal user?',
+              body: 'Internal users only. Portal users (clients/suppliers given limited access) and Public website visitors do not count toward licensing.',
+            },
+          },
+          {
+            id: 'odoo.foundation.usersInternalY3',
+            inputType: 'NUMBER',
+            required: true,
+            label: 'Planned internal users by Year 3',
+          },
+          {
+            id: 'odoo.foundation.portalUsers',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'Will external users (clients/suppliers) get Portal access?',
+          },
+        ],
+      },
+      {
+        id: 'geography',
+        label: 'Country & Languages',
+        order: 2,
+        questions: [
+          {
+            id: 'odoo.foundation.primaryCountry',
+            inputType: 'TEXT',
+            required: true,
+            label: 'Primary country of operation (ISO 3166 alpha-2 code, e.g., AE, EG, US, FR)',
+          },
+          {
+            id: 'odoo.foundation.otherCountries',
+            inputType: 'TEXTAREA',
+            required: false,
+            label: 'List other countries with legal entities (one per line, ISO codes)',
+          },
+          {
+            id: 'odoo.foundation.reportingLanguage',
+            inputType: 'TEXT',
+            required: true,
+            label: 'Primary reporting language (ISO 639-1, e.g., en, ar, fr)',
+          },
+          {
+            id: 'odoo.foundation.uiLanguages',
+            inputType: 'TEXTAREA',
+            required: false,
+            label: 'Other UI languages required (one per line, ISO codes)',
+          },
+        ],
+      },
+      {
+        id: 'fiscalcalendar',
+        label: 'Fiscal Calendar',
+        order: 3,
+        questions: [
+          {
+            id: 'odoo.foundation.fiscalYearStart',
+            inputType: 'TEXT',
+            required: true,
+            label: 'Fiscal year start (MM-DD, e.g., 01-01 or 07-01)',
+          },
+        ],
+      },
+      {
+        id: 'entities',
+        label: 'Multi-Company & Currency',
+        order: 4,
+        questions: [
+          {
+            id: 'odoo.foundation.multiCompany',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'Multi-company in scope? (one Odoo database, multiple legal entities)',
+          },
+          {
+            id: 'odoo.foundation.entityList',
+            inputType: 'TEXTAREA',
+            required: false,
+            label: 'If yes — list each legal entity: name, country, base currency (one per line)',
+          },
+          {
+            id: 'odoo.foundation.intercompanyAuto',
+            inputType: 'BOOLEAN',
+            required: false,
+            label: 'Automate inter-company transactions? (auto-counterpart of orders/invoices between own entities)',
+          },
+          {
+            id: 'odoo.foundation.multiCurrency',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'Multi-currency operations?',
+          },
+          {
+            id: 'odoo.foundation.reportingCurrency',
+            inputType: 'TEXT',
+            required: false,
+            label: 'Group reporting currency (ISO 4217, e.g., USD, EUR, AED) — required if multi-currency',
+          },
+        ],
+      },
+    ],
+  };
+}
 
 function buildR2RFlow(): FlowDefinition {
   return {
@@ -460,6 +613,119 @@ const rules: RulePack = {
       message: 'Per-customer-tier pricelists require each customer to be tagged with a tier — usually a migration step.',
       resolution: 'Capture the customer tier taxonomy in the Migration Tracker before go-live.',
       when: { answerEquals: { questionId: 'odoo.sales.priceListStrategy', value: 'CUSTOMER_TIER' } },
+    },
+
+    // ── Pack 1 — Foundation rules ─────────────────────────────────────────
+    //
+    // R2 from the spec is intentionally NOT added here — there is already
+    // odoo.studio-is-enterprise-only above that handles Edition × Studio.
+    // Foundation does not duplicate it.
+
+    // R1: Odoo Online does not allow custom modules. For now the
+    // "custom-modules" trigger fires when ENTERPRISE_STUDIO is in the
+    // license (Studio output is custom XML and is the most common path
+    // a consultant takes to ship custom code on Odoo). Future packs can
+    // extend this with a richer "any module flagged custom" check.
+    {
+      id: 'odoo.foundation.online-disallows-custom-modules',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: ['odoo.foundation.deploymentMode'],
+      message: 'Odoo Online does not allow custom modules or Studio-exported XML.',
+      resolution: 'Pick Odoo.sh if you want managed hosting with custom modules, or Self-hosted if you want full control.',
+      when: {
+        all: [
+          { answerEquals: { questionId: 'odoo.foundation.deploymentMode', value: 'ONLINE' } },
+          { licenseHasModule: 'ENTERPRISE_STUDIO' },
+        ],
+      },
+    },
+
+    // R3: Odoo.sh is Enterprise-only.
+    {
+      id: 'odoo.foundation.odoosh-requires-enterprise',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: ['odoo.foundation.deploymentMode', 'odoo.foundation.edition'],
+      message: 'Odoo.sh is Enterprise-only. Community is not supported on Odoo.sh.',
+      resolution: 'Switch deployment to Self-hosted (Community) or upgrade edition to Enterprise.',
+      when: {
+        all: [
+          { answerEquals: { questionId: 'odoo.foundation.deploymentMode', value: 'ODOOSH' } },
+          { licenseEditionIn: ['COMMUNITY'] },
+        ],
+      },
+    },
+
+    // R4: multi-company without entities. Implementation note — the spec
+    // calls for "fewer than 2 entities listed", but the rule DSL doesn't
+    // expose a line-count operator yet, so for now we fire on the empty
+    // case. The 1-entity edge case is a future enhancement once the SDK
+    // grows a line-count condition.
+    {
+      id: 'odoo.foundation.multi-company-needs-entities',
+      type: 'DATA_WARNING',
+      severity: 'WARN',
+      questionIds: ['odoo.foundation.multiCompany', 'odoo.foundation.entityList'],
+      message: 'Multi-company is set to true but no entities are listed.',
+      resolution: 'List each legal entity (name, country, base currency) in the entities field, or set multi-company to false.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.foundation.multiCompany' } },
+          { answerFalsy: { questionId: 'odoo.foundation.entityList' } },
+        ],
+      },
+    },
+
+    // R5: multi-currency without reporting currency.
+    {
+      id: 'odoo.foundation.multi-currency-needs-reporting-currency',
+      type: 'DATA_WARNING',
+      severity: 'BLOCK',
+      questionIds: ['odoo.foundation.multiCurrency', 'odoo.foundation.reportingCurrency'],
+      message: 'Multi-currency is enabled but no group reporting currency is specified.',
+      resolution: 'Pick the group reporting currency (ISO 4217) — required for consolidation and exchange-rate revaluation.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.foundation.multiCurrency' } },
+          { answerFalsy: { questionId: 'odoo.foundation.reportingCurrency' } },
+        ],
+      },
+    },
+
+    // R6: Online deployment cost warning at scale (Y3 > 50 users).
+    {
+      id: 'odoo.foundation.online-cost-warning-at-scale',
+      type: 'DATA_WARNING',
+      severity: 'INFO',
+      questionIds: ['odoo.foundation.deploymentMode', 'odoo.foundation.usersInternalY3'],
+      message: 'At 50+ internal users on Odoo Online, per-user cost typically exceeds Odoo.sh or Self-hosted total cost.',
+      resolution: 'Revisit deployment-mode decision before contract signature. Run a 3-year TCO comparison.',
+      when: {
+        all: [
+          { answerEquals: { questionId: 'odoo.foundation.deploymentMode', value: 'ONLINE' } },
+          { answerNumberGreaterThan: { questionId: 'odoo.foundation.usersInternalY3', value: 50 } },
+        ],
+      },
+    },
+
+    // R7: country-mandated e-invoicing. Spec wanted a COMPLIANCE_INFO type
+    // but the SDK ConflictType union doesn't have that yet — DATA_WARNING
+    // with severity INFO carries the same semantics. Pack 3 (Localization)
+    // can graduate this to a dedicated type if the SDK is extended.
+    {
+      id: 'odoo.foundation.country-mandates-einvoicing',
+      type: 'DATA_WARNING',
+      severity: 'INFO',
+      questionIds: ['odoo.foundation.primaryCountry'],
+      message: 'E-invoicing is mandatory or in active rollout in this country.',
+      resolution: 'Pack 3 (Localization) will gate the relevant l10n_<country> module as required and flag specific e-invoicing systems (Italy SDI, Mexico CFDI, Spain Veri*Factu, etc.).',
+      when: {
+        answerIn: {
+          questionId: 'odoo.foundation.primaryCountry',
+          values: ['IT', 'MX', 'ES', 'FR', 'SA', 'EG', 'BR', 'IN', 'TR', 'DE', 'PL'],
+        },
+      },
     },
   ],
 };
