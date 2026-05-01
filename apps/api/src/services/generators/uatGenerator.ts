@@ -22,9 +22,15 @@ interface TestCase {
 }
 
 export function generateUATPlan(data: UATData): string {
-  const { clientName, answers } = data;
+  const { clientName, adaptor, answers } = data;
   const now = new Date().toLocaleDateString();
-  const cases = buildTestCases(answers);
+  // NetSuite gets the hand-tuned scenario library below. Other adaptors
+  // get a schema-driven test case per populated wizard question, so an
+  // Odoo engagement's UAT plan isn't an empty table even before the
+  // per-adaptor scenario libraries land.
+  const cases = adaptor.id === 'netsuite'
+    ? buildTestCases(answers)
+    : buildSchemaDrivenTestCases(adaptor, answers);
 
   let content = `# User Acceptance Test (UAT) Plan\n\n`;
   content += `**Client:** ${clientName}  \n**Date:** ${now}  \n**Prepared by:** ERPLaunch\n\n`;
@@ -193,10 +199,51 @@ function buildTestCases(answers: Record<string, any>): TestCase[] {
   return cases;
 }
 
+/**
+ * Schema-driven UAT test cases for non-NetSuite adaptors. One test case
+ * per populated wizard question — the workstream column is the flow id,
+ * the scenario describes verifying the configured value, the expected
+ * result is the formatted answer the consultant captured during
+ * discovery. NOT a substitute for a per-adaptor scenario library
+ * (which would have richer, role-based scenarios), but it stops the
+ * UAT plan being an empty table for every Odoo engagement.
+ */
+function buildSchemaDrivenTestCases(adaptor: AdaptorContext, answers: Record<string, unknown>): TestCase[] {
+  const cases: TestCase[] = [];
+  let c = 1;
+  for (const flow of adaptor.flows ?? []) {
+    for (const section of flow.sections) {
+      for (const q of section.questions) {
+        const v = answers[q.id];
+        if (v === undefined || v === null || (typeof v === 'string' && v.trim() === '')) continue;
+        const formatted = (() => {
+          if (q.inputType === 'BOOLEAN') return v === true ? 'Yes' : 'No';
+          if (q.inputType === 'SINGLE_SELECT' && q.options) {
+            return q.options.find((o) => o.value === v)?.label ?? String(v);
+          }
+          if (q.inputType === 'MULTI_SELECT' && Array.isArray(v)) {
+            return v.map((x) => q.options?.find((o) => o.value === x)?.label ?? String(x)).join(', ');
+          }
+          return String(v);
+        })();
+        cases.push({
+          id: `UAT-${String(c++).padStart(3, '0')}`,
+          workstream: flow.label,
+          scenario: `Verify "${q.label}" is configured as captured during discovery`,
+          expected: `Setting reads back as: ${formatted}`,
+        });
+      }
+    }
+  }
+  return cases;
+}
+
 export function generateUATPlanHtml(data: UATData): string {
   const markdown = generateUATPlan(data);
   const body = md.render(markdown);
-  const count = buildTestCases(data.answers).length;
+  const count = (data.adaptor.id === 'netsuite'
+    ? buildTestCases(data.answers)
+    : buildSchemaDrivenTestCases(data.adaptor, data.answers)).length;
 
   return `<!DOCTYPE html>
 <html lang="en">

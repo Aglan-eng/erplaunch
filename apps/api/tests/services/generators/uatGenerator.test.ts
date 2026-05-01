@@ -97,6 +97,72 @@ describe('generateUATPlan — Odoo adaptor (new path)', () => {
   });
 });
 
+// ─── Regression class: rendered prose contains wizard-answer content ─────────
+describe('generateUATPlan — non-NetSuite test cases walk adaptor.flows', () => {
+  const ODOO_FLOWS = [
+    {
+      id: 'FOUNDATION',
+      label: 'Project Foundation',
+      description: 'Deployment, edition, geography.',
+      sections: [
+        {
+          id: 'deployment',
+          label: 'Deployment & Licensing',
+          order: 1,
+          questions: [
+            { id: 'odoo.foundation.deploymentMode', label: 'Hosting & deployment mode', inputType: 'SINGLE_SELECT' as const,
+              options: [{ value: 'ODOOSH', label: 'Odoo.sh' }] },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'TAX',
+      label: 'Tax Engine',
+      description: 'Tax behavior, defaults, fiscal positions.',
+      sections: [
+        {
+          id: 'behavior',
+          label: 'Default Tax Behavior',
+          order: 1,
+          questions: [
+            { id: 'odoo.tax.defaultSalesTax', label: 'Default Sales Tax', inputType: 'TEXT' as const },
+          ],
+        },
+      ],
+    },
+  ];
+
+  it('Odoo UAT plan emits a test case per populated question, with flow label as the Workstream column', () => {
+    const md = generateUATPlan(baseData(
+      { ...ODOO_CTX, flows: ODOO_FLOWS },
+      {
+        answers: {
+          'odoo.foundation.deploymentMode': 'ODOOSH',
+          'odoo.tax.defaultSalesTax': 'VAT 5%',
+        },
+      },
+    ));
+    expect(md).toContain('Project Foundation');
+    expect(md).toContain('Tax Engine');
+    expect(md).toContain('Hosting & deployment mode');
+    expect(md).toContain('Default Sales Tax');
+    expect(md).toContain('Odoo.sh');
+    expect(md).toContain('VAT 5%');
+  });
+
+  it('NetSuite UAT plan still emits the hand-tuned scenarios from buildTestCases (regression guard)', () => {
+    const md = generateUATPlan(baseData(NETSUITE_CTX, {
+      answers: {
+        'r2r.entities.multiEntity': true,
+        'p2p.purchasing.usePurchaseOrders': true,
+      },
+    }));
+    expect(md).toContain('Create a transaction in a child entity');
+    expect(md).toContain('Create and approve a purchase order');
+  });
+});
+
 describe('generateUATPlan — custom adaptor (fall-through default)', () => {
   it('renders Acme ERP-flavored prose with no NetSuite leak', () => {
     const html = generateUATPlanHtml(baseData(CUSTOM_CTX));
