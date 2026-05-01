@@ -571,3 +571,217 @@ describe('Odoo engagement — Pack 2 Tax rules through the route', () => {
     expect(hit?.severity).toBe('WARN');
   });
 });
+
+// ─── Pack 3 — Localization & Compliance through the route ────────────────────
+
+describe('Odoo engagement — Pack 3 Localization rules through the route', () => {
+  it('R1: primaryCountry=SA + no l10n_sa licensed + empty coaTemplate fires coa-template-required (BLOCK)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'No-L10n SA Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.foundation.primaryCountry': 'SA',
+        'odoo.localization.coaTemplate': '',
+        'odoo.company.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.localization.coa-template-required');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('BLOCK');
+  });
+
+  it('R2: mandate country (IT) with einvoicingRequired=NO fires einvoicing-mandatory-confirmed (BLOCK)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'IT-NoEinvoicing Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: ['l10n_it'] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.foundation.primaryCountry': 'IT',
+        'odoo.tax.einvoicingRequired': 'NO',
+        'odoo.company.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.localization.einvoicing-mandatory-confirmed');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('BLOCK');
+  });
+
+  it('R3: country has known e-invoicing system + empty einvoicingProvider fires einvoicing-system-must-match-country (WARN)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'SA Empty Provider Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: ['l10n_sa'] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.foundation.primaryCountry': 'SA',
+        'odoo.localization.einvoicingProvider': '',
+        'odoo.company.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.localization.einvoicing-system-must-match-country');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('WARN');
+  });
+
+  it('R4: einvoicingRequired=YES + digitalCert=NO fires einvoicing-needs-digital-cert (BLOCK)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'No-Digital-Cert Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: ['l10n_sa'] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.tax.einvoicingRequired': 'YES',
+        'odoo.localization.einvoicingDigitalCert': 'NO',
+        'odoo.foundation.primaryCountry': 'SA',
+        'odoo.company.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.localization.einvoicing-needs-digital-cert');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('BLOCK');
+  });
+
+  it('R5: einvoicingRequired=YES + pilotDone=IN_PROGRESS fires einvoicing-needs-pilot-completion (WARN)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'Pilot-In-Progress Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: ['l10n_sa'] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.tax.einvoicingRequired': 'YES',
+        'odoo.localization.einvoicingPilotDone': 'IN_PROGRESS',
+        'odoo.localization.einvoicingDigitalCert': 'YES',
+        'odoo.foundation.primaryCountry': 'SA',
+        'odoo.company.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.localization.einvoicing-needs-pilot-completion');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('WARN');
+  });
+
+  it('R6: payrollInScope=true with no HR/PAYROLL module fires payroll-needs-l10n-hr-payroll (BLOCK)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'Payroll No-HR Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.localization.payrollInScope': true,
+        'odoo.foundation.primaryCountry': 'AE',
+        'odoo.company.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.localization.payroll-needs-l10n-hr-payroll');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('BLOCK');
+  });
+
+  it('R7: dataResidencyRequired=true + deployment=ONLINE fires data-residency-blocks-online (BLOCK)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'Residency-Online Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.localization.dataResidencyRequired': true,
+        'odoo.foundation.deploymentMode': 'ONLINE',
+        'odoo.company.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.localization.data-residency-blocks-online');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('BLOCK');
+  });
+
+  it('R8: gdprApplicable=true + portalUsers=true fires gdpr-needs-portal-config (INFO)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'GDPR Portal Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.localization.gdprApplicable': true,
+        'odoo.foundation.portalUsers': true,
+        'odoo.company.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.localization.gdpr-needs-portal-config');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('INFO');
+  });
+
+  it('R9: einvoicingPhase contains "Phase 2" + no Accounting module fires einvoicing-phase2-needs-base-modules (WARN)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'Phase 2 No-Accounting Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: ['l10n_sa'] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.localization.einvoicingPhase': 'Phase 2',
+        'odoo.foundation.primaryCountry': 'SA',
+        'odoo.company.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.localization.einvoicing-phase2-needs-base-modules');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('WARN');
+  });
+});

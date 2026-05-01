@@ -102,6 +102,21 @@ const answers: Record<string, unknown> = {
   'odoo.tax.einvoicingSystem': '',
   'odoo.tax.taxFilingPeriodicity': 'QUARTERLY',
 
+  // Pack 3 — Localization & Compliance
+  'odoo.localization.coaTemplate': 'l10n_ae (UAE Federal Tax Authority chart of accounts)',
+  'odoo.localization.statutoryReports': 'GCC VAT return\nIFRS financial statements\nUAE Economic Substance Regulations report',
+  'odoo.localization.languagePackInstall': true,
+  'odoo.localization.einvoicingProvider': 'UAE FTA (rolling out)',
+  'odoo.localization.einvoicingPhase': 'Phase 1',
+  'odoo.localization.einvoicingPilotDone': 'IN_PROGRESS',
+  'odoo.localization.einvoicingDigitalCert': 'IN_PROGRESS',
+  'odoo.localization.payrollInScope': true,
+  'odoo.localization.payrollFrequency': 'MONTHLY',
+  'odoo.localization.payrollEndOfService': 'UAE end-of-service gratuity per Article 51 of UAE Labour Law (Federal Decree-Law No. 33 of 2021)',
+  'odoo.localization.dataResidencyRequired': true,
+  'odoo.localization.dataResidencyJurisdiction': 'UAE / GCC',
+  'odoo.localization.gdprApplicable': true,
+
   // Legacy R2R / P2P / O2C / MRP / Returns answers (preserved)
   'odoo.company.multiCompany': true,
   'odoo.company.currency': 'AED',

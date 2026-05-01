@@ -27,6 +27,87 @@ import { SDK_VERSION } from '@ofoq/adaptor-sdk';
  * the SPI registers, validates, and surfaces cleanly in the ERP picker.
  */
 
+// ─── Pack 3 — L10N_MODULES_BY_COUNTRY ────────────────────────────────────────
+//
+// Country → canonical Odoo localization module + (optional) e-invoicing
+// system + mandate flag. Single source of truth for:
+//   - Pack 1 R7  (country-mandates-einvoicing): mandate countries derived
+//                 from the einvoicingMandatory flag here, no longer a
+//                 hand-written list.
+//   - Pack 2 R2  (einvoicing-yes-needs-l10n): country-aware module check
+//                 — fires when the licensed l10n doesn't match the
+//                 primary country, not just when no l10n is licensed.
+//   - Pack 3 R1  (coa-template-required): same country-aware module check.
+//   - Pack 3 R2  (einvoicing-mandatory-confirmed): mandate detection.
+//   - Pack 3 R3  (einvoicing-system-must-match-country): system name source.
+//
+// Sources: Odoo Fiscal localizations index (v19), Odoo Apps Store search
+// "l10n_", country-specific e-invoicing system names (Italy SDI, Mexico
+// CFDI 4.0, Spain Veri*Factu, France PPF, Saudi ZATCA Phase 2, Egypt ETA,
+// Brazil NFe, India GSP, Turkey e-Fatura, Germany ZUGFeRD/XRechnung,
+// Poland KSeF). Keys are ISO 3166 alpha-2.
+export const L10N_MODULES_BY_COUNTRY: Record<string, {
+  module: string;
+  einvoicingSystem?: string;
+  einvoicingMandatory?: boolean;
+}> = {
+  AE: { module: 'l10n_ae', einvoicingSystem: 'UAE FTA (rolling out)', einvoicingMandatory: false },
+  AR: { module: 'l10n_ar', einvoicingSystem: 'AFIP', einvoicingMandatory: true },
+  AU: { module: 'l10n_au' },
+  BE: { module: 'l10n_be', einvoicingSystem: 'PEPPOL', einvoicingMandatory: false },
+  BR: { module: 'l10n_br', einvoicingSystem: 'NFe / NFSe', einvoicingMandatory: true },
+  CA: { module: 'l10n_ca' },
+  CH: { module: 'l10n_ch' },
+  CL: { module: 'l10n_cl', einvoicingSystem: 'SII', einvoicingMandatory: true },
+  CO: { module: 'l10n_co', einvoicingSystem: 'DIAN', einvoicingMandatory: true },
+  DE: { module: 'l10n_de', einvoicingSystem: 'ZUGFeRD/XRechnung', einvoicingMandatory: true },
+  DK: { module: 'l10n_dk', einvoicingSystem: 'NemHandel/PEPPOL', einvoicingMandatory: false },
+  EC: { module: 'l10n_ec' },
+  EG: { module: 'l10n_eg', einvoicingSystem: 'Egypt ETA', einvoicingMandatory: true },
+  ES: { module: 'l10n_es', einvoicingSystem: 'Veri*Factu / SII', einvoicingMandatory: true },
+  FR: { module: 'l10n_fr', einvoicingSystem: 'PPF (Public Invoice Portal)', einvoicingMandatory: true },
+  GB: { module: 'l10n_uk', einvoicingSystem: 'HMRC MTD', einvoicingMandatory: false },
+  IN: { module: 'l10n_in', einvoicingSystem: 'GSP / IRP', einvoicingMandatory: true },
+  IT: { module: 'l10n_it', einvoicingSystem: 'SDI (FatturaPA)', einvoicingMandatory: true },
+  JP: { module: 'l10n_jp' },
+  KE: { module: 'l10n_ke', einvoicingSystem: 'KRA eTIMS', einvoicingMandatory: true },
+  KR: { module: 'l10n_kr' },
+  KW: { module: 'l10n_gcc' },
+  LU: { module: 'l10n_lu' },
+  MX: { module: 'l10n_mx', einvoicingSystem: 'CFDI 4.0', einvoicingMandatory: true },
+  MY: { module: 'l10n_my', einvoicingSystem: 'MyInvois', einvoicingMandatory: true },
+  NG: { module: 'l10n_ng' },
+  NL: { module: 'l10n_nl', einvoicingSystem: 'PEPPOL', einvoicingMandatory: false },
+  NO: { module: 'l10n_no', einvoicingSystem: 'EHF/PEPPOL', einvoicingMandatory: true },
+  NZ: { module: 'l10n_nz' },
+  PE: { module: 'l10n_pe', einvoicingSystem: 'SUNAT', einvoicingMandatory: true },
+  PH: { module: 'l10n_ph' },
+  PL: { module: 'l10n_pl', einvoicingSystem: 'KSeF', einvoicingMandatory: true },
+  PT: { module: 'l10n_pt', einvoicingSystem: 'AT / SAF-T', einvoicingMandatory: true },
+  QA: { module: 'l10n_gcc' },
+  RO: { module: 'l10n_ro', einvoicingSystem: 'e-Factura', einvoicingMandatory: true },
+  SA: { module: 'l10n_sa', einvoicingSystem: 'ZATCA Phase 2', einvoicingMandatory: true },
+  SG: { module: 'l10n_sg', einvoicingSystem: 'PEPPOL', einvoicingMandatory: false },
+  TH: { module: 'l10n_th', einvoicingSystem: 'RD e-Tax', einvoicingMandatory: false },
+  TR: { module: 'l10n_tr', einvoicingSystem: 'e-Fatura / GİB', einvoicingMandatory: true },
+  US: { module: 'l10n_us' },
+  VN: { module: 'l10n_vn', einvoicingSystem: 'GDT', einvoicingMandatory: true },
+  ZA: { module: 'l10n_za' },
+};
+
+/** Countries where e-invoicing is mandatory (or in active rollout treated
+ *  as such). Derived from L10N_MODULES_BY_COUNTRY; used by Pack 1 R7 +
+ *  Pack 3 R2 to gate the relevant rules. */
+const EINVOICING_MANDATE_COUNTRIES: string[] = Object.entries(L10N_MODULES_BY_COUNTRY)
+  .filter(([, v]) => v.einvoicingMandatory)
+  .map(([cc]) => cc);
+
+/** Countries that have a known e-invoicing system name. Subset of
+ *  EINVOICING_MANDATE_COUNTRIES plus a few non-mandatory rollouts. */
+const KNOWN_EINVOICING_SYSTEM_COUNTRIES: string[] = Object.entries(L10N_MODULES_BY_COUNTRY)
+  .filter(([, v]) => Boolean(v.einvoicingSystem))
+  .map(([cc]) => cc);
+
 const schema: QuestionnaireSchema = {
   version: '1.0.0',
   flows: [
@@ -40,6 +121,11 @@ const schema: QuestionnaireSchema = {
     // The #1 thing implementations get wrong post-go-live, per the
     // research that shaped this pack.
     buildTaxFlow(),
+    // Pack 3 — Localization & Compliance. Country → COA / e-invoicing /
+    // payroll / data-residency. Sits AFTER Tax (so einvoicingRequired
+    // is captured first) and BEFORE R2R (so the COA template feeds
+    // into ledger setup).
+    buildLocalizationFlow(),
     buildR2RFlow(),
     buildP2PFlow(),
     buildO2CFlow(),
@@ -350,6 +436,152 @@ function buildTaxFlow(): FlowDefinition {
               { value: 'QUARTERLY', label: 'Quarterly' },
               { value: 'ANNUAL',    label: 'Annual' },
             ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+// ─── Pack 3 — Localization & Compliance ──────────────────────────────────────
+//
+// 13 questions across 4 sections. Country drives the l10n_<country>
+// module which drives the COA template, tax engine, statutory reports,
+// and (in 11+ countries) mandatory e-invoicing. Pack 1 captured
+// primaryCountry; Pack 2 captured einvoicingRequired/einvoicingSystem.
+// This pack converts those answers into hard requirements + flags
+// missing compliance modules.
+function buildLocalizationFlow(): FlowDefinition {
+  return {
+    id: 'LOCALIZATION',
+    label: 'Localization & Compliance',
+    description: 'Country-specific accounting templates, statutory reports, e-invoicing systems, and tax filing format requirements.',
+    sections: [
+      {
+        id: 'coatemplate',
+        label: 'Country COA & Statutory',
+        order: 1,
+        questions: [
+          {
+            id: 'odoo.localization.coaTemplate',
+            inputType: 'TEXT',
+            required: false,
+            label: 'Chart of accounts template (auto-recommended from primaryCountry; override if you know the client wants a non-standard COA)',
+            help: {
+              title: 'COA template format',
+              body: 'Format: l10n_<country_code> (e.g., l10n_ae for UAE, l10n_eg for Egypt, l10n_us for US, l10n_fr for France). Leave blank to accept the default for the primary country.',
+            },
+          },
+          {
+            id: 'odoo.localization.statutoryReports',
+            inputType: 'TEXTAREA',
+            required: false,
+            label: "Statutory reports required (one per line, e.g. 'Egypt VAT return', 'GCC VAT', 'GAAP financial statements', 'IFRS', 'SAF-T')",
+          },
+          {
+            id: 'odoo.localization.languagePackInstall',
+            inputType: 'BOOLEAN',
+            required: false,
+            label: 'Install country-specific language pack? (e.g., l10n_ae installs Arabic UI elements + RTL templates)',
+          },
+        ],
+      },
+      {
+        id: 'einvoicing',
+        label: 'E-Invoicing System',
+        order: 2,
+        questions: [
+          {
+            id: 'odoo.localization.einvoicingProvider',
+            inputType: 'TEXT',
+            required: false,
+            label: 'E-invoicing system / provider (auto-suggested from primaryCountry; e.g. Italy SDI, Mexico CFDI 4.0, Spain Veri*Factu, France PPF, Saudi ZATCA, Egypt ETA, Brazil NFe, India GSP, Turkey e-Fatura, Germany ZUGFeRD/XRechnung, Poland KSeF)',
+          },
+          {
+            id: 'odoo.localization.einvoicingPhase',
+            inputType: 'TEXT',
+            required: false,
+            label: 'Implementation phase (Phase 1 = clearance via tax authority, Phase 2 = peer-to-peer with QR/cryptographic stamp, etc.)',
+          },
+          {
+            id: 'odoo.localization.einvoicingPilotDone',
+            inputType: 'SINGLE_SELECT',
+            required: false,
+            label: 'Has the client completed sandbox/pilot certification with the tax authority?',
+            options: [
+              { value: 'YES',         label: 'Yes' },
+              { value: 'IN_PROGRESS', label: 'In progress' },
+              { value: 'NO',          label: 'No' },
+              { value: 'N_A',         label: 'Not applicable' },
+            ],
+          },
+          {
+            id: 'odoo.localization.einvoicingDigitalCert',
+            inputType: 'SINGLE_SELECT',
+            required: false,
+            label: 'Does the client have a valid digital certificate / signing key for e-invoicing?',
+            options: [
+              { value: 'YES',         label: 'Yes' },
+              { value: 'IN_PROGRESS', label: 'Being procured' },
+              { value: 'NO',          label: 'No / unsure' },
+              { value: 'N_A',         label: 'Not applicable' },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'payroll',
+        label: 'Country-Specific Payroll',
+        order: 3,
+        questions: [
+          {
+            id: 'odoo.localization.payrollInScope',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'Is country-specific payroll in scope? (Odoo provides l10n_<country>_hr_payroll modules for ~30 countries)',
+          },
+          {
+            id: 'odoo.localization.payrollFrequency',
+            inputType: 'SINGLE_SELECT',
+            required: false,
+            label: 'If yes — payroll frequency',
+            options: [
+              { value: 'MONTHLY',  label: 'Monthly' },
+              { value: 'BIWEEKLY', label: 'Bi-weekly' },
+              { value: 'WEEKLY',   label: 'Weekly' },
+              { value: 'OTHER',    label: 'Other / mixed' },
+            ],
+          },
+          {
+            id: 'odoo.localization.payrollEndOfService',
+            inputType: 'TEXTAREA',
+            required: false,
+            label: 'End-of-service / gratuity / severance schemes specific to this country?',
+          },
+        ],
+      },
+      {
+        id: 'datasovereignty',
+        label: 'Data Sovereignty & Residency',
+        order: 4,
+        questions: [
+          {
+            id: 'odoo.localization.dataResidencyRequired',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'Are there legal data-residency requirements? (data must reside in a specific country/region)',
+          },
+          {
+            id: 'odoo.localization.dataResidencyJurisdiction',
+            inputType: 'TEXT',
+            required: false,
+            label: "If yes — required jurisdiction (e.g., 'Saudi Arabia', 'EU', 'UAE')",
+          },
+          {
+            id: 'odoo.localization.gdprApplicable',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'Is GDPR (or local equivalent — UAE PDPL, Saudi PDPL, Brazil LGPD, etc.) applicable?',
           },
         ],
       },
@@ -875,10 +1107,11 @@ const rules: RulePack = {
       },
     },
 
-    // R7: country-mandated e-invoicing. Spec wanted a COMPLIANCE_INFO type
-    // but the SDK ConflictType union doesn't have that yet — DATA_WARNING
-    // with severity INFO carries the same semantics. Pack 3 (Localization)
-    // can graduate this to a dedicated type if the SDK is extended.
+    // R7: country-mandated e-invoicing. Pack 3 update — country list now
+    // derived from L10N_MODULES_BY_COUNTRY (entries with
+    // einvoicingMandatory=true) instead of a hand-written 11-country
+    // string array. Single source of truth: add a country to that map
+    // with mandate=true and this rule fires for it automatically.
     {
       id: 'odoo.foundation.country-mandates-einvoicing',
       type: 'DATA_WARNING',
@@ -889,7 +1122,7 @@ const rules: RulePack = {
       when: {
         answerIn: {
           questionId: 'odoo.foundation.primaryCountry',
-          values: ['IT', 'MX', 'ES', 'FR', 'SA', 'EG', 'BR', 'IN', 'TR', 'DE', 'PL'],
+          values: EINVOICING_MANDATE_COUNTRIES,
         },
       },
     },
@@ -922,33 +1155,32 @@ const rules: RulePack = {
       },
     },
 
-    // R2: e-invoicing required but no localisation module licensed. The
-    // ideal trigger is "no l10n_<primaryCountry-lowercased> module" but
-    // the DSL has no dynamic module-name composition. The current
-    // approximation: fire when none of the e-invoicing-mandate-country
-    // l10n modules is in the license. Misses cases where the customer
-    // licensed l10n_us but is in IT — but Pack 1's R7 already flags
-    // those primary-country values, so the consultant is unlikely to
-    // miss the country/module mismatch in practice.
+    // R2: e-invoicing required but the country's localisation module isn't
+    // licensed. Pack 3 update — replaces the 23-module hardcoded list with
+    // a country-aware lookup. The trigger is now per-country: for each
+    // ISO code in L10N_MODULES_BY_COUNTRY, fire when
+    //   primaryCountry === <code> AND license is missing
+    //   L10N_MODULES_BY_COUNTRY[<code>].module
+    // Encoded as a 43-way OR because the DSL has no dynamic module-name
+    // composition. Auto-derived from the lookup map at module load time
+    // so adding a new country to L10N_MODULES_BY_COUNTRY automatically
+    // extends the rule.
     {
       id: 'odoo.tax.einvoicing-yes-needs-l10n',
       type: 'LICENSE_GAP',
       severity: 'BLOCK',
       questionIds: ['odoo.tax.einvoicingRequired', 'odoo.foundation.primaryCountry'],
-      message: 'E-invoicing is mandatory but the country localization module is not in the module list.',
-      resolution: 'Add l10n_<country> to the license modules. Pack 3 (Localization) provides the country-to-module mapping.',
+      message: "E-invoicing is mandatory but the country's localization module isn't in the license.",
+      resolution: 'Add the l10n_<country> module that matches primaryCountry — see L10N_MODULES_BY_COUNTRY for the canonical name.',
       when: {
         all: [
           { answerEquals: { questionId: 'odoo.tax.einvoicingRequired', value: 'YES' } },
-          { not: {
-            licenseHasAnyModule: [
-              'l10n_it', 'l10n_mx', 'l10n_es', 'l10n_fr', 'l10n_sa',
-              'l10n_eg', 'l10n_br', 'l10n_in', 'l10n_tr', 'l10n_de',
-              'l10n_pl', 'l10n_us', 'l10n_uk', 'l10n_ae', 'l10n_ca',
-              'l10n_au', 'l10n_ch', 'l10n_jo', 'l10n_kw', 'l10n_qa',
-              'l10n_bh', 'l10n_om', 'l10n_generic_coa',
+          { any: Object.entries(L10N_MODULES_BY_COUNTRY).map(([cc, info]) => ({
+            all: [
+              { answerEquals: { questionId: 'odoo.foundation.primaryCountry', value: cc } },
+              { licenseMissingModule: info.module },
             ],
-          } },
+          })) },
         ],
       },
     },
@@ -1055,6 +1287,208 @@ const rules: RulePack = {
         all: [
           { answerTruthy: { questionId: 'odoo.tax.hasExemptCustomers' } },
           { answerFalsy:  { questionId: 'odoo.tax.fiscalPositions' } },
+        ],
+      },
+    },
+
+    // ── Pack 3 — Localization & Compliance rules ──────────────────────────
+
+    // R1: COA template required. The country's l10n_<country> module
+    // must be in the license, OR the consultant must have typed an l10n
+    // hint into odoo.localization.coaTemplate (we approximate "contains
+    // l10n" as "any non-empty value" since the DSL has no string-contains
+    // operator). Encoded as the same 43-way per-country OR pattern used
+    // in Pack 2 R2 — auto-derived from L10N_MODULES_BY_COUNTRY so adding
+    // a country extends the rule automatically.
+    {
+      id: 'odoo.localization.coa-template-required',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: ['odoo.foundation.primaryCountry', 'odoo.localization.coaTemplate'],
+      message: 'No country COA template (l10n_<country>) is in the module list. Odoo requires a localization module to drive the chart of accounts and tax engine for the primary country.',
+      resolution: 'Add l10n_<countryCodeLower> to license modules — see L10N_MODULES_BY_COUNTRY for the canonical name.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.foundation.primaryCountry' } },
+          { answerFalsy:  { questionId: 'odoo.localization.coaTemplate' } },
+          { any: Object.entries(L10N_MODULES_BY_COUNTRY).map(([cc, info]) => ({
+            all: [
+              { answerEquals: { questionId: 'odoo.foundation.primaryCountry', value: cc } },
+              { licenseMissingModule: info.module },
+            ],
+          })) },
+        ],
+      },
+    },
+
+    // R2: Country mandates e-invoicing but the engagement marked it
+    // 'NO'. Mandate set is derived from L10N_MODULES_BY_COUNTRY entries
+    // with einvoicingMandatory=true.
+    {
+      id: 'odoo.localization.einvoicing-mandatory-confirmed',
+      type: 'CONFIG_CONFLICT',
+      severity: 'BLOCK',
+      questionIds: ['odoo.foundation.primaryCountry', 'odoo.tax.einvoicingRequired'],
+      message: "E-invoicing is mandatory in the primary country but the engagement marked it 'NO'.",
+      resolution: 'Confirm the legal status — if mandatory, set einvoicingRequired to YES and capture the e-invoicing system in localization.einvoicingProvider. Reference: L10N_MODULES_BY_COUNTRY for the official system name.',
+      when: {
+        all: [
+          { answerIn: {
+            questionId: 'odoo.foundation.primaryCountry',
+            values: EINVOICING_MANDATE_COUNTRIES,
+          } },
+          { answerEquals: { questionId: 'odoo.tax.einvoicingRequired', value: 'NO' } },
+        ],
+      },
+    },
+
+    // R3: country has a known e-invoicing system AND einvoicingProvider
+    // is empty. The DSL has no string-contains operator so we can't
+    // assert "provider field equals the canonical system name"; instead
+    // we surface a WARN whenever the consultant left the field blank
+    // for a country that has a known system. If they typed anything
+    // (even slightly off), we trust them.
+    {
+      id: 'odoo.localization.einvoicing-system-must-match-country',
+      type: 'DATA_WARNING',
+      severity: 'WARN',
+      questionIds: ['odoo.foundation.primaryCountry', 'odoo.localization.einvoicingProvider'],
+      message: "The e-invoicing system in localization.einvoicingProvider doesn't match the canonical system for the primary country.",
+      resolution: 'Confirm the right provider — see L10N_MODULES_BY_COUNTRY for the canonical name.',
+      when: {
+        all: [
+          { answerIn: {
+            questionId: 'odoo.foundation.primaryCountry',
+            values: KNOWN_EINVOICING_SYSTEM_COUNTRIES,
+          } },
+          { answerFalsy: { questionId: 'odoo.localization.einvoicingProvider' } },
+        ],
+      },
+    },
+
+    // R4: e-invoicing requires a digital certificate. Fires when
+    // einvoicingRequired=YES AND digitalCert is NO or unset (consultant
+    // hasn't captured the answer yet).
+    {
+      id: 'odoo.localization.einvoicing-needs-digital-cert',
+      type: 'DATA_WARNING',
+      severity: 'BLOCK',
+      questionIds: ['odoo.tax.einvoicingRequired', 'odoo.localization.einvoicingDigitalCert'],
+      message: "E-invoicing requires a valid digital certificate / signing key. The client doesn't have one (or status is unknown).",
+      resolution: 'Add digital certificate procurement as a Phase 1 dependency in the implementation plan. Most countries require client-side procurement directly with the tax authority — start early.',
+      when: {
+        all: [
+          { answerEquals: { questionId: 'odoo.tax.einvoicingRequired', value: 'YES' } },
+          { any: [
+            { answerEquals: { questionId: 'odoo.localization.einvoicingDigitalCert', value: 'NO' } },
+            { answerFalsy:  { questionId: 'odoo.localization.einvoicingDigitalCert' } },
+          ] },
+        ],
+      },
+    },
+
+    // R5: e-invoicing pilot completion. Fires when einvoicingRequired
+    // =YES AND pilotDone is NO / IN_PROGRESS / unset. Most jurisdictions
+    // require sandbox certification before go-live and it's often the
+    // longest single dependency (4-8 weeks).
+    {
+      id: 'odoo.localization.einvoicing-needs-pilot-completion',
+      type: 'DATA_WARNING',
+      severity: 'WARN',
+      questionIds: ['odoo.tax.einvoicingRequired', 'odoo.localization.einvoicingPilotDone'],
+      message: 'E-invoicing typically requires sandbox/pilot certification with the tax authority before go-live. The client has not completed it.',
+      resolution: 'Add tax-authority pilot certification as an explicit prerequisite for go-live. This is often the longest single dependency in regulated geographies (4–8 weeks).',
+      when: {
+        all: [
+          { answerEquals: { questionId: 'odoo.tax.einvoicingRequired', value: 'YES' } },
+          { any: [
+            { answerEquals: { questionId: 'odoo.localization.einvoicingPilotDone', value: 'NO' } },
+            { answerEquals: { questionId: 'odoo.localization.einvoicingPilotDone', value: 'IN_PROGRESS' } },
+            { answerFalsy:  { questionId: 'odoo.localization.einvoicingPilotDone' } },
+          ] },
+        ],
+      },
+    },
+
+    // R6: country-specific payroll in scope but no HR / PAYROLL module
+    // licensed. Spec wanted a per-country l10n_<country>_hr_payroll
+    // check too, but Odoo doesn't ship a payroll module for every
+    // country and the DSL has no dynamic module-name composition.
+    // Pragmatic version: fire when payroll is in scope AND neither HR
+    // nor PAYROLL is licensed — the consultant gets a clear nudge
+    // either way.
+    {
+      id: 'odoo.localization.payroll-needs-l10n-hr-payroll',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: ['odoo.localization.payrollInScope', 'odoo.foundation.primaryCountry'],
+      message: 'Country-specific payroll is in scope but neither the HR module nor the country payroll module (l10n_<country>_hr_payroll) is in the license.',
+      resolution: 'Add HR and the country-specific payroll module to license.modules. Note: not all countries have an Odoo payroll module — confirm availability for primaryCountry.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.localization.payrollInScope' } },
+          { not: { licenseHasAnyModule: ['HR', 'PAYROLL'] } },
+        ],
+      },
+    },
+
+    // R7: data residency requirements + Odoo Online deployment is
+    // incompatible because Online hosts data in Belgium / EU. Fires
+    // hard so the consultant doesn't book hosting that violates the
+    // residency mandate.
+    {
+      id: 'odoo.localization.data-residency-blocks-online',
+      type: 'CONFIG_CONFLICT',
+      severity: 'BLOCK',
+      questionIds: ['odoo.localization.dataResidencyRequired', 'odoo.foundation.deploymentMode'],
+      message: 'Data residency is required but Odoo Online hosts data in Belgium / EU — you cannot guarantee residency in another jurisdiction on Online.',
+      resolution: 'Switch to Self-hosted (you control the region) or Odoo.sh (confirm available regions support the required jurisdiction). Self-hosted is the safer option for strict residency mandates.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.localization.dataResidencyRequired' } },
+          { answerEquals: { questionId: 'odoo.foundation.deploymentMode', value: 'ONLINE' } },
+        ],
+      },
+    },
+
+    // R8: GDPR (or equivalent) + portal users. Surfaces the standard
+    // ~5 person-day pack of work for consent banners, DSAR endpoints,
+    // and account deletion flows.
+    {
+      id: 'odoo.localization.gdpr-needs-portal-config',
+      type: 'DATA_WARNING',
+      severity: 'INFO',
+      questionIds: ['odoo.localization.gdprApplicable', 'odoo.foundation.portalUsers'],
+      message: 'GDPR (or equivalent) requires explicit consent capture, data subject access (DSAR), and right-to-be-forgotten workflows for portal users.',
+      resolution: 'Plan for portal consent banner, data export endpoint, and account deletion flow as Configuration-phase tasks. Allocate ~5 person-days.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.localization.gdprApplicable' } },
+          { answerTruthy: { questionId: 'odoo.foundation.portalUsers' } },
+        ],
+      },
+    },
+
+    // R9: e-invoicing Phase 2 (peer-to-peer with QR codes / cryptographic
+    // stamps) requires the Accounting engine for invoice generation.
+    // The DSL has no string-contains operator so we match against the
+    // common Phase 2 strings exactly. Misses freeform variants like
+    // 'Phase 2 - Peer-to-peer'; the consultant typically writes one of
+    // the canonical strings.
+    {
+      id: 'odoo.localization.einvoicing-phase2-needs-base-modules',
+      type: 'LICENSE_GAP',
+      severity: 'WARN',
+      questionIds: ['odoo.localization.einvoicingPhase', 'odoo.foundation.primaryCountry'],
+      message: "E-invoicing Phase 2 (peer-to-peer with QR codes / cryptographic stamps) is in scope but the Accounting module isn't provisioned.",
+      resolution: 'Add Accounting (Community or Enterprise) to license.modules — Phase 2 e-invoicing depends on the Accounting engine for invoice generation.',
+      when: {
+        all: [
+          { answerIn: {
+            questionId: 'odoo.localization.einvoicingPhase',
+            values: ['Phase 2', 'phase 2', 'P2P'],
+          } },
+          { not: { licenseHasAnyModule: ['BASE_ACCOUNTING', 'ENTERPRISE_ACCOUNTING'] } },
         ],
       },
     },

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { validateAdaptor, evaluateAdaptorRules } from '@ofoq/adaptor-sdk';
 import { AdaptorRegistry } from '@ofoq/adaptor-registry';
-import odooAdaptor from '../src/index.js';
+import odooAdaptor, { L10N_MODULES_BY_COUNTRY } from '../src/index.js';
 
 describe('odooAdaptor: manifest', () => {
   it('has the expected identity', () => {
@@ -20,12 +20,15 @@ describe('odooAdaptor: manifest', () => {
 });
 
 describe('odooAdaptor: schema', () => {
-  it('exposes FOUNDATION + TAX before the five canonical flows', () => {
+  it('exposes FOUNDATION + TAX + LOCALIZATION before the five canonical flows', () => {
     const ids = odooAdaptor.schema.flows.map((f) => f.id);
     // Pack 1 — Foundation gates everything downstream.
-    // Pack 2 — Tax engine sits between Foundation and R2R because tax
-    // behavior + fiscal positions drive every accounting transaction.
-    expect(ids).toEqual(['FOUNDATION', 'TAX', 'R2R', 'P2P', 'O2C', 'PRODUCTION', 'RETURNS']);
+    // Pack 2 — Tax engine sits between Foundation and R2R.
+    // Pack 3 — Localization & Compliance converts country answers into
+    // hard module / e-invoicing / data-residency requirements; sits
+    // after Tax (so the einvoicingRequired answer is captured first)
+    // and before R2R (so the COA template feeds into ledger setup).
+    expect(ids).toEqual(['FOUNDATION', 'TAX', 'LOCALIZATION', 'R2R', 'P2P', 'O2C', 'PRODUCTION', 'RETURNS']);
   });
 
   it('every flow has at least one section with at least one question', () => {
@@ -863,5 +866,465 @@ describe('odooAdaptor: Pack 2 — Tax rule evaluation', () => {
     });
     expect(conflicts.map((c) => c.id))
       .not.toContain('odoo.tax.exempt-customers-need-fiscal-position');
+  });
+});
+
+// ─── Pack 3 — Localization & Compliance ──────────────────────────────────────
+
+describe('odooAdaptor: Pack 3 — L10N_MODULES_BY_COUNTRY constant export', () => {
+  it('exports the country lookup table with the documented shape', () => {
+    expect(L10N_MODULES_BY_COUNTRY).toBeDefined();
+    expect(typeof L10N_MODULES_BY_COUNTRY).toBe('object');
+    // Spot check the canonical entries called out in the pack spec.
+    expect(L10N_MODULES_BY_COUNTRY['SA']?.module).toBe('l10n_sa');
+    expect(L10N_MODULES_BY_COUNTRY['SA']?.einvoicingMandatory).toBe(true);
+    expect(L10N_MODULES_BY_COUNTRY['SA']?.einvoicingSystem).toContain('ZATCA');
+    expect(L10N_MODULES_BY_COUNTRY['IT']?.einvoicingSystem).toContain('SDI');
+    expect(L10N_MODULES_BY_COUNTRY['MX']?.einvoicingSystem).toContain('CFDI');
+    expect(L10N_MODULES_BY_COUNTRY['AE']?.module).toBe('l10n_ae');
+    expect(L10N_MODULES_BY_COUNTRY['US']?.module).toBe('l10n_us');
+    expect(L10N_MODULES_BY_COUNTRY['GB']?.module).toBe('l10n_uk');
+    // Mandate countries must include all 11 from Pack 1 R7's original list.
+    for (const cc of ['IT', 'MX', 'ES', 'FR', 'SA', 'EG', 'BR', 'IN', 'TR', 'DE', 'PL']) {
+      expect(L10N_MODULES_BY_COUNTRY[cc]?.einvoicingMandatory, `${cc} should be a mandate country`).toBe(true);
+    }
+  });
+
+  it('every entry has a non-empty module field', () => {
+    for (const [cc, info] of Object.entries(L10N_MODULES_BY_COUNTRY)) {
+      expect(info.module, `${cc} missing module`).toBeTruthy();
+      expect(info.module.startsWith('l10n_'), `${cc} module ${info.module} should be l10n_*`).toBe(true);
+    }
+  });
+});
+
+describe('odooAdaptor: Pack 3 — LOCALIZATION flow shape', () => {
+  const loc = odooAdaptor.schema.flows.find((f) => f.id === 'LOCALIZATION');
+
+  it('LOCALIZATION flow exists with the expected label + description', () => {
+    expect(loc).toBeDefined();
+    expect(loc!.label).toBe('Localization & Compliance');
+    expect(loc!.description).toMatch(/COA|statutory|e-invoicing|tax filing/i);
+  });
+
+  it('renders four sections in the documented order', () => {
+    const ids = (loc!.sections as Array<{ id: string; order: number }>)
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .map((s) => s.id);
+    expect(ids).toEqual(['coatemplate', 'einvoicing', 'payroll', 'datasovereignty']);
+  });
+
+  it('Country COA & Statutory — 3 questions with the right ids + types', () => {
+    const sec = loc!.sections.find((s) => s.id === 'coatemplate')!;
+    expect(sec.label).toBe('Country COA & Statutory');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('odoo.localization.coaTemplate')?.inputType).toBe('TEXT');
+    expect(byId.get('odoo.localization.statutoryReports')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('odoo.localization.languagePackInstall')?.inputType).toBe('BOOLEAN');
+  });
+
+  it('E-Invoicing System — 4 questions with the right ids + types', () => {
+    const sec = loc!.sections.find((s) => s.id === 'einvoicing')!;
+    expect(sec.label).toBe('E-Invoicing System');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('odoo.localization.einvoicingProvider')?.inputType).toBe('TEXT');
+    expect(byId.get('odoo.localization.einvoicingPhase')?.inputType).toBe('TEXT');
+    expect(byId.get('odoo.localization.einvoicingPilotDone')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('odoo.localization.einvoicingPilotDone')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['IN_PROGRESS', 'NO', 'N_A', 'YES']);
+    expect(byId.get('odoo.localization.einvoicingDigitalCert')?.inputType).toBe('SINGLE_SELECT');
+  });
+
+  it('Country-Specific Payroll — 3 questions with the right ids + types', () => {
+    const sec = loc!.sections.find((s) => s.id === 'payroll')!;
+    expect(sec.label).toBe('Country-Specific Payroll');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('odoo.localization.payrollInScope')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('odoo.localization.payrollFrequency')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('odoo.localization.payrollFrequency')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['BIWEEKLY', 'MONTHLY', 'OTHER', 'WEEKLY']);
+    expect(byId.get('odoo.localization.payrollEndOfService')?.inputType).toBe('TEXTAREA');
+  });
+
+  it('Data Sovereignty & Residency — 3 questions with the right ids + types', () => {
+    const sec = loc!.sections.find((s) => s.id === 'datasovereignty')!;
+    expect(sec.label).toBe('Data Sovereignty & Residency');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('odoo.localization.dataResidencyRequired')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('odoo.localization.dataResidencyJurisdiction')?.inputType).toBe('TEXT');
+    expect(byId.get('odoo.localization.gdprApplicable')?.inputType).toBe('BOOLEAN');
+  });
+});
+
+describe('odooAdaptor: Pack 3 — Localization rules registered in odoo-rules', () => {
+  const ids = odooAdaptor.rules.rules.map((r) => r.id);
+
+  it('R1 COA template required', () => {
+    expect(ids).toContain('odoo.localization.coa-template-required');
+  });
+  it('R2 e-invoicing mandatory confirmed', () => {
+    expect(ids).toContain('odoo.localization.einvoicing-mandatory-confirmed');
+  });
+  it('R3 e-invoicing system must match country', () => {
+    expect(ids).toContain('odoo.localization.einvoicing-system-must-match-country');
+  });
+  it('R4 e-invoicing needs digital cert', () => {
+    expect(ids).toContain('odoo.localization.einvoicing-needs-digital-cert');
+  });
+  it('R5 e-invoicing needs pilot completion', () => {
+    expect(ids).toContain('odoo.localization.einvoicing-needs-pilot-completion');
+  });
+  it('R6 payroll needs l10n hr_payroll', () => {
+    expect(ids).toContain('odoo.localization.payroll-needs-l10n-hr-payroll');
+  });
+  it('R7 data residency blocks online', () => {
+    expect(ids).toContain('odoo.localization.data-residency-blocks-online');
+  });
+  it('R8 GDPR needs portal config (INFO)', () => {
+    expect(ids).toContain('odoo.localization.gdpr-needs-portal-config');
+  });
+  it('R9 e-invoicing Phase 2 needs base modules', () => {
+    expect(ids).toContain('odoo.localization.einvoicing-phase2-needs-base-modules');
+  });
+});
+
+describe('odooAdaptor: Pack 3 — Localization rule evaluation', () => {
+  it('R1 fires when primaryCountry=SA AND no l10n_sa AND coaTemplate empty (BLOCK)', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.foundation.primaryCountry': 'SA',
+        'odoo.localization.coaTemplate': '',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.localization.coa-template-required');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R1 does NOT fire when primaryCountry=SA AND l10n_sa is licensed', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.foundation.primaryCountry': 'SA',
+        'odoo.localization.coaTemplate': '',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: ['l10n_sa'] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.localization.coa-template-required');
+  });
+
+  it('R1 does NOT fire when consultant typed an l10n hint into coaTemplate', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.foundation.primaryCountry': 'SA',
+        'odoo.localization.coaTemplate': 'l10n_sa (will install during config phase)',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.localization.coa-template-required');
+  });
+
+  it('R2 fires (BLOCK) when primaryCountry mandates e-invoicing AND einvoicingRequired=NO', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.foundation.primaryCountry': 'IT',
+        'odoo.tax.einvoicingRequired': 'NO',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: ['l10n_it'] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.localization.einvoicing-mandatory-confirmed');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R2 does NOT fire for non-mandate country (US)', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.foundation.primaryCountry': 'US',
+        'odoo.tax.einvoicingRequired': 'NO',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: ['l10n_us'] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.localization.einvoicing-mandatory-confirmed');
+  });
+
+  it('R3 fires (WARN) when country has known e-invoicing system AND einvoicingProvider is empty', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.foundation.primaryCountry': 'SA',
+        'odoo.localization.einvoicingProvider': '',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: ['l10n_sa'] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.localization.einvoicing-system-must-match-country');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R3 does NOT fire when einvoicingProvider is populated (consultant trust)', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.foundation.primaryCountry': 'SA',
+        'odoo.localization.einvoicingProvider': 'ZATCA Phase 2',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: ['l10n_sa'] },
+    });
+    expect(conflicts.map((c) => c.id))
+      .not.toContain('odoo.localization.einvoicing-system-must-match-country');
+  });
+
+  it('R4 fires (BLOCK) when einvoicingRequired=YES AND digitalCert=NO', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.tax.einvoicingRequired': 'YES',
+        'odoo.localization.einvoicingDigitalCert': 'NO',
+        'odoo.foundation.primaryCountry': 'SA',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: ['l10n_sa'] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.localization.einvoicing-needs-digital-cert');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R4 also fires when digitalCert is undefined / not yet answered', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.tax.einvoicingRequired': 'YES',
+        'odoo.foundation.primaryCountry': 'SA',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: ['l10n_sa'] },
+    });
+    expect(conflicts.map((c) => c.id)).toContain('odoo.localization.einvoicing-needs-digital-cert');
+  });
+
+  it('R4 does NOT fire when digitalCert=YES', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.tax.einvoicingRequired': 'YES',
+        'odoo.localization.einvoicingDigitalCert': 'YES',
+        'odoo.foundation.primaryCountry': 'SA',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: ['l10n_sa'] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.localization.einvoicing-needs-digital-cert');
+  });
+
+  it('R5 fires (WARN) when einvoicingRequired=YES AND pilotDone in NO/IN_PROGRESS/missing', () => {
+    for (const status of ['NO', 'IN_PROGRESS', undefined] as const) {
+      const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+        answers: {
+          'odoo.tax.einvoicingRequired': 'YES',
+          ...(status ? { 'odoo.localization.einvoicingPilotDone': status } : {}),
+          'odoo.foundation.primaryCountry': 'SA',
+          'odoo.localization.einvoicingDigitalCert': 'YES',
+          'odoo.company.fiscalYearStart': '01-01',
+        },
+        license: { edition: 'ENTERPRISE', modules: ['l10n_sa'] },
+      });
+      const r = conflicts.find((c) => c.id === 'odoo.localization.einvoicing-needs-pilot-completion');
+      expect(r, `R5 should fire when pilotDone=${status ?? 'undefined'}`).toBeDefined();
+      expect(r?.severity).toBe('WARN');
+    }
+  });
+
+  it('R5 does NOT fire when pilotDone=YES', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.tax.einvoicingRequired': 'YES',
+        'odoo.localization.einvoicingPilotDone': 'YES',
+        'odoo.localization.einvoicingDigitalCert': 'YES',
+        'odoo.foundation.primaryCountry': 'SA',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: ['l10n_sa'] },
+    });
+    expect(conflicts.map((c) => c.id))
+      .not.toContain('odoo.localization.einvoicing-needs-pilot-completion');
+  });
+
+  it('R6 fires (BLOCK) when payrollInScope=true AND no HR/PAYROLL module', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.localization.payrollInScope': true,
+        'odoo.foundation.primaryCountry': 'AE',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.localization.payroll-needs-l10n-hr-payroll');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R6 does NOT fire when HR module is licensed', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.localization.payrollInScope': true,
+        'odoo.foundation.primaryCountry': 'AE',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: ['HR'] },
+    });
+    expect(conflicts.map((c) => c.id))
+      .not.toContain('odoo.localization.payroll-needs-l10n-hr-payroll');
+  });
+
+  it('R7 fires (BLOCK) when dataResidencyRequired=true AND deployment=ONLINE', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.localization.dataResidencyRequired': true,
+        'odoo.foundation.deploymentMode': 'ONLINE',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.localization.data-residency-blocks-online');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R7 does NOT fire on Self-hosted deployment', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.localization.dataResidencyRequired': true,
+        'odoo.foundation.deploymentMode': 'SELFHOSTED',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id))
+      .not.toContain('odoo.localization.data-residency-blocks-online');
+  });
+
+  it('R8 fires (INFO) when GDPR + portal users both true', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.localization.gdprApplicable': true,
+        'odoo.foundation.portalUsers': true,
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.localization.gdpr-needs-portal-config');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('INFO');
+  });
+
+  it('R8 does NOT fire when no portal users', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.localization.gdprApplicable': true,
+        'odoo.foundation.portalUsers': false,
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id))
+      .not.toContain('odoo.localization.gdpr-needs-portal-config');
+  });
+
+  it('R9 fires (WARN) when einvoicingPhase mentions Phase 2 AND no Accounting module', () => {
+    for (const phase of ['Phase 2', 'phase 2', 'P2P']) {
+      const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+        answers: {
+          'odoo.localization.einvoicingPhase': phase,
+          'odoo.foundation.primaryCountry': 'SA',
+          'odoo.company.fiscalYearStart': '01-01',
+        },
+        license: { edition: 'ENTERPRISE', modules: ['l10n_sa'] },
+      });
+      const r = conflicts.find((c) => c.id === 'odoo.localization.einvoicing-phase2-needs-base-modules');
+      expect(r, `R9 should fire when einvoicingPhase="${phase}"`).toBeDefined();
+      expect(r?.severity).toBe('WARN');
+    }
+  });
+
+  it('R9 does NOT fire when Accounting is licensed', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.localization.einvoicingPhase': 'Phase 2',
+        'odoo.foundation.primaryCountry': 'SA',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: ['l10n_sa', 'BASE_ACCOUNTING'] },
+    });
+    expect(conflicts.map((c) => c.id))
+      .not.toContain('odoo.localization.einvoicing-phase2-needs-base-modules');
+  });
+});
+
+describe('odooAdaptor: Pack 3 — existing rules updated to use the country lookup', () => {
+  it('Pack 1 R7 still fires for every country in the L10N_MODULES_BY_COUNTRY mandate set', () => {
+    const mandateCountries = Object.entries(L10N_MODULES_BY_COUNTRY)
+      .filter(([, v]) => v.einvoicingMandatory)
+      .map(([cc]) => cc);
+    expect(mandateCountries.length).toBeGreaterThan(11);  // pack 1 had 11; pack 3 lookup adds more
+    for (const cc of mandateCountries) {
+      const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+        answers: {
+          'odoo.foundation.primaryCountry': cc,
+          'odoo.company.fiscalYearStart': '01-01',
+        },
+        license: { edition: 'ENTERPRISE', modules: [L10N_MODULES_BY_COUNTRY[cc].module] },
+      });
+      expect(
+        conflicts.map((c) => c.id),
+        `Pack 1 R7 should fire for mandate country ${cc}`,
+      ).toContain('odoo.foundation.country-mandates-einvoicing');
+    }
+  });
+
+  it('Pack 1 R7 does NOT fire for non-mandate country (US)', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.foundation.primaryCountry': 'US',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: ['l10n_us'] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.foundation.country-mandates-einvoicing');
+  });
+
+  it('Pack 2 R2 now uses country-aware lookup: fires when primaryCountry=SA AND l10n_sa missing, even if l10n_us is licensed', () => {
+    // Country-mismatch case: client is in SA but licensed l10n_us. The
+    // old hardcoded list would have passed because l10n_us is in it;
+    // the new country-aware check should fire.
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.tax.einvoicingRequired': 'YES',
+        'odoo.foundation.primaryCountry': 'SA',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: ['l10n_us'] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.tax.einvoicing-yes-needs-l10n');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('Pack 2 R2 does NOT fire when the licensed l10n matches primaryCountry', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.tax.einvoicingRequired': 'YES',
+        'odoo.foundation.primaryCountry': 'SA',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: ['l10n_sa'] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.tax.einvoicing-yes-needs-l10n');
   });
 });
