@@ -123,6 +123,83 @@ describe('generateImplementationPlanHtml — Odoo adaptor (new path)', () => {
   });
 });
 
+// ─── Regression class: rendered prose contains wizard-answer content ─────────
+describe('generateImplementationPlanHtml — Workstreams in Scope reads from adaptor.flows', () => {
+  const ODOO_FLOWS = [
+    {
+      id: 'FOUNDATION',
+      label: 'Project Foundation',
+      description: 'Deployment, edition, geography.',
+      sections: [
+        {
+          id: 'deployment',
+          label: 'Deployment & Licensing',
+          order: 1,
+          questions: [
+            { id: 'odoo.foundation.deploymentMode', label: 'Hosting & deployment mode', inputType: 'SINGLE_SELECT' as const,
+              options: [{ value: 'ODOOSH', label: 'Odoo.sh' }] },
+            { id: 'odoo.foundation.multiCompany', label: 'Multi-company in scope', inputType: 'BOOLEAN' as const },
+            { id: 'odoo.foundation.multiCurrency', label: 'Multi-currency operations', inputType: 'BOOLEAN' as const },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'TAX',
+      label: 'Tax Engine',
+      description: 'Tax behavior, defaults, fiscal positions.',
+      sections: [
+        {
+          id: 'behavior',
+          label: 'Default Tax Behavior',
+          order: 1,
+          questions: [
+            { id: 'odoo.tax.defaultSalesTax', label: 'Default Sales Tax', inputType: 'TEXT' as const },
+          ],
+        },
+      ],
+    },
+  ];
+
+  it('Odoo plan renders Workstreams in Scope listing Project Foundation + Tax Engine', () => {
+    const html = generateImplementationPlanHtml(baseData(
+      { ...ODOO_CTX, flows: ODOO_FLOWS },
+      {
+        answers: {
+          'odoo.foundation.deploymentMode': 'ODOOSH',
+          'odoo.foundation.multiCompany': true,
+          'odoo.foundation.multiCurrency': true,
+          'odoo.tax.defaultSalesTax': 'VAT 5%',
+        },
+      },
+    ));
+    expect(html).toContain('Workstreams in Scope');
+    expect(html).toContain('Project Foundation');
+    expect(html).toContain('Tax Engine');
+  });
+
+  it('Odoo plan turns on Phase 4 Integration Setup when multiCurrency=true (schema-aware match)', () => {
+    const html = generateImplementationPlanHtml(baseData(
+      { ...ODOO_CTX, flows: ODOO_FLOWS },
+      {
+        answers: {
+          'odoo.foundation.multiCurrency': true,
+          'odoo.tax.defaultSalesTax': 'VAT 5%',
+        },
+      },
+    ));
+    expect(html).toContain('Integration Setup');
+    expect(html).toContain('Integration Developer');
+  });
+
+  it('NetSuite plan still detects Data Migration via the legacy hardcoded key (regression guard)', () => {
+    const html = generateImplementationPlanHtml(baseData(NETSUITE_CTX, {
+      answers: { 'r2r.bankTransactions.hasOpeningBalances': true },
+    }));
+    expect(html).toContain('Data Migration');
+  });
+});
+
 describe('generateImplementationPlanHtml — custom adaptor (fall-through default)', () => {
   it('renders Acme ERP-flavored prose with no NetSuite leak', () => {
     const html = generateImplementationPlanHtml(baseData(CUSTOM_CTX));

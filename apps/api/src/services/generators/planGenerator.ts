@@ -15,10 +15,43 @@ export function generateImplementationPlanHtml(data: ImplementationPlanData): st
   const now = new Date().toLocaleDateString();
 
   // Helpers
-  const hasDataMigration = answers['r2r.bankTransactions.hasOpeningBalances'] === true ||
+  // Schema-aware: walk the active adaptor's questions to find any
+  // migration / opening-balance / multi-currency / multi-company /
+  // integration triggers. Replaces the old check that only matched
+  // NetSuite-style answer keys (r2r.bankTransactions.hasOpeningBalances,
+  // r2r.currencies.isMultiCurrency) and silently skipped Phase 3 / 4
+  // for every Odoo engagement. Falls back to the legacy hardcoded keys
+  // when adaptor.flows is unavailable so the NetSuite path is preserved.
+  const adaptorFlows = adaptor.flows ?? [];
+  const matchAnsweredId = (predicate: (id: string) => boolean): boolean => {
+    if (adaptorFlows.length === 0) return false;
+    for (const flow of adaptorFlows) {
+      for (const section of flow.sections) {
+        for (const q of section.questions) {
+          if (!predicate(q.id)) continue;
+          const v = answers[q.id];
+          if (v !== undefined && v !== null && v !== false && !(typeof v === 'string' && v.trim() === '')) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  };
+
+  const hasDataMigration =
+    // Schema match on any data-migration / opening-balance / import keyword
+    matchAnsweredId((id) => /opening|migration|import|coa|chart/i.test(id)) ||
+    // Legacy NetSuite-style hardcoded check (preserves NetSuite path)
+    answers['r2r.bankTransactions.hasOpeningBalances'] === true ||
     Object.keys(answers).some(k => k.includes('import') || k.includes('migration'));
 
-  const hasIntegration = answers['r2r.currencies.isMultiCurrency'] === true ||
+  const hasIntegration =
+    // Schema match on any multi-currency / multi-company / integration
+    // trigger across the active adaptor's questions
+    matchAnsweredId((id) => /multiCurrency|multiCompany|reportingCurrency|integration/i.test(id)) ||
+    // Legacy NetSuite-style hardcoded check
+    answers['r2r.currencies.isMultiCurrency'] === true ||
     license.modules.includes('ADVANCED_INVENTORY');
 
   // Phase durations
@@ -143,6 +176,31 @@ export function generateImplementationPlanHtml(data: ImplementationPlanData): st
         </tr>
       </tbody>
     </table>
+
+    <!-- Workstreams in Scope — schema-driven from adaptor.flows -->
+    ${(() => {
+      const scopeFlows = adaptorFlows
+        .map((flow) => {
+          const answeredCount = flow.sections.reduce((sum, s) =>
+            sum + s.questions.filter((q) => {
+              const v = answers[q.id];
+              return v !== undefined && v !== null && !(typeof v === 'string' && v.trim() === '');
+            }).length, 0);
+          return { flow, answeredCount };
+        })
+        .filter((x) => x.answeredCount > 0);
+      if (scopeFlows.length === 0) return '';
+      return `
+    <h2>Workstreams in Scope</h2>
+    <table>
+      <thead><tr><th>Workstream</th><th>Discovery Coverage</th></tr></thead>
+      <tbody>
+        ${scopeFlows.map(({ flow, answeredCount }) => `
+        <tr><td>${flow.label}</td><td>${answeredCount} discovery answer${answeredCount === 1 ? '' : 's'} captured</td></tr>
+        `).join('')}
+      </tbody>
+    </table>`;
+    })()}
 
     <!-- Phase Timeline -->
     <h2>Phase Timeline</h2>
