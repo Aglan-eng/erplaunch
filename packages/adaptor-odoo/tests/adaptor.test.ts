@@ -20,7 +20,7 @@ describe('odooAdaptor: manifest', () => {
 });
 
 describe('odooAdaptor: schema', () => {
-  it('exposes FOUNDATION + TAX + LOCALIZATION + ACCOUNTING before the five canonical flows', () => {
+  it('exposes FOUNDATION + TAX + LOCALIZATION + ACCOUNTING + R2R + INVENTORY before the four execution flows', () => {
     const ids = odooAdaptor.schema.flows.map((f) => f.id);
     // Pack 1 — Foundation gates everything downstream.
     // Pack 2 — Tax engine sits between Foundation and R2R.
@@ -30,7 +30,14 @@ describe('odooAdaptor: schema', () => {
     // analytic axes, bank reconciliation, intercompany mechanics,
     // transfer pricing. Sits after Localization (so the COA template +
     // statutory standards are settled first) and before R2R.
-    expect(ids).toEqual(['FOUNDATION', 'TAX', 'LOCALIZATION', 'ACCOUNTING', 'R2R', 'P2P', 'O2C', 'PRODUCTION', 'RETURNS']);
+    // Pack 5 — Inventory & Valuation depth: warehouse structure,
+    // valuation method, lot/serial tracking, replenishment strategy.
+    // Sits AFTER R2R (so the GL/CoA decisions feed inventory accounting)
+    // and BEFORE P2P (so PO/receiving rules see warehouse + tracking).
+    expect(ids).toEqual([
+      'FOUNDATION', 'TAX', 'LOCALIZATION', 'ACCOUNTING',
+      'R2R', 'INVENTORY', 'P2P', 'O2C', 'PRODUCTION', 'RETURNS',
+    ]);
   });
 
   it('every flow has at least one section with at least one question', () => {
@@ -1732,5 +1739,392 @@ describe('odooAdaptor: Pack 4 — Accounting rule evaluation', () => {
         `R9 should NOT fire when lockDatesPolicy=${policy}`,
       ).not.toContain('odoo.accounting.lockdates-recommended-for-monthly-close');
     }
+  });
+});
+
+// ─── Pack 5 — Inventory & Valuation depth ────────────────────────────────────
+
+describe('odooAdaptor: Pack 5 — INVENTORY flow shape', () => {
+  const inv = odooAdaptor.schema.flows.find((f) => f.id === 'INVENTORY');
+
+  it('INVENTORY flow exists with the expected label + description', () => {
+    expect(inv).toBeDefined();
+    expect(inv!.label).toBe('Inventory & Valuation');
+    expect(inv!.description).toMatch(/warehouse|valuation|lot|serial|replenishment|removal/i);
+  });
+
+  it('INVENTORY sits between R2R and P2P in flow order', () => {
+    const ids = odooAdaptor.schema.flows.map((f) => f.id);
+    const r2rIdx = ids.indexOf('R2R');
+    const invIdx = ids.indexOf('INVENTORY');
+    const p2pIdx = ids.indexOf('P2P');
+    expect(invIdx).toBe(r2rIdx + 1);
+    expect(p2pIdx).toBe(invIdx + 1);
+  });
+
+  it('renders four sections in the documented order', () => {
+    const ids = (inv!.sections as Array<{ id: string; order: number }>)
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .map((s) => s.id);
+    expect(ids).toEqual(['warehouses', 'valuation', 'tracking', 'operations']);
+  });
+
+  it('Warehouse Structure — 4 questions with the right ids + types', () => {
+    const sec = inv!.sections.find((s) => s.id === 'warehouses')!;
+    expect(sec.label).toBe('Warehouse Structure');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('odoo.inventory.warehouseCount')?.inputType).toBe('NUMBER');
+    expect(byId.get('odoo.inventory.warehouseTypes')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('odoo.inventory.transferRules')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('odoo.inventory.crossDocking')?.inputType).toBe('BOOLEAN');
+  });
+
+  it('Valuation & Costing — 4 questions with the right ids + types + options', () => {
+    const sec = inv!.sections.find((s) => s.id === 'valuation')!;
+    expect(sec.label).toBe('Valuation & Costing');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('odoo.inventory.valuationMethod')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('odoo.inventory.valuationMethod')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['AVCO', 'FIFO', 'STANDARD']);
+    expect(byId.get('odoo.inventory.removalStrategy')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('odoo.inventory.removalStrategy')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['CLOSEST', 'FEFO', 'FIFO', 'LIFO']);
+    expect(byId.get('odoo.inventory.landedCosts')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('odoo.inventory.negativeStockAllowed')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('odoo.inventory.negativeStockAllowed')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['ALLOWED', 'MIGRATION_ONLY', 'NEVER']);
+  });
+
+  it('Lot / Serial / Expiration Tracking — 5 questions with the right ids + types', () => {
+    const sec = inv!.sections.find((s) => s.id === 'tracking')!;
+    expect(sec.label).toBe('Lot / Serial / Expiration Tracking');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('odoo.inventory.lotsSerialsRequired')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('odoo.inventory.lotProductCategories')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('odoo.inventory.serialProductCategories')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('odoo.inventory.expirationTracking')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('odoo.inventory.barcodeScanning')?.inputType).toBe('BOOLEAN');
+  });
+
+  it('Replenishment & Operations — 4 questions with the right ids + types + options', () => {
+    const sec = inv!.sections.find((s) => s.id === 'operations')!;
+    expect(sec.label).toBe('Replenishment & Operations');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('odoo.inventory.replenishmentStrategy')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('odoo.inventory.replenishmentStrategy')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['MIN_MAX', 'MIXED', 'MTO', 'MTS']);
+    expect(byId.get('odoo.inventory.dropShip')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('odoo.inventory.countMethod')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('odoo.inventory.countMethod')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['ANNUAL', 'BOTH', 'CYCLE']);
+    expect(byId.get('odoo.inventory.putawayRules')?.inputType).toBe('BOOLEAN');
+  });
+});
+
+describe('odooAdaptor: Pack 5 — Inventory rules registered in odoo-rules', () => {
+  const ids = odooAdaptor.rules.rules.map((r) => r.id);
+
+  it('R1 LIFO banned under IFRS', () => {
+    expect(ids).toContain('odoo.inventory.lifo-banned-under-ifrs');
+  });
+  it('R2 FEFO needs expiration tracking', () => {
+    expect(ids).toContain('odoo.inventory.fefo-needs-expiration-tracking');
+  });
+  it('R3 lots required but no categories listed', () => {
+    expect(ids).toContain('odoo.inventory.lots-required-no-categories-listed');
+  });
+  it('R4 multi-warehouse needs transfer rules', () => {
+    expect(ids).toContain('odoo.inventory.multi-warehouse-needs-transfer-rules');
+  });
+  it('R5 landed costs need Enterprise', () => {
+    expect(ids).toContain('odoo.inventory.landed-costs-need-enterprise');
+  });
+  it('R6 MTO without MRP (INFO)', () => {
+    expect(ids).toContain('odoo.inventory.mto-without-mrp');
+  });
+  it('R7 negative stock with Anglo-Saxon', () => {
+    expect(ids).toContain('odoo.inventory.negative-stock-with-anglo-saxon');
+  });
+  it('R8 dropship needs Purchase + Sales', () => {
+    expect(ids).toContain('odoo.inventory.dropship-needs-purchase-and-sales');
+  });
+  it('R9 barcode needs app or IoT (INFO)', () => {
+    expect(ids).toContain('odoo.inventory.barcode-needs-app-or-iot');
+  });
+});
+
+describe('odooAdaptor: Pack 5 — Inventory rule evaluation', () => {
+  it('R1 fires (BLOCK) when removalStrategy=LIFO AND reportingStandard=IFRS', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.inventory.removalStrategy': 'LIFO',
+        'odoo.accounting.reportingStandard': 'IFRS',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.inventory.lifo-banned-under-ifrs');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R1 does NOT fire under US_GAAP', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.inventory.removalStrategy': 'LIFO',
+        'odoo.accounting.reportingStandard': 'US_GAAP',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.inventory.lifo-banned-under-ifrs');
+  });
+
+  it('R1 does NOT fire when removalStrategy=FIFO', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.inventory.removalStrategy': 'FIFO',
+        'odoo.accounting.reportingStandard': 'IFRS',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.inventory.lifo-banned-under-ifrs');
+  });
+
+  it('R2 fires (BLOCK) when removalStrategy=FEFO AND expirationTracking=false', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.inventory.removalStrategy': 'FEFO',
+        'odoo.inventory.expirationTracking': false,
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.inventory.fefo-needs-expiration-tracking');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R2 does NOT fire when expirationTracking=true', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.inventory.removalStrategy': 'FEFO',
+        'odoo.inventory.expirationTracking': true,
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.inventory.fefo-needs-expiration-tracking');
+  });
+
+  it('R3 fires (WARN) when lotsSerialsRequired=true AND both category lists empty', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.inventory.lotsSerialsRequired': true,
+        'odoo.inventory.lotProductCategories': '',
+        'odoo.inventory.serialProductCategories': '',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.inventory.lots-required-no-categories-listed');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R3 does NOT fire when lotProductCategories is populated', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.inventory.lotsSerialsRequired': true,
+        'odoo.inventory.lotProductCategories': 'Pharmaceuticals',
+        'odoo.inventory.serialProductCategories': '',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.inventory.lots-required-no-categories-listed');
+  });
+
+  it('R3 does NOT fire when serialProductCategories is populated', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.inventory.lotsSerialsRequired': true,
+        'odoo.inventory.lotProductCategories': '',
+        'odoo.inventory.serialProductCategories': 'High-value electronics',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.inventory.lots-required-no-categories-listed');
+  });
+
+  it('R4 fires (WARN) when warehouseCount>1 AND transferRules=false', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.inventory.warehouseCount': 3,
+        'odoo.inventory.transferRules': false,
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.inventory.multi-warehouse-needs-transfer-rules');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R4 does NOT fire when warehouseCount=1', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.inventory.warehouseCount': 1,
+        'odoo.inventory.transferRules': false,
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.inventory.multi-warehouse-needs-transfer-rules');
+  });
+
+  it('R4 does NOT fire when transferRules=true', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.inventory.warehouseCount': 5,
+        'odoo.inventory.transferRules': true,
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.inventory.multi-warehouse-needs-transfer-rules');
+  });
+
+  it('R5 fires (BLOCK) when landedCosts=true AND foundation.edition=COMMUNITY', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.inventory.landedCosts': true,
+        'odoo.foundation.edition': 'COMMUNITY',
+      },
+      license: { edition: 'COMMUNITY', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.inventory.landed-costs-need-enterprise');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R5 does NOT fire on Enterprise edition', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.inventory.landedCosts': true,
+        'odoo.foundation.edition': 'ENTERPRISE',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.inventory.landed-costs-need-enterprise');
+  });
+
+  it('R6 fires (INFO) when replenishmentStrategy=MTO and MRP not licensed', () => {
+    for (const strategy of ['MTO', 'MIXED']) {
+      const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+        answers: { 'odoo.inventory.replenishmentStrategy': strategy },
+        license: { edition: 'ENTERPRISE', modules: ['BASE_PURCHASE'] },
+      });
+      const r = conflicts.find((c) => c.id === 'odoo.inventory.mto-without-mrp');
+      expect(r, `R6 should fire when strategy=${strategy}`).toBeDefined();
+      expect(r?.severity).toBe('INFO');
+    }
+  });
+
+  it('R6 does NOT fire when MRP is licensed', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'odoo.inventory.replenishmentStrategy': 'MTO' },
+      license: { edition: 'ENTERPRISE', modules: ['MRP'] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.inventory.mto-without-mrp');
+  });
+
+  it('R6 does NOT fire when strategy=MTS or MIN_MAX', () => {
+    for (const strategy of ['MTS', 'MIN_MAX']) {
+      const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+        answers: { 'odoo.inventory.replenishmentStrategy': strategy },
+        license: { edition: 'ENTERPRISE', modules: [] },
+      });
+      expect(
+        conflicts.map((c) => c.id),
+        `R6 should NOT fire when strategy=${strategy}`,
+      ).not.toContain('odoo.inventory.mto-without-mrp');
+    }
+  });
+
+  it('R7 fires (WARN) when negativeStockAllowed=ALLOWED AND tradition=ANGLO_SAXON', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.inventory.negativeStockAllowed': 'ALLOWED',
+        'odoo.accounting.tradition': 'ANGLO_SAXON',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.inventory.negative-stock-with-anglo-saxon');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R7 does NOT fire when negativeStockAllowed=NEVER', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.inventory.negativeStockAllowed': 'NEVER',
+        'odoo.accounting.tradition': 'ANGLO_SAXON',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.inventory.negative-stock-with-anglo-saxon');
+  });
+
+  it('R7 does NOT fire under Continental tradition', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.inventory.negativeStockAllowed': 'ALLOWED',
+        'odoo.accounting.tradition': 'CONTINENTAL',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.inventory.negative-stock-with-anglo-saxon');
+  });
+
+  it('R8 fires (BLOCK) when dropShip=true AND BASE_PURCHASE missing', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'odoo.inventory.dropShip': true },
+      license: { edition: 'ENTERPRISE', modules: ['BASE_SALES'] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.inventory.dropship-needs-purchase-and-sales');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R8 fires (BLOCK) when dropShip=true AND BASE_SALES missing', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'odoo.inventory.dropShip': true },
+      license: { edition: 'ENTERPRISE', modules: ['BASE_PURCHASE'] },
+    });
+    expect(conflicts.map((c) => c.id)).toContain('odoo.inventory.dropship-needs-purchase-and-sales');
+  });
+
+  it('R8 does NOT fire when both BASE_PURCHASE and BASE_SALES are licensed', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'odoo.inventory.dropShip': true },
+      license: { edition: 'ENTERPRISE', modules: ['BASE_PURCHASE', 'BASE_SALES'] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.inventory.dropship-needs-purchase-and-sales');
+  });
+
+  it('R9 fires (INFO) when barcodeScanning=true', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'odoo.inventory.barcodeScanning': true },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.inventory.barcode-needs-app-or-iot');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('INFO');
+  });
+
+  it('R9 does NOT fire when barcodeScanning=false', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'odoo.inventory.barcodeScanning': false },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.inventory.barcode-needs-app-or-iot');
   });
 });

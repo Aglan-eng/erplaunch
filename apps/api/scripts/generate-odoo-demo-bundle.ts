@@ -136,6 +136,25 @@ const answers: Record<string, unknown> = {
   'odoo.accounting.transferPricingPolicy': 'COST_PLUS',
   'odoo.accounting.sharedAccountsStrategy': 'CONSOLIDATION_ONLY',
 
+  // Pack 5 — Inventory & Valuation depth
+  'odoo.inventory.warehouseCount': 4,
+  'odoo.inventory.warehouseTypes': 'Main DC — Jebel Ali\nRetail Store — Dubai Mall\nRetail Store — Mall of the Emirates\nManufacturing Plant — Dubai Industrial Park',
+  'odoo.inventory.transferRules': true,
+  'odoo.inventory.crossDocking': false,
+  'odoo.inventory.valuationMethod': 'FIFO',
+  'odoo.inventory.removalStrategy': 'FEFO',
+  'odoo.inventory.landedCosts': true,
+  'odoo.inventory.negativeStockAllowed': 'NEVER',
+  'odoo.inventory.lotsSerialsRequired': true,
+  'odoo.inventory.lotProductCategories': 'Pharmaceuticals\nDairy products\nPerishable food',
+  'odoo.inventory.serialProductCategories': 'High-value electronics\nMedical devices',
+  'odoo.inventory.expirationTracking': true,
+  'odoo.inventory.barcodeScanning': true,
+  'odoo.inventory.replenishmentStrategy': 'MIXED',
+  'odoo.inventory.dropShip': true,
+  'odoo.inventory.countMethod': 'BOTH',
+  'odoo.inventory.putawayRules': true,
+
   // Legacy R2R / P2P / O2C / MRP / Returns answers (preserved)
   'odoo.company.multiCompany': true,
   'odoo.company.currency': 'AED',

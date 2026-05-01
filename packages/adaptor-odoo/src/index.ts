@@ -134,6 +134,12 @@ const schema: QuestionnaireSchema = {
     // before the legacy R2R section's lighter Company/CoA prompts).
     buildAccountingFlow(),
     buildR2RFlow(),
+    // Pack 5 — Inventory & Valuation depth. Warehouse structure,
+    // valuation method, lot/serial/expiration tracking, replenishment.
+    // Sits AFTER R2R (so the GL/CoA decisions feed inventory accounting
+    // accounts) and BEFORE P2P (so PO/receiving rules can see the
+    // warehouse layout + tracking requirements that drive them).
+    buildInventoryFlow(),
     buildP2PFlow(),
     buildO2CFlow(),
     buildProductionFlow(),
@@ -902,6 +908,208 @@ function buildR2RFlow(): FlowDefinition {
             inputType: 'BOOLEAN',
             required: true,
             label: 'Do you need analytic accounting (cost centers, projects)?',
+          },
+        ],
+      },
+    ],
+  };
+}
+
+// ─── Pack 5 — Inventory & Valuation depth ────────────────────────────────────
+//
+// 17 questions across 4 sections:
+//   - warehouses  (4): warehouse count, types, transfer rules, cross-docking.
+//   - valuation   (4): valuation method, removal strategy, landed costs,
+//                      negative-stock policy.
+//   - tracking    (5): lots/serials, lot categories, serial categories,
+//                      expiration dates, barcode scanning.
+//   - operations  (4): replenishment strategy, drop-ship, count method,
+//                      putaway rules.
+//
+// Sources: Odoo 19 Inventory docs (warehouse structure, valuation
+// methods, removal strategies), IAS 2 LIFO prohibition (IFRS Foundation),
+// Odoo Landed Costs (Enterprise feature flag), Odoo Barcode app /
+// IoT Box documentation.
+function buildInventoryFlow(): FlowDefinition {
+  return {
+    id: 'INVENTORY',
+    label: 'Inventory & Valuation',
+    description:
+      'Warehouse structure, valuation method, lot/serial tracking, replenishment strategy, and removal rules — the configuration that determines whether inventory accounting and operations actually behave correctly.',
+    sections: [
+      {
+        id: 'warehouses',
+        label: 'Warehouse Structure',
+        order: 1,
+        questions: [
+          {
+            id: 'odoo.inventory.warehouseCount',
+            inputType: 'NUMBER',
+            required: true,
+            label:
+              'Number of physical warehouses (storage, retail, manufacturing — count any location with putaway rules)',
+          },
+          {
+            id: 'odoo.inventory.warehouseTypes',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Warehouse types in scope (one per line — e.g., 'Main DC', 'Retail Store - Dubai Mall', 'Manufacturing Plant', 'Drop-ship Hub', 'Quarantine')",
+          },
+          {
+            id: 'odoo.inventory.transferRules',
+            inputType: 'BOOLEAN',
+            required: true,
+            label:
+              'Inter-warehouse transfer rules required? (replenishment from main DC to stores, kitting between locations, etc.)',
+          },
+          {
+            id: 'odoo.inventory.crossDocking',
+            inputType: 'BOOLEAN',
+            required: true,
+            label:
+              'Cross-docking in scope? (receive at one warehouse, ship out same-day without putaway)',
+          },
+        ],
+      },
+      {
+        id: 'valuation',
+        label: 'Valuation & Costing',
+        order: 2,
+        questions: [
+          {
+            id: 'odoo.inventory.valuationMethod',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'Inventory valuation method',
+            help: {
+              title: 'Inventory valuation in Odoo',
+              body: 'Set per product category. FIFO is the IFRS default; AVCO is common in commodities; Standard for stable supplier pricing.',
+            },
+            options: [
+              { value: 'STANDARD', label: 'Standard Price (manually set, variances posted to P&L)' },
+              { value: 'AVCO', label: 'Average Cost (weighted average of all receipts)' },
+              { value: 'FIFO', label: 'FIFO (cost flows in receipt order — typical for IFRS)' },
+            ],
+          },
+          {
+            id: 'odoo.inventory.removalStrategy',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'Default removal strategy (which physical units leave the warehouse first when picking)',
+            options: [
+              { value: 'FIFO', label: 'FIFO — oldest received first' },
+              { value: 'LIFO', label: 'LIFO — newest received first (rare; banned under IFRS)' },
+              { value: 'FEFO', label: 'FEFO — first expiring first (requires expiration tracking)' },
+              { value: 'CLOSEST', label: 'Closest Location — minimize picker travel' },
+            ],
+          },
+          {
+            id: 'odoo.inventory.landedCosts',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'Landed costs in scope? (allocate freight, customs, insurance into product cost)',
+            help: {
+              title: 'Landed Costs',
+              body: 'Landed Costs is Odoo Enterprise-only. Community installations cost-allocate via journal entries.',
+            },
+          },
+          {
+            id: 'odoo.inventory.negativeStockAllowed',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'Allow negative stock? (transactions proceed even when on-hand is below zero)',
+            options: [
+              { value: 'NEVER', label: 'Never (recommended for production)' },
+              { value: 'MIGRATION_ONLY', label: 'During data migration only' },
+              { value: 'ALLOWED', label: 'Always allowed (rare; high accounting risk)' },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'tracking',
+        label: 'Lot / Serial / Expiration Tracking',
+        order: 3,
+        questions: [
+          {
+            id: 'odoo.inventory.lotsSerialsRequired',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'Lot or serial number tracking required for any product?',
+          },
+          {
+            id: 'odoo.inventory.lotProductCategories',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "If yes — list product categories that need lot tracking (one per line — e.g., 'Pharmaceuticals', 'Dairy products', 'Electronic components')",
+            dependsOn: { questionId: 'odoo.inventory.lotsSerialsRequired', value: true },
+          },
+          {
+            id: 'odoo.inventory.serialProductCategories',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Product categories that need unique serial numbers (one per line — e.g., 'High-value electronics', 'Vehicles', 'Medical devices')",
+            dependsOn: { questionId: 'odoo.inventory.lotsSerialsRequired', value: true },
+          },
+          {
+            id: 'odoo.inventory.expirationTracking',
+            inputType: 'BOOLEAN',
+            required: true,
+            label:
+              'Expiration date tracking required? (drives FEFO removal, recall workflows, dunning of expired stock)',
+          },
+          {
+            id: 'odoo.inventory.barcodeScanning',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'Barcode scanning in receiving / picking workflows?',
+          },
+        ],
+      },
+      {
+        id: 'operations',
+        label: 'Replenishment & Operations',
+        order: 4,
+        questions: [
+          {
+            id: 'odoo.inventory.replenishmentStrategy',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'Primary replenishment strategy',
+            options: [
+              { value: 'MIN_MAX', label: 'Min-Max reordering rules (auto PO when stock hits min)' },
+              { value: 'MTO', label: 'Make-to-Order (procure on each sales order)' },
+              { value: 'MTS', label: 'Make-to-Stock (forecast-driven; common for FMCG)' },
+              { value: 'MIXED', label: 'Mixed (different rules per product category)' },
+            ],
+          },
+          {
+            id: 'odoo.inventory.dropShip',
+            inputType: 'BOOLEAN',
+            required: true,
+            label:
+              'Drop-ship in scope? (supplier ships directly to customer, never enters your warehouse)',
+          },
+          {
+            id: 'odoo.inventory.countMethod',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'Inventory count method',
+            options: [
+              { value: 'CYCLE', label: 'Cycle counting (rolling — count subset weekly/monthly)' },
+              { value: 'ANNUAL', label: 'Annual physical count only' },
+              { value: 'BOTH', label: 'Cycle counting + annual physical' },
+            ],
+          },
+          {
+            id: 'odoo.inventory.putawayRules',
+            inputType: 'BOOLEAN',
+            required: true,
+            label:
+              "Putaway rules required? (smart placement on receipt — e.g., 'paint goes to hazmat zone', 'fast-movers near pick face')",
           },
         ],
       },
@@ -1932,6 +2140,181 @@ const rules: RulePack = {
           { answerEquals: { questionId: 'odoo.accounting.lockDatesPolicy', value: 'NONE' } },
         ],
       },
+    },
+
+    // ── Pack 5 — Inventory & Valuation depth rules ────────────────────────
+
+    // R1: LIFO is prohibited under IFRS (IAS 2 §25). Fires hard so
+    // the consultant cannot sign off an IFRS engagement with LIFO
+    // removal. US GAAP still permits LIFO, so the rule is gated on
+    // reportingStandard=IFRS.
+    {
+      id: 'odoo.inventory.lifo-banned-under-ifrs',
+      type: 'CONFIG_CONFLICT',
+      severity: 'BLOCK',
+      questionIds: ['odoo.inventory.removalStrategy', 'odoo.accounting.reportingStandard'],
+      message: 'LIFO is not permitted under IFRS (IAS 2 §25). The engagement reports under IFRS but selected LIFO removal.',
+      resolution: 'Switch removalStrategy to FIFO (IFRS-standard) or FEFO (if expiration-tracked). LIFO is only legal under US GAAP.',
+      when: {
+        all: [
+          { answerEquals: { questionId: 'odoo.inventory.removalStrategy', value: 'LIFO' } },
+          { answerEquals: { questionId: 'odoo.accounting.reportingStandard', value: 'IFRS' } },
+        ],
+      },
+    },
+
+    // R2: FEFO (First Expiring First Out) is meaningless without
+    // expiration-date tracking — Odoo has nothing to sort by.
+    // Blocks rather than warns because a FEFO setup without
+    // expirations is broken at the operational level.
+    {
+      id: 'odoo.inventory.fefo-needs-expiration-tracking',
+      type: 'CONFIG_CONFLICT',
+      severity: 'BLOCK',
+      questionIds: ['odoo.inventory.removalStrategy', 'odoo.inventory.expirationTracking'],
+      message: 'FEFO (First Expiring First Out) requires expiration date tracking. The engagement selected FEFO but disabled expiration tracking.',
+      resolution: 'Enable expirationTracking, OR change removalStrategy to FIFO.',
+      when: {
+        all: [
+          { answerEquals: { questionId: 'odoo.inventory.removalStrategy', value: 'FEFO' } },
+          { answerFalsy: { questionId: 'odoo.inventory.expirationTracking' } },
+        ],
+      },
+    },
+
+    // R3: Lot/serial tracking flagged required but neither category
+    // list is populated — the wizard cannot drive product-category
+    // configuration in Phase 4 without at least one category.
+    {
+      id: 'odoo.inventory.lots-required-no-categories-listed',
+      type: 'DATA_WARNING',
+      severity: 'WARN',
+      questionIds: [
+        'odoo.inventory.lotsSerialsRequired',
+        'odoo.inventory.lotProductCategories',
+        'odoo.inventory.serialProductCategories',
+      ],
+      message: 'Lot/serial tracking flagged required but no product categories are listed.',
+      resolution: 'List the product categories that need lot tracking, the ones that need unique serial numbers, or both. Otherwise the wizard cannot drive product-category configuration in Phase 4.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.inventory.lotsSerialsRequired' } },
+          { answerFalsy:  { questionId: 'odoo.inventory.lotProductCategories' } },
+          { answerFalsy:  { questionId: 'odoo.inventory.serialProductCategories' } },
+        ],
+      },
+    },
+
+    // R4: Multiple warehouses without inter-warehouse transfer rules
+    // means stock gets trapped at the receiving location.
+    {
+      id: 'odoo.inventory.multi-warehouse-needs-transfer-rules',
+      type: 'CONFIG_CONFLICT',
+      severity: 'WARN',
+      questionIds: ['odoo.inventory.warehouseCount', 'odoo.inventory.transferRules'],
+      message: 'Multiple warehouses are in scope but inter-warehouse transfer rules are disabled. Stock will become trapped at one location.',
+      resolution: "Enable transferRules and capture the transfer flows in warehouseTypes (e.g., 'Main DC → Retail Stores: weekly replenishment').",
+      when: {
+        all: [
+          { answerNumberGreaterThan: { questionId: 'odoo.inventory.warehouseCount', value: 1 } },
+          { answerFalsy: { questionId: 'odoo.inventory.transferRules' } },
+        ],
+      },
+    },
+
+    // R5: Landed Costs (allocate freight/customs/insurance into
+    // product cost) is an Odoo Enterprise feature. Community has no
+    // landed-costs module — the consultant has to allocate via
+    // manual journal entries.
+    {
+      id: 'odoo.inventory.landed-costs-need-enterprise',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: ['odoo.inventory.landedCosts', 'odoo.foundation.edition'],
+      message: 'Landed Costs (allocating freight, customs, insurance into product cost) is an Odoo Enterprise feature.',
+      resolution: 'Either upgrade edition to Enterprise, or disable landedCosts and plan to allocate via manual journal entries posted to inventory accounts.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.inventory.landedCosts' } },
+          { answerEquals: { questionId: 'odoo.foundation.edition', value: 'COMMUNITY' } },
+        ],
+      },
+    },
+
+    // R6: Make-to-Order on manufactured items requires the MRP
+    // module. INFO-level reminder because MTO works for purchased
+    // items without MRP — the consultant just needs to confirm the
+    // mix.
+    {
+      id: 'odoo.inventory.mto-without-mrp',
+      type: 'LICENSE_GAP',
+      severity: 'INFO',
+      questionIds: ['odoo.inventory.replenishmentStrategy'],
+      message: 'Make-to-Order is in scope but the MRP module is not provisioned. MTO works for purchased items, but for manufactured items it requires MRP.',
+      resolution: 'If the client manufactures any product, add MRP to license.modules. If MTO is purchase-only (e.g., custom-spec direct-from-supplier), this is acceptable.',
+      when: {
+        all: [
+          { answerIn: {
+            questionId: 'odoo.inventory.replenishmentStrategy',
+            values: ['MTO', 'MIXED'],
+          } },
+          { licenseMissingModule: 'MRP' },
+        ],
+      },
+    },
+
+    // R7: Negative stock under Anglo-Saxon accounting produces
+    // negative COGS journal entries when shipment posts before
+    // receipt. Audit-trail nightmare. WARN nudges the consultant
+    // to lock down to NEVER (or MIGRATION_ONLY) for production.
+    {
+      id: 'odoo.inventory.negative-stock-with-anglo-saxon',
+      type: 'CONFIG_CONFLICT',
+      severity: 'WARN',
+      questionIds: ['odoo.inventory.negativeStockAllowed', 'odoo.accounting.tradition'],
+      message: "Allowing negative stock under Anglo-Saxon accounting produces negative COGS journal entries when the stock 'shipment' is posted before the receipt. Audit-trail nightmare.",
+      resolution: 'Disallow negative stock (set NEVER) for production accounts. If migration cleanup requires it, set MIGRATION_ONLY and lock back to NEVER post-cutover.',
+      when: {
+        all: [
+          { answerEquals: { questionId: 'odoo.inventory.negativeStockAllowed', value: 'ALLOWED' } },
+          { answerEquals: { questionId: 'odoo.accounting.tradition', value: 'ANGLO_SAXON' } },
+        ],
+      },
+    },
+
+    // R8: Drop-ship requires both BASE_PURCHASE and BASE_SALES — the
+    // supplier PO is created from the customer SO. Either missing
+    // breaks the workflow.
+    {
+      id: 'odoo.inventory.dropship-needs-purchase-and-sales',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: ['odoo.inventory.dropShip'],
+      message: 'Drop-ship requires both Purchase and Sales modules — the supplier PO is created from the customer SO.',
+      resolution: 'Add both BASE_PURCHASE and BASE_SALES to license.modules.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.inventory.dropShip' } },
+          { any: [
+            { licenseMissingModule: 'BASE_PURCHASE' },
+            { licenseMissingModule: 'BASE_SALES' },
+          ] },
+        ],
+      },
+    },
+
+    // R9: Barcode scanning needs hardware: Odoo Barcode app on
+    // tablets (Enterprise), or USB scanners on receiving stations.
+    // INFO-level reminder so the consultant captures the hardware
+    // approach in the implementation plan.
+    {
+      id: 'odoo.inventory.barcode-needs-app-or-iot',
+      type: 'DATA_WARNING',
+      severity: 'INFO',
+      questionIds: ['odoo.inventory.barcodeScanning'],
+      message: 'Barcode scanning requires either the Odoo Barcode app (Enterprise) installed on tablets, or USB barcode scanners on receiving stations.',
+      resolution: 'Confirm hardware approach in the implementation plan: tablet count + Barcode app licenses, OR list of fixed scanning stations and supported scanner models. Allocate ~1 person-day per scanning station for setup.',
+      when: { answerTruthy: { questionId: 'odoo.inventory.barcodeScanning' } },
     },
   ],
 };

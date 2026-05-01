@@ -996,3 +996,212 @@ describe('Odoo engagement — Pack 4 Accounting rules through the route', () => 
     expect(hit?.severity).toBe('INFO');
   });
 });
+
+// ─── Pack 5 — Inventory & Valuation depth through the route ──────────────────
+
+describe('Odoo engagement — Pack 5 Inventory rules through the route', () => {
+  it('R1: removalStrategy=LIFO + reportingStandard=IFRS fires lifo-banned-under-ifrs (BLOCK)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'IFRS LIFO Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.inventory.removalStrategy': 'LIFO',
+        'odoo.accounting.reportingStandard': 'IFRS',
+        'odoo.company.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.inventory.lifo-banned-under-ifrs');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('BLOCK');
+  });
+
+  it('R2: removalStrategy=FEFO + expirationTracking=false fires fefo-needs-expiration-tracking (BLOCK)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'FEFO No-Exp Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.inventory.removalStrategy': 'FEFO',
+        'odoo.inventory.expirationTracking': false,
+        'odoo.company.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.inventory.fefo-needs-expiration-tracking');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('BLOCK');
+  });
+
+  it('R3: lotsSerialsRequired=true + both category lists empty fires lots-required-no-categories-listed (WARN)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'Lots Without Categories Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.inventory.lotsSerialsRequired': true,
+        'odoo.inventory.lotProductCategories': '',
+        'odoo.inventory.serialProductCategories': '',
+        'odoo.company.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.inventory.lots-required-no-categories-listed');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('WARN');
+  });
+
+  it('R4: warehouseCount>1 + transferRules=false fires multi-warehouse-needs-transfer-rules (WARN)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'Multi-WH No-Transfer Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.inventory.warehouseCount': 4,
+        'odoo.inventory.transferRules': false,
+        'odoo.company.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.inventory.multi-warehouse-needs-transfer-rules');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('WARN');
+  });
+
+  it('R5: landedCosts=true + foundation.edition=COMMUNITY fires landed-costs-need-enterprise (BLOCK)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'Community Landed Costs Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'COMMUNITY', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.inventory.landedCosts': true,
+        'odoo.foundation.edition': 'COMMUNITY',
+        'odoo.company.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.inventory.landed-costs-need-enterprise');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('BLOCK');
+  });
+
+  it('R6: replenishmentStrategy=MTO + no MRP module fires mto-without-mrp (INFO)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'MTO No-MRP Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: ['BASE_PURCHASE'] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.inventory.replenishmentStrategy': 'MTO',
+        'odoo.company.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.inventory.mto-without-mrp');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('INFO');
+  });
+
+  it('R7: negativeStockAllowed=ALLOWED + tradition=ANGLO_SAXON fires negative-stock-with-anglo-saxon (WARN)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'Anglo-Saxon Negative Stock Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.inventory.negativeStockAllowed': 'ALLOWED',
+        'odoo.accounting.tradition': 'ANGLO_SAXON',
+        'odoo.company.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.inventory.negative-stock-with-anglo-saxon');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('WARN');
+  });
+
+  it('R8: dropShip=true + BASE_PURCHASE missing fires dropship-needs-purchase-and-sales (BLOCK)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'Dropship No-Purchase Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: ['BASE_SALES'] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.inventory.dropShip': true,
+        'odoo.company.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.inventory.dropship-needs-purchase-and-sales');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('BLOCK');
+  });
+
+  it('R9: barcodeScanning=true fires barcode-needs-app-or-iot (INFO)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'Barcode Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.inventory.barcodeScanning': true,
+        'odoo.company.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.inventory.barcode-needs-app-or-iot');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('INFO');
+  });
+});
