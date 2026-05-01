@@ -1,5 +1,23 @@
 import MarkdownIt from 'markdown-it';
-import type { AdaptorContext } from './brdGenerator.js';
+import type { AdaptorContext, AdaptorQuestion } from './brdGenerator.js';
+
+/** Mirror of brdGenerator.formatAnswer — kept inline so this module
+ *  stays standalone. Same input/output contract. */
+function fmt(question: AdaptorQuestion, raw: unknown): string {
+  if (raw === undefined || raw === null) return '—';
+  if (question.inputType === 'BOOLEAN') return raw === true ? 'Yes' : raw === false ? 'No' : '—';
+  if (question.inputType === 'SINGLE_SELECT' && question.options) {
+    return question.options.find((o) => o.value === raw)?.label ?? String(raw);
+  }
+  if (question.inputType === 'MULTI_SELECT' && Array.isArray(raw)) {
+    if (raw.length === 0) return 'None selected';
+    return raw.map((v) => question.options?.find((o) => o.value === v)?.label ?? String(v)).join(', ');
+  }
+  if (question.inputType === 'TABLE' && Array.isArray(raw)) {
+    return raw.length === 0 ? 'None configured' : (raw as string[]).map((r, i) => `${i + 1}. ${r}`).join('\n');
+  }
+  return String(raw);
+}
 
 const md = new MarkdownIt({ html: true, typographer: true });
 
@@ -87,12 +105,33 @@ export function generateSolutionDoc(data: SolutionDocData): string {
   doc += `system behaviour, and technical specifications for all in-scope workstreams.\n\n`;
 
   doc += `### 1.2 Scope of Implementation\n\n`;
+  // Schema-driven scope list. A flow makes the cut when at least one of
+  // its declared questions has an answer. Fallback to the legacy
+  // hardcoded NetSuite-style flow detection when the adaptor schema
+  // doesn't include the flow (custom adaptors that don't ship a
+  // schema yet).
+  const adaptorFlows = adaptor.flows ?? [];
+  const flowAnswered = (flow: { sections: ReadonlyArray<{ questions: ReadonlyArray<{ id: string }> }> }): boolean =>
+    flow.sections.some((s) =>
+      s.questions.some((q) => {
+        const v = answers[q.id];
+        return v !== undefined && v !== null && !(typeof v === 'string' && v.trim() === '');
+      }),
+    );
+
   const activeFlows: string[] = [];
-  if (hasFlow('r2r.')) activeFlows.push('Record to Report (R2R)');
-  if (hasFlow('p2p.')) activeFlows.push('Procure to Pay (P2P)');
-  if (hasFlow('o2c.')) activeFlows.push('Order to Cash (O2C)');
-  if (hasFlow('mfg.')) activeFlows.push('Manufacturing (MFG)');
-  if (hasFlow('rtn.')) activeFlows.push('Returns Management (RTN)');
+  if (adaptorFlows.length > 0) {
+    for (const f of adaptorFlows) {
+      if (flowAnswered(f)) activeFlows.push(f.label);
+    }
+  } else {
+    // Legacy fallback for engagement payloads with no adaptor.flows.
+    if (hasFlow('r2r.')) activeFlows.push('Record to Report (R2R)');
+    if (hasFlow('p2p.')) activeFlows.push('Procure to Pay (P2P)');
+    if (hasFlow('o2c.')) activeFlows.push('Order to Cash (O2C)');
+    if (hasFlow('mfg.')) activeFlows.push('Manufacturing (MFG)');
+    if (hasFlow('rtn.')) activeFlows.push('Returns Management (RTN)');
+  }
 
   doc += activeFlows.map(f => `- ${f}`).join('\n');
   doc += `\n\n`;
@@ -104,100 +143,159 @@ export function generateSolutionDoc(data: SolutionDocData): string {
   if (blocks.length > 0) doc += `- **${blocks.length} blocking configuration issue(s) remain open** — see Section 7.\n`;
   doc += `\n---\n\n`;
 
-  // ── SECTION 3: Organisational Setup ────────────────────────────────────────
-  doc += `## 2. Organisational & Account Setup\n\n`;
-  doc += `### 2.1 Entity Structure\n\n`;
-  doc += `| Setting | Configuration |\n| :--- | :--- |\n`;
-  // OneWorld is the NetSuite product name for multi-entity; other adaptors
-  // call this "Multi-Company" (Odoo), "Inter-Company" (SAP), etc. We surface
-  // the platform-agnostic label and only annotate with the NetSuite-specific
-  // term when the adaptor is NetSuite.
-  const multiEntityLabel = isNetSuite ? 'Multi-Entity / OneWorld' : 'Multi-Entity / Multi-Company';
-  doc += `| ${multiEntityLabel} | ${yn('r2r.entities.multiEntity')} |\n`;
-  doc += `| Multi-Currency | ${yn('r2r.currencies.isMultiCurrency')} |\n`;
-  doc += `| Base Currency | ${val('r2r.currencies.baseCurrency')} |\n`;
-  doc += `| Fiscal Year Start | ${val('r2r.accountingPeriods.fiscalYearStart')} |\n`;
-  doc += `| Accounting Basis | ${answers['r2r.accountingPeriods.cashBased'] === true ? 'Cash' : 'Accrual'} |\n\n`;
+  // ── SECTION 2: Organisational Setup ────────────────────────────────────────
+  // NetSuite-specific vocabulary (OneWorld, Departments/Classes/Locations as
+  // NetSuite "segmentation" axes, hardcoded r2r.* answer keys). Gate the
+  // entire section behind isNetSuite — non-NetSuite adaptors get this
+  // content via the schema-driven Section 3 walk below, where Foundation /
+  // Tax / etc. surface with their actual question labels.
+  if (isNetSuite) {
+    doc += `## 2. Organisational & Account Setup\n\n`;
+    doc += `### 2.1 Entity Structure\n\n`;
+    doc += `| Setting | Configuration |\n| :--- | :--- |\n`;
+    doc += `| Multi-Entity / OneWorld | ${yn('r2r.entities.multiEntity')} |\n`;
+    doc += `| Multi-Currency | ${yn('r2r.currencies.isMultiCurrency')} |\n`;
+    doc += `| Base Currency | ${val('r2r.currencies.baseCurrency')} |\n`;
+    doc += `| Fiscal Year Start | ${val('r2r.accountingPeriods.fiscalYearStart')} |\n`;
+    doc += `| Accounting Basis | ${answers['r2r.accountingPeriods.cashBased'] === true ? 'Cash' : 'Accrual'} |\n\n`;
 
-  doc += `### 2.2 Segmentation\n\n`;
-  doc += `| Dimension | Enabled |\n| :--- | :--- |\n`;
-  doc += `| Departments | ${yn('r2r.segmentation.useDepartments')} |\n`;
-  doc += `| Classes | ${yn('r2r.segmentation.useClasses')} |\n`;
-  doc += `| Locations | ${yn('r2r.segmentation.useLocations')} |\n\n`;
-  doc += `---\n\n`;
+    doc += `### 2.2 Segmentation\n\n`;
+    doc += `| Dimension | Enabled |\n| :--- | :--- |\n`;
+    doc += `| Departments | ${yn('r2r.segmentation.useDepartments')} |\n`;
+    doc += `| Classes | ${yn('r2r.segmentation.useClasses')} |\n`;
+    doc += `| Locations | ${yn('r2r.segmentation.useLocations')} |\n\n`;
+    doc += `---\n\n`;
+  }
 
-  // ── SECTION 4: Workstream Designs ───────────────────────────────────────────
+  // ── SECTION 3: Workstream Configuration Design ─────────────────────────────
+  // Two voices:
+  //   - NetSuite gets the existing hand-tuned R2R/P2P/O2C/MFG/RTN tables
+  //     with platform-specific terminology (Pick-Pack-Ship, Phantom
+  //     Assemblies, RMA, etc.).
+  //   - Other adaptors get a schema-driven walk: iterate adaptor.flows ->
+  //     sections -> questions and render question label + formatted
+  //     answer for every populated question. The adaptor's own labels
+  //     do the work that hardcoded NetSuite labels did for the legacy
+  //     section.
   doc += `## 3. Workstream Configuration Design\n\n`;
 
-  // R2R
-  if (hasFlow('r2r.')) {
-    doc += `### 3.1 Record to Report (R2R)\n\n`;
-    doc += `#### Bank & Treasury\n`;
-    doc += `- Bank Account Count: **${val('r2r.bankTransactions.bankAccountCount')}**\n`;
-    doc += `- Auto Exchange Rate Updates: **${yn('r2r.currencies.autoExchangeRateUpdate')}**\n`;
-    doc += `- Intercompany Journal Entries: **${yn('r2r.journalEntries.intercompanyJE')}**\n\n`;
-    doc += `#### Period Close\n`;
-    doc += `- Hard Period Close Enforced: **${yn('r2r.fiscalClose.hardClose')}**\n\n`;
-    doc += `#### Reporting\n`;
-    doc += `- Revenue Recognition: **${yn('r2r.reporting.revenueRecognition')}**\n\n`;
-    doc += appendRichContent('r2r.');
-  }
-
-  // P2P
-  if (hasFlow('p2p.')) {
-    doc += `### 3.2 Procure to Pay (P2P)\n\n`;
-    doc += `| Configuration Point | Setting |\n| :--- | :--- |\n`;
-    doc += `| Formal Purchase Orders | ${yn('p2p.purchasing.usePurchaseOrders')} |\n`;
-    doc += `| PO Approval Required | ${yn('p2p.purchasing.poApprovalRequired')} |\n`;
-    doc += `| Budget Check on POs | ${yn('p2p.purchasing.budgetCheck')} |\n`;
-    doc += `| Formal Receiving | ${yn('p2p.receiving.formalReceiving')} |\n`;
-    doc += `| 3-Way Matching | ${yn('p2p.receiving.threeWayMatch')} |\n`;
-    doc += `| Bill Approval Required | ${yn('p2p.bills.billApprovalRequired')} |\n`;
-    doc += `| Employee Expense Claims | ${yn('p2p.expenses.employeeExpenses')} |\n`;
-    doc += `| Bank File Export | ${yn('p2p.payments.bankFileExport')} |\n\n`;
-    doc += appendRichContent('p2p.');
-  }
-
-  // O2C
-  if (hasFlow('o2c.')) {
-    doc += `### 3.3 Order to Cash (O2C)\n\n`;
-    doc += `| Configuration Point | Setting |\n| :--- | :--- |\n`;
-    doc += `| Customer Credit Limits | ${yn('o2c.customers.creditLimits')} |\n`;
-    doc += `| Foreign Currency Pricing | ${yn('o2c.pricing.foreignCurrencyPricing')} |\n`;
-    doc += `| SO Approval Required | ${yn('o2c.salesOrders.soApprovalRequired')} |\n`;
-    doc += `| Pick-Pack-Ship | ${yn('o2c.fulfillment.pickPackShip')} |\n`;
-    doc += `| Multi-Location Fulfillment | ${yn('o2c.fulfillment.multipleLocations')} |\n`;
-    doc += `| Revenue Recognition | ${yn('o2c.invoicing.revenueRecognition')} |\n`;
-    doc += `| Dunning Letters | ${yn('o2c.collections.dunningLetters')} |\n\n`;
-    doc += appendRichContent('o2c.');
-  }
-
-  // MFG
-  if (hasFlow('mfg.')) {
-    doc += `### 3.4 Manufacturing (MFG)\n\n`;
-    doc += `| Configuration Point | Setting |\n| :--- | :--- |\n`;
-    doc += `| Production Flow | ${val('mfg.productionFlow.type').replace('_', ' ')} |\n`;
-    doc += `| Labor/Machine Cost Tracking | ${yn('mfg.productionFlow.trackLabor')} |\n`;
-    doc += `| Multi-BOM | ${yn('mfg.bom.multiBom')} |\n`;
-    doc += `| Phantom Assemblies | ${yn('mfg.bom.usePhantoms')} |\n`;
-    doc += `| Outsourced Manufacturing | ${yn('mfg.outsourced.useOutsourced')} |\n`;
-    doc += `| Demand Planning | ${yn('mfg.demand.useDemandPlanning')} |\n\n`;
-    doc += appendRichContent('mfg.');
-  }
-
-  // RTN
-  if (hasFlow('rtn.')) {
-    doc += `### 3.5 Returns Management (RTN)\n\n`;
-    doc += `| Configuration Point | Setting |\n| :--- | :--- |\n`;
-    doc += `| Customer RMA Required | ${yn('rtn.customerReturns.useRMA')} |\n`;
-    doc += `| Refund Policy | ${val('rtn.customerReturns.refundPolicy', '—').replace('_', ' ')} |\n`;
-    doc += `| Vendor Return Authorization | ${yn('rtn.vendorReturns.useVendorRMA')} |\n`;
-    doc += `| Quality Inspection Required | ${yn('rtn.processing.inspectionRequired')} |\n`;
-    doc += `| Restocking Fees | ${yn('rtn.processing.restockingFees')} |\n\n`;
-    if (answers['rtn.processing.restockingFees'] === true) {
-      doc += `> **Restocking Fee Rate:** ${val('rtn.processing.feePercentage', 'TBD')}%\n\n`;
+  if (isNetSuite) {
+    // R2R
+    if (hasFlow('r2r.')) {
+      doc += `### 3.1 Record to Report (R2R)\n\n`;
+      doc += `#### Bank & Treasury\n`;
+      doc += `- Bank Account Count: **${val('r2r.bankTransactions.bankAccountCount')}**\n`;
+      doc += `- Auto Exchange Rate Updates: **${yn('r2r.currencies.autoExchangeRateUpdate')}**\n`;
+      doc += `- Intercompany Journal Entries: **${yn('r2r.journalEntries.intercompanyJE')}**\n\n`;
+      doc += `#### Period Close\n`;
+      doc += `- Hard Period Close Enforced: **${yn('r2r.fiscalClose.hardClose')}**\n\n`;
+      doc += `#### Reporting\n`;
+      doc += `- Revenue Recognition: **${yn('r2r.reporting.revenueRecognition')}**\n\n`;
+      doc += appendRichContent('r2r.');
     }
-    doc += appendRichContent('rtn.');
+
+    // P2P
+    if (hasFlow('p2p.')) {
+      doc += `### 3.2 Procure to Pay (P2P)\n\n`;
+      doc += `| Configuration Point | Setting |\n| :--- | :--- |\n`;
+      doc += `| Formal Purchase Orders | ${yn('p2p.purchasing.usePurchaseOrders')} |\n`;
+      doc += `| PO Approval Required | ${yn('p2p.purchasing.poApprovalRequired')} |\n`;
+      doc += `| Budget Check on POs | ${yn('p2p.purchasing.budgetCheck')} |\n`;
+      doc += `| Formal Receiving | ${yn('p2p.receiving.formalReceiving')} |\n`;
+      doc += `| 3-Way Matching | ${yn('p2p.receiving.threeWayMatch')} |\n`;
+      doc += `| Bill Approval Required | ${yn('p2p.bills.billApprovalRequired')} |\n`;
+      doc += `| Employee Expense Claims | ${yn('p2p.expenses.employeeExpenses')} |\n`;
+      doc += `| Bank File Export | ${yn('p2p.payments.bankFileExport')} |\n\n`;
+      doc += appendRichContent('p2p.');
+    }
+
+    // O2C
+    if (hasFlow('o2c.')) {
+      doc += `### 3.3 Order to Cash (O2C)\n\n`;
+      doc += `| Configuration Point | Setting |\n| :--- | :--- |\n`;
+      doc += `| Customer Credit Limits | ${yn('o2c.customers.creditLimits')} |\n`;
+      doc += `| Foreign Currency Pricing | ${yn('o2c.pricing.foreignCurrencyPricing')} |\n`;
+      doc += `| SO Approval Required | ${yn('o2c.salesOrders.soApprovalRequired')} |\n`;
+      doc += `| Pick-Pack-Ship | ${yn('o2c.fulfillment.pickPackShip')} |\n`;
+      doc += `| Multi-Location Fulfillment | ${yn('o2c.fulfillment.multipleLocations')} |\n`;
+      doc += `| Revenue Recognition | ${yn('o2c.invoicing.revenueRecognition')} |\n`;
+      doc += `| Dunning Letters | ${yn('o2c.collections.dunningLetters')} |\n\n`;
+      doc += appendRichContent('o2c.');
+    }
+
+    // MFG
+    if (hasFlow('mfg.')) {
+      doc += `### 3.4 Manufacturing (MFG)\n\n`;
+      doc += `| Configuration Point | Setting |\n| :--- | :--- |\n`;
+      doc += `| Production Flow | ${val('mfg.productionFlow.type').replace('_', ' ')} |\n`;
+      doc += `| Labor/Machine Cost Tracking | ${yn('mfg.productionFlow.trackLabor')} |\n`;
+      doc += `| Multi-BOM | ${yn('mfg.bom.multiBom')} |\n`;
+      doc += `| Phantom Assemblies | ${yn('mfg.bom.usePhantoms')} |\n`;
+      doc += `| Outsourced Manufacturing | ${yn('mfg.outsourced.useOutsourced')} |\n`;
+      doc += `| Demand Planning | ${yn('mfg.demand.useDemandPlanning')} |\n\n`;
+      doc += appendRichContent('mfg.');
+    }
+
+    // RTN
+    if (hasFlow('rtn.')) {
+      doc += `### 3.5 Returns Management (RTN)\n\n`;
+      doc += `| Configuration Point | Setting |\n| :--- | :--- |\n`;
+      doc += `| Customer RMA Required | ${yn('rtn.customerReturns.useRMA')} |\n`;
+      doc += `| Refund Policy | ${val('rtn.customerReturns.refundPolicy', '—').replace('_', ' ')} |\n`;
+      doc += `| Vendor Return Authorization | ${yn('rtn.vendorReturns.useVendorRMA')} |\n`;
+      doc += `| Quality Inspection Required | ${yn('rtn.processing.inspectionRequired')} |\n`;
+      doc += `| Restocking Fees | ${yn('rtn.processing.restockingFees')} |\n\n`;
+      if (answers['rtn.processing.restockingFees'] === true) {
+        doc += `> **Restocking Fee Rate:** ${val('rtn.processing.feePercentage', 'TBD')}%\n\n`;
+      }
+      doc += appendRichContent('rtn.');
+    }
+  } else {
+    // Schema-driven walk for non-NetSuite adaptors. Renders each flow
+    // that has at least one answered question as a numbered subsection,
+    // with one bullet per (label, formatted answer) pair. Sections within
+    // a flow keep the order the adaptor declared.
+    let flowIndex = 1;
+    for (const flow of adaptorFlows) {
+      const renderedSections = flow.sections
+        .map((s) => ({
+          section: s,
+          answered: s.questions.filter((q) => {
+            const v = answers[q.id];
+            return v !== undefined && v !== null && !(typeof v === 'string' && v.trim() === '');
+          }),
+        }))
+        .filter((x) => x.answered.length > 0);
+      if (renderedSections.length === 0) continue;
+
+      doc += `### 3.${flowIndex} ${flow.label}\n\n`;
+      if (flow.description) doc += `_${flow.description}_\n\n`;
+      flowIndex++;
+
+      for (const { section, answered } of renderedSections) {
+        doc += `#### ${section.label}\n\n`;
+        for (const q of answered) {
+          doc += `- **${q.label}** — ${fmt(q, answers[q.id])}\n`;
+        }
+        doc += `\n`;
+        // Match section comments / AI advice / images against flow.section
+        // OR adaptor.section OR bare section keys, mirroring brdGenerator.
+        const flowSectionKey = `${flow.id}.${section.id}`;
+        const adaptorSectionKey = `${adaptor.id}.${section.id}`;
+        const matchSec = (k: string): boolean =>
+          k === flowSectionKey || k === adaptorSectionKey || k === section.id;
+        const c = data.comments?.find((cm) => matchSec(cm.sectionKey));
+        if (c?.text) doc += `> **Consultant Notes:** ${c.text.replace(/\n/g, ' ')}\n\n`;
+        const ai = data.aiAdvice?.find((a) => matchSec(a.sectionKey))?.advice;
+        if (ai?.suggestions?.length) {
+          doc += `**Configuration & Best Practices:**\n`;
+          ai.suggestions.forEach((s: { title: string; description: string }) =>
+            doc += `- **${s.title}**: ${s.description}\n`,
+          );
+          doc += `\n`;
+        }
+      }
+    }
   }
 
   doc += `---\n\n`;

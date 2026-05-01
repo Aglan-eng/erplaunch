@@ -164,6 +164,99 @@ describe('generateSolutionDoc — Odoo adaptor (new path)', () => {
   });
 });
 
+// ─── Regression class: rendered prose contains wizard-answer content ─────────
+describe('generateSolutionDoc — workstream loop reads from adaptor.flows (regression class)', () => {
+  const ODOO_FLOWS = [
+    {
+      id: 'FOUNDATION',
+      label: 'Project Foundation',
+      description: 'Deployment, edition, geography, entity structure.',
+      sections: [
+        {
+          id: 'deployment',
+          label: 'Deployment & Licensing',
+          order: 1,
+          questions: [
+            {
+              id: 'odoo.foundation.deploymentMode',
+              label: 'Hosting & deployment mode',
+              inputType: 'SINGLE_SELECT' as const,
+              options: [
+                { value: 'ODOOSH', label: 'Odoo.sh' },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'TAX',
+      label: 'Tax Engine',
+      description: 'Tax behavior, defaults, fiscal positions.',
+      sections: [
+        {
+          id: 'behavior',
+          label: 'Default Tax Behavior',
+          order: 1,
+          questions: [
+            {
+              id: 'odoo.tax.defaultSalesTax',
+              label: 'Default Sales Tax (rate name + percent)',
+              inputType: 'TEXT' as const,
+            },
+          ],
+        },
+      ],
+    },
+  ];
+
+  const ODOO_CTX_WITH_FLOWS = { ...ODOO_CTX, flows: ODOO_FLOWS };
+
+  it('Odoo SDD lists Project Foundation + Tax Engine in Scope of Implementation', () => {
+    const md = generateSolutionDoc(baseData(ODOO_CTX_WITH_FLOWS, {
+      answers: {
+        'odoo.foundation.deploymentMode': 'ODOOSH',
+        'odoo.tax.defaultSalesTax': 'VAT 5%',
+      },
+    }));
+    expect(md).toContain('Project Foundation');
+    expect(md).toContain('Tax Engine');
+  });
+
+  it('Odoo SDD Workstream Configuration Design contains question label + answer', () => {
+    const md = generateSolutionDoc(baseData(ODOO_CTX_WITH_FLOWS, {
+      answers: {
+        'odoo.foundation.deploymentMode': 'ODOOSH',
+        'odoo.tax.defaultSalesTax': 'VAT 5%',
+      },
+    }));
+    expect(md).toContain('Hosting & deployment mode');
+    expect(md).toContain('Odoo.sh');
+    expect(md).toContain('Default Sales Tax');
+    expect(md).toContain('VAT 5%');
+  });
+
+  it('NetSuite SDD still renders the hardcoded R2R / P2P blocks (regression guard)', () => {
+    // The existing NetSuite-specific blocks (Bank & Treasury, Period Close,
+    // PO/SO/Bill approval tables) live behind the isNetSuite gate and
+    // should still render verbatim for NetSuite engagements.
+    const md = generateSolutionDoc(baseData(NETSUITE_CTX, {
+      answers: {
+        'r2r.bankTransactions.bankAccountCount': 4,
+        'r2r.fiscalClose.hardClose': true,
+        'p2p.purchasing.usePurchaseOrders': true,
+        'o2c.customers.creditLimits': true,
+      },
+    }));
+    expect(md).toMatch(/Record to Report \(R2R\)/);
+    expect(md).toContain('Bank & Treasury');
+    expect(md).toContain('Procure to Pay (P2P)');
+    expect(md).toContain('Formal Purchase Orders');
+    expect(md).toContain('Order to Cash (O2C)');
+    expect(md).toContain('Customer Credit Limits');
+  });
+});
+
 describe('generateSolutionDoc — custom adaptor (fall-through default)', () => {
   const md = generateSolutionDoc(baseData(CUSTOM_CTX));
 
