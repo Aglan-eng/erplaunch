@@ -20,15 +20,17 @@ describe('odooAdaptor: manifest', () => {
 });
 
 describe('odooAdaptor: schema', () => {
-  it('exposes FOUNDATION + TAX + LOCALIZATION before the five canonical flows', () => {
+  it('exposes FOUNDATION + TAX + LOCALIZATION + ACCOUNTING before the five canonical flows', () => {
     const ids = odooAdaptor.schema.flows.map((f) => f.id);
     // Pack 1 — Foundation gates everything downstream.
     // Pack 2 — Tax engine sits between Foundation and R2R.
     // Pack 3 — Localization & Compliance converts country answers into
-    // hard module / e-invoicing / data-residency requirements; sits
-    // after Tax (so the einvoicingRequired answer is captured first)
-    // and before R2R (so the COA template feeds into ledger setup).
-    expect(ids).toEqual(['FOUNDATION', 'TAX', 'LOCALIZATION', 'R2R', 'P2P', 'O2C', 'PRODUCTION', 'RETURNS']);
+    // hard requirements; sits after Tax, before R2R.
+    // Pack 4 — Accounting & Multi-Company depth: reporting standards,
+    // analytic axes, bank reconciliation, intercompany mechanics,
+    // transfer pricing. Sits after Localization (so the COA template +
+    // statutory standards are settled first) and before R2R.
+    expect(ids).toEqual(['FOUNDATION', 'TAX', 'LOCALIZATION', 'ACCOUNTING', 'R2R', 'P2P', 'O2C', 'PRODUCTION', 'RETURNS']);
   });
 
   it('every flow has at least one section with at least one question', () => {
@@ -1326,5 +1328,409 @@ describe('odooAdaptor: Pack 3 — existing rules updated to use the country look
       license: { edition: 'ENTERPRISE', modules: ['l10n_sa'] },
     });
     expect(conflicts.map((c) => c.id)).not.toContain('odoo.tax.einvoicing-yes-needs-l10n');
+  });
+});
+
+// ─── Pack 4 — Accounting & Multi-Company depth ───────────────────────────────
+
+describe('odooAdaptor: Pack 4 — ACCOUNTING flow shape', () => {
+  const acc = odooAdaptor.schema.flows.find((f) => f.id === 'ACCOUNTING');
+
+  it('ACCOUNTING flow exists with the expected label + description', () => {
+    expect(acc).toBeDefined();
+    expect(acc!.label).toBe('Accounting & Multi-Company');
+    expect(acc!.description).toMatch(/reporting|analytic|bank|inter-?company|currency/i);
+  });
+
+  it('renders four sections in the documented order', () => {
+    const ids = (acc!.sections as Array<{ id: string; order: number }>)
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .map((s) => s.id);
+    expect(ids).toEqual(['standards', 'analytic', 'bankrecon', 'intercompany']);
+  });
+
+  it('Reporting & Standards — 5 questions with the right ids + types', () => {
+    const sec = acc!.sections.find((s) => s.id === 'standards')!;
+    expect(sec.label).toBe('Reporting & Standards');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('odoo.accounting.reportingStandard')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('odoo.accounting.reportingStandard')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['IFRS', 'LOCAL_GAAP', 'OTHER', 'US_GAAP']);
+    expect(byId.get('odoo.accounting.tradition')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('odoo.accounting.tradition')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['ANGLO_SAXON', 'CONTINENTAL']);
+    expect(byId.get('odoo.accounting.basis')?.inputType).toBe('SINGLE_SELECT');
+    expect(byId.get('odoo.accounting.closeCadence')?.inputType).toBe('SINGLE_SELECT');
+    expect(byId.get('odoo.accounting.lockDatesPolicy')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('odoo.accounting.lockDatesPolicy')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['FULL_LOCK', 'NONE', 'TAX_LOCK']);
+  });
+
+  it('Analytic Accounting & Budgets — 4 questions with the right ids + types', () => {
+    const sec = acc!.sections.find((s) => s.id === 'analytic')!;
+    expect(sec.label).toBe('Analytic Accounting & Budgets');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('odoo.accounting.analyticAxes')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('odoo.accounting.budgetsInScope')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('odoo.accounting.budgetControlMode')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('odoo.accounting.budgetControlMode')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['BLOCKING', 'INFORMATIONAL', 'WARNING']);
+    expect(byId.get('odoo.accounting.consolidationInScope')?.inputType).toBe('BOOLEAN');
+  });
+
+  it('Bank Feeds & Reconciliation — 4 questions with the right ids + types', () => {
+    const sec = acc!.sections.find((s) => s.id === 'bankrecon')!;
+    expect(sec.label).toBe('Bank Feeds & Reconciliation');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('odoo.accounting.bankFeedIntegration')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('odoo.accounting.bankStatementFormat')?.inputType).toBe('TEXT');
+    expect(byId.get('odoo.accounting.reconciliationMethod')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('odoo.accounting.reconciliationMethod')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['AUTO_RULES', 'AUTO_SUGGEST', 'MANUAL']);
+    expect(byId.get('odoo.accounting.currencyRevalCadence')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('odoo.accounting.currencyRevalCadence')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['MONTHLY', 'NONE', 'ON_DEMAND', 'QUARTERLY']);
+  });
+
+  it('Inter-Company Mechanics — 4 questions with the right ids + types', () => {
+    const sec = acc!.sections.find((s) => s.id === 'intercompany')!;
+    expect(sec.label).toBe('Inter-Company Mechanics');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('odoo.accounting.intercompanyValidation')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('odoo.accounting.intercompanyValidation')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['AUTO_DRAFT', 'AUTO_VALIDATE', 'MANUAL', 'NA']);
+    expect(byId.get('odoo.accounting.intercompanyCurrencyRule')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('odoo.accounting.intercompanyCurrencyRule')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['BUYER_CURRENCY', 'GROUP_CURRENCY', 'NA', 'SELLER_CURRENCY']);
+    expect(byId.get('odoo.accounting.transferPricingPolicy')?.inputType).toBe('SINGLE_SELECT');
+    expect(byId.get('odoo.accounting.sharedAccountsStrategy')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('odoo.accounting.sharedAccountsStrategy')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['CONSOLIDATION_ONLY', 'PER_COMPANY', 'SHARED']);
+  });
+});
+
+describe('odooAdaptor: Pack 4 — Accounting rules registered in odoo-rules', () => {
+  const ids = odooAdaptor.rules.rules.map((r) => r.id);
+
+  it('R1 cash basis conflicts with IFRS', () => {
+    expect(ids).toContain('odoo.accounting.cash-basis-conflicts-with-ifrs');
+  });
+  it('R2 multi-currency needs reval cadence', () => {
+    expect(ids).toContain('odoo.accounting.multi-currency-needs-reval-cadence');
+  });
+  it('R3 budgets need analytic axes', () => {
+    expect(ids).toContain('odoo.accounting.budgets-need-analytic-axes');
+  });
+  it('R4 consolidation needs multi-entity', () => {
+    expect(ids).toContain('odoo.accounting.consolidation-needs-multi-entity');
+  });
+  it('R5 bank feeds need Enterprise', () => {
+    expect(ids).toContain('odoo.accounting.bank-feeds-need-enterprise');
+  });
+  it('R6 bank feeds on self-hosted needs connector (INFO)', () => {
+    expect(ids).toContain('odoo.accounting.bank-feeds-on-selfhosted-needs-connector');
+  });
+  it('R7 intercompany auto-validate risk', () => {
+    expect(ids).toContain('odoo.accounting.intercompany-auto-validate-risk');
+  });
+  it('R8 transfer pricing without multi-entity', () => {
+    expect(ids).toContain('odoo.accounting.transfer-pricing-without-multi-entity');
+  });
+  it('R9 lockdates recommended for monthly close (INFO)', () => {
+    expect(ids).toContain('odoo.accounting.lockdates-recommended-for-monthly-close');
+  });
+});
+
+describe('odooAdaptor: Pack 4 — Accounting rule evaluation', () => {
+  it('R1 fires (WARN) when basis=CASH AND reportingStandard=IFRS', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.accounting.basis': 'CASH',
+        'odoo.accounting.reportingStandard': 'IFRS',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.accounting.cash-basis-conflicts-with-ifrs');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R1 does NOT fire when basis=ACCRUAL', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.accounting.basis': 'ACCRUAL',
+        'odoo.accounting.reportingStandard': 'IFRS',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.accounting.cash-basis-conflicts-with-ifrs');
+  });
+
+  it('R2 fires (WARN) when multiCurrency=true AND currencyRevalCadence=NONE or unset', () => {
+    for (const cadence of ['NONE', undefined] as const) {
+      const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+        answers: {
+          'odoo.foundation.multiCurrency': true,
+          ...(cadence ? { 'odoo.accounting.currencyRevalCadence': cadence } : {}),
+          'odoo.company.fiscalYearStart': '01-01',
+        },
+        license: { edition: 'ENTERPRISE', modules: [] },
+      });
+      const r = conflicts.find((c) => c.id === 'odoo.accounting.multi-currency-needs-reval-cadence');
+      expect(r, `R2 should fire when cadence=${cadence ?? 'undefined'}`).toBeDefined();
+      expect(r?.severity).toBe('WARN');
+    }
+  });
+
+  it('R2 does NOT fire when cadence=MONTHLY', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.foundation.multiCurrency': true,
+        'odoo.accounting.currencyRevalCadence': 'MONTHLY',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.accounting.multi-currency-needs-reval-cadence');
+  });
+
+  it('R3 fires (WARN) when budgetsInScope=true AND analyticAxes empty', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.accounting.budgetsInScope': true,
+        'odoo.accounting.analyticAxes': '',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.accounting.budgets-need-analytic-axes');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R3 does NOT fire when analyticAxes is populated', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.accounting.budgetsInScope': true,
+        'odoo.accounting.analyticAxes': 'Cost Centers\nProjects',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.accounting.budgets-need-analytic-axes');
+  });
+
+  it('R4 fires (BLOCK) when consolidationInScope=true AND multiCompany=false', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.accounting.consolidationInScope': true,
+        'odoo.foundation.multiCompany': false,
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.accounting.consolidation-needs-multi-entity');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R4 fires (BLOCK) when consolidationInScope=true AND entityList empty (even with multiCompany=true)', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.accounting.consolidationInScope': true,
+        'odoo.foundation.multiCompany': true,
+        'odoo.foundation.entityList': '',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).toContain('odoo.accounting.consolidation-needs-multi-entity');
+  });
+
+  it('R4 does NOT fire when consolidationInScope=true AND multi-company entities populated', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.accounting.consolidationInScope': true,
+        'odoo.foundation.multiCompany': true,
+        'odoo.foundation.entityList': 'Holdco, AE, AED\nSubco, EG, EGP',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.accounting.consolidation-needs-multi-entity');
+  });
+
+  it('R5 fires (BLOCK) when bankFeedIntegration=true AND foundation.edition=COMMUNITY', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.accounting.bankFeedIntegration': true,
+        'odoo.foundation.edition': 'COMMUNITY',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'COMMUNITY', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.accounting.bank-feeds-need-enterprise');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R5 does NOT fire on Enterprise edition', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.accounting.bankFeedIntegration': true,
+        'odoo.foundation.edition': 'ENTERPRISE',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.accounting.bank-feeds-need-enterprise');
+  });
+
+  it('R6 fires (INFO) when bankFeedIntegration=true AND deploymentMode=SELFHOSTED', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.accounting.bankFeedIntegration': true,
+        'odoo.foundation.deploymentMode': 'SELFHOSTED',
+        'odoo.foundation.edition': 'ENTERPRISE',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.accounting.bank-feeds-on-selfhosted-needs-connector');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('INFO');
+  });
+
+  it('R6 does NOT fire on Odoo.sh deployment', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.accounting.bankFeedIntegration': true,
+        'odoo.foundation.deploymentMode': 'ODOOSH',
+        'odoo.foundation.edition': 'ENTERPRISE',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.accounting.bank-feeds-on-selfhosted-needs-connector');
+  });
+
+  it('R7 fires (WARN) when intercompanyValidation=AUTO_VALIDATE', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.accounting.intercompanyValidation': 'AUTO_VALIDATE',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.accounting.intercompany-auto-validate-risk');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R7 does NOT fire when intercompanyValidation=AUTO_DRAFT', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.accounting.intercompanyValidation': 'AUTO_DRAFT',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.accounting.intercompany-auto-validate-risk');
+  });
+
+  it('R8 fires (WARN) when transferPricingPolicy is a real policy AND multiCompany=false', () => {
+    for (const policy of ['COST_PLUS', 'MARKET', 'FIXED_MARGIN']) {
+      const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+        answers: {
+          'odoo.accounting.transferPricingPolicy': policy,
+          'odoo.foundation.multiCompany': false,
+          'odoo.company.fiscalYearStart': '01-01',
+        },
+        license: { edition: 'ENTERPRISE', modules: [] },
+      });
+      const r = conflicts.find((c) => c.id === 'odoo.accounting.transfer-pricing-without-multi-entity');
+      expect(r, `R8 should fire when policy=${policy}`).toBeDefined();
+      expect(r?.severity).toBe('WARN');
+    }
+  });
+
+  it('R8 does NOT fire when policy=NA', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.accounting.transferPricingPolicy': 'NA',
+        'odoo.foundation.multiCompany': false,
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.accounting.transfer-pricing-without-multi-entity');
+  });
+
+  it('R8 does NOT fire when multiCompany=true', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.accounting.transferPricingPolicy': 'COST_PLUS',
+        'odoo.foundation.multiCompany': true,
+        'odoo.foundation.entityList': 'Holdco, AE, AED\nSubco, EG, EGP',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.accounting.transfer-pricing-without-multi-entity');
+  });
+
+  it('R9 fires (INFO) when closeCadence=MONTHLY AND lockDatesPolicy=NONE', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.accounting.closeCadence': 'MONTHLY',
+        'odoo.accounting.lockDatesPolicy': 'NONE',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.accounting.lockdates-recommended-for-monthly-close');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('INFO');
+  });
+
+  it('R9 also fires for closeCadence=BOTH', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.accounting.closeCadence': 'BOTH',
+        'odoo.accounting.lockDatesPolicy': 'NONE',
+        'odoo.company.fiscalYearStart': '01-01',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).toContain('odoo.accounting.lockdates-recommended-for-monthly-close');
+  });
+
+  it('R9 does NOT fire when lockDatesPolicy=TAX_LOCK or FULL_LOCK', () => {
+    for (const policy of ['TAX_LOCK', 'FULL_LOCK']) {
+      const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+        answers: {
+          'odoo.accounting.closeCadence': 'MONTHLY',
+          'odoo.accounting.lockDatesPolicy': policy,
+          'odoo.company.fiscalYearStart': '01-01',
+        },
+        license: { edition: 'ENTERPRISE', modules: [] },
+      });
+      expect(
+        conflicts.map((c) => c.id),
+        `R9 should NOT fire when lockDatesPolicy=${policy}`,
+      ).not.toContain('odoo.accounting.lockdates-recommended-for-monthly-close');
+    }
   });
 });

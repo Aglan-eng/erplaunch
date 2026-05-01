@@ -126,6 +126,13 @@ const schema: QuestionnaireSchema = {
     // is captured first) and BEFORE R2R (so the COA template feeds
     // into ledger setup).
     buildLocalizationFlow(),
+    // Pack 4 — Accounting & Multi-Company depth. Reporting standards,
+    // analytic axes / budgets, bank feeds & reconciliation, and
+    // intercompany mechanics. Sits AFTER Localization (so the country
+    // COA / e-invoicing decisions are captured first) and BEFORE R2R
+    // (so the consultant has standards + analytic axes nailed down
+    // before the legacy R2R section's lighter Company/CoA prompts).
+    buildAccountingFlow(),
     buildR2RFlow(),
     buildP2PFlow(),
     buildO2CFlow(),
@@ -582,6 +589,257 @@ function buildLocalizationFlow(): FlowDefinition {
             inputType: 'BOOLEAN',
             required: true,
             label: 'Is GDPR (or local equivalent — UAE PDPL, Saudi PDPL, Brazil LGPD, etc.) applicable?',
+          },
+        ],
+      },
+    ],
+  };
+}
+
+// ─── Pack 4 — Accounting & Multi-Company depth ───────────────────────────────
+//
+// 16 questions across 4 sections:
+//   - standards     (5): reporting standard, accounting tradition, basis,
+//                        close cadence, lock-dates policy.
+//   - analytic      (4): analytic axes, budgets, budget control, consolidation.
+//   - bankrecon     (4): bank feed integration, statement format,
+//                        reconciliation method, currency revaluation cadence.
+//   - intercompany  (4): intercompany validation, currency rule, transfer
+//                        pricing policy, shared accounts strategy.
+//
+// Sources: Odoo 19 Accounting docs (lock dates, anglo-saxon vs continental,
+// multi-currency revaluation, bank statement reconciliation), IFRS 1 / US
+// GAAP guidance on cash vs accrual, OECD Transfer Pricing Guidelines (2022).
+function buildAccountingFlow(): FlowDefinition {
+  return {
+    id: 'ACCOUNTING',
+    label: 'Accounting & Multi-Company',
+    description:
+      'Reporting standards, analytic axes, bank feeds & reconciliation, and inter-company / multi-currency mechanics that drive the ledger configuration.',
+    sections: [
+      {
+        id: 'standards',
+        label: 'Reporting & Standards',
+        order: 1,
+        questions: [
+          {
+            id: 'odoo.accounting.reportingStandard',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'Primary reporting standard',
+            help: {
+              title: 'Reporting standard',
+              body: 'Drives the chart of accounts shape, depreciation policies, and disclosure requirements. IFRS is accrual-only by design.',
+            },
+            options: [
+              { value: 'IFRS', label: 'IFRS' },
+              { value: 'US_GAAP', label: 'US GAAP' },
+              { value: 'LOCAL_GAAP', label: 'Local GAAP' },
+              { value: 'OTHER', label: 'Other' },
+            ],
+          },
+          {
+            id: 'odoo.accounting.tradition',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'Accounting tradition',
+            help: {
+              title: 'Anglo-Saxon vs Continental',
+              body: 'Anglo-Saxon recognises COGS at delivery; Continental recognises expenses at purchase. Affects the stock-valuation account flow and several P&L mappings in Odoo.',
+            },
+            options: [
+              { value: 'ANGLO_SAXON', label: 'Anglo-Saxon (COGS at delivery)' },
+              { value: 'CONTINENTAL', label: 'Continental (expense at purchase)' },
+            ],
+          },
+          {
+            id: 'odoo.accounting.basis',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'Accounting basis',
+            options: [
+              { value: 'ACCRUAL', label: 'Accrual' },
+              { value: 'CASH', label: 'Cash' },
+            ],
+          },
+          {
+            id: 'odoo.accounting.closeCadence',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'Period close cadence',
+            options: [
+              { value: 'MONTHLY', label: 'Monthly' },
+              { value: 'QUARTERLY', label: 'Quarterly' },
+              { value: 'BOTH', label: 'Both monthly + quarterly' },
+            ],
+          },
+          {
+            id: 'odoo.accounting.lockDatesPolicy',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'Lock-dates policy',
+            help: {
+              title: 'Odoo lock dates',
+              body: 'Tax lock prevents changes to tax-relevant entries; full lock prevents any entry on or before the lock date.',
+            },
+            options: [
+              { value: 'NONE', label: 'None — no automatic lock' },
+              { value: 'TAX_LOCK', label: 'Tax lock only' },
+              { value: 'FULL_LOCK', label: 'Full lock after each close' },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'analytic',
+        label: 'Analytic Accounting & Budgets',
+        order: 2,
+        questions: [
+          {
+            id: 'odoo.accounting.analyticAxes',
+            inputType: 'TEXTAREA',
+            required: false,
+            label: 'Analytic axes (one per line — e.g. Cost Centers, Projects, Departments)',
+            help: {
+              title: 'Analytic accounting in Odoo',
+              body: 'Each axis becomes an analytic plan; tags on that plan map to cost centers / projects / departments. List the axes you need to report against.',
+            },
+          },
+          {
+            id: 'odoo.accounting.budgetsInScope',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'Are budgets in scope (budget vs actual reporting)?',
+          },
+          {
+            id: 'odoo.accounting.budgetControlMode',
+            inputType: 'SINGLE_SELECT',
+            required: false,
+            label: 'Budget control mode',
+            dependsOn: { questionId: 'odoo.accounting.budgetsInScope', value: true },
+            options: [
+              { value: 'INFORMATIONAL', label: 'Informational only — no enforcement' },
+              { value: 'WARNING', label: 'Warn when an entry exceeds budget' },
+              { value: 'BLOCKING', label: 'Block entries that exceed budget' },
+            ],
+          },
+          {
+            id: 'odoo.accounting.consolidationInScope',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'Is multi-entity consolidation in scope?',
+          },
+        ],
+      },
+      {
+        id: 'bankrecon',
+        label: 'Bank Feeds & Reconciliation',
+        order: 3,
+        questions: [
+          {
+            id: 'odoo.accounting.bankFeedIntegration',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'Will Odoo pull bank statements via an automated feed?',
+            help: {
+              title: 'Bank feeds in Odoo',
+              body: 'Native bank-feed integrations (Plaid, Yodlee, Salt Edge, Ponto) are an Enterprise feature. Self-hosted Enterprise instances need a connector account with the provider.',
+            },
+          },
+          {
+            id: 'odoo.accounting.bankStatementFormat',
+            inputType: 'TEXT',
+            required: false,
+            label: 'Bank statement format(s) to import (e.g. CAMT.053, MT940, OFX, CSV)',
+          },
+          {
+            id: 'odoo.accounting.reconciliationMethod',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'Reconciliation method',
+            options: [
+              { value: 'MANUAL', label: 'Manual — user matches each line' },
+              { value: 'AUTO_SUGGEST', label: 'Auto-suggest matches, user confirms' },
+              { value: 'AUTO_RULES', label: 'Auto-apply matching rules' },
+            ],
+          },
+          {
+            id: 'odoo.accounting.currencyRevalCadence',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'Currency revaluation cadence',
+            help: {
+              title: 'Foreign-currency revaluation',
+              body: 'Required when multi-currency is enabled — open AR/AP balances in foreign currency need revaluation entries at each period close.',
+            },
+            options: [
+              { value: 'NONE', label: 'None' },
+              { value: 'MONTHLY', label: 'Monthly' },
+              { value: 'QUARTERLY', label: 'Quarterly' },
+              { value: 'ON_DEMAND', label: 'On demand' },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'intercompany',
+        label: 'Inter-Company Mechanics',
+        order: 4,
+        questions: [
+          {
+            id: 'odoo.accounting.intercompanyValidation',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'Inter-company document validation',
+            help: {
+              title: 'Mirror-document validation',
+              body: 'Auto-validate posts the mirror invoice/bill in the counterpart company immediately. Auto-draft creates a draft for review. Manual creates nothing — the user creates the counterpart by hand.',
+            },
+            options: [
+              { value: 'MANUAL', label: 'Manual — no mirror documents' },
+              { value: 'AUTO_DRAFT', label: 'Auto-create draft mirror documents' },
+              { value: 'AUTO_VALIDATE', label: 'Auto-create AND validate mirror documents' },
+              { value: 'NA', label: 'Not applicable (single entity)' },
+            ],
+          },
+          {
+            id: 'odoo.accounting.intercompanyCurrencyRule',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'Inter-company currency rule',
+            options: [
+              { value: 'BUYER_CURRENCY', label: "Buyer's currency" },
+              { value: 'SELLER_CURRENCY', label: "Seller's currency" },
+              { value: 'GROUP_CURRENCY', label: 'Group reporting currency' },
+              { value: 'NA', label: 'Not applicable (single entity)' },
+            ],
+          },
+          {
+            id: 'odoo.accounting.transferPricingPolicy',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'Transfer-pricing policy',
+            help: {
+              title: 'Transfer pricing',
+              body: 'OECD-aligned policies for inter-company transactions. Affects how the consultant configures price-lists and analytic mappings between entities.',
+            },
+            options: [
+              { value: 'COST_PLUS', label: 'Cost-plus markup' },
+              { value: 'MARKET', label: 'Market price (arm\'s length)' },
+              { value: 'FIXED_MARGIN', label: 'Fixed margin' },
+              { value: 'NA', label: 'Not applicable (single entity)' },
+            ],
+          },
+          {
+            id: 'odoo.accounting.sharedAccountsStrategy',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'Shared chart-of-accounts strategy',
+            options: [
+              { value: 'PER_COMPANY', label: 'Per-company chart of accounts' },
+              { value: 'SHARED', label: 'Shared chart of accounts across companies' },
+              { value: 'CONSOLIDATION_ONLY', label: 'Per-company, mapped only at consolidation' },
+            ],
           },
         ],
       },
@@ -1489,6 +1747,189 @@ const rules: RulePack = {
             values: ['Phase 2', 'phase 2', 'P2P'],
           } },
           { not: { licenseHasAnyModule: ['BASE_ACCOUNTING', 'ENTERPRISE_ACCOUNTING'] } },
+        ],
+      },
+    },
+
+    // ── Pack 4 — Accounting & Multi-Company depth rules ───────────────────
+
+    // R1: Cash basis is incompatible with IFRS — IFRS Conceptual Framework
+    // explicitly mandates accrual recognition. The rule fires only on
+    // IFRS because US GAAP / Local GAAP have narrower exceptions where
+    // cash basis is acceptable for small entities.
+    {
+      id: 'odoo.accounting.cash-basis-conflicts-with-ifrs',
+      type: 'CONFIG_CONFLICT',
+      severity: 'WARN',
+      questionIds: ['odoo.accounting.basis', 'odoo.accounting.reportingStandard'],
+      message: 'Cash basis accounting is incompatible with IFRS — IFRS Conceptual Framework requires the accrual basis.',
+      resolution: 'Switch basis to Accrual, or document the IFRS exception (rare — usually only for cash-flow disclosures).',
+      when: {
+        all: [
+          { answerEquals: { questionId: 'odoo.accounting.basis', value: 'CASH' } },
+          { answerEquals: { questionId: 'odoo.accounting.reportingStandard', value: 'IFRS' } },
+        ],
+      },
+    },
+
+    // R2: Multi-currency requires a periodic FX revaluation cadence.
+    // Open AR/AP balances in foreign currency must be revalued at each
+    // close to keep the GL aligned with current rates. Fires when
+    // multiCurrency=true AND cadence is NONE or unset.
+    {
+      id: 'odoo.accounting.multi-currency-needs-reval-cadence',
+      type: 'CONFIG_CONFLICT',
+      severity: 'WARN',
+      questionIds: ['odoo.foundation.multiCurrency', 'odoo.accounting.currencyRevalCadence'],
+      message: 'Multi-currency is enabled but no periodic foreign-currency revaluation cadence is set — open balances will drift from current rates.',
+      resolution: 'Set currencyRevalCadence to MONTHLY or QUARTERLY (or ON_DEMAND if revaluation is triggered manually each close).',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.foundation.multiCurrency' } },
+          { any: [
+            { answerEquals: { questionId: 'odoo.accounting.currencyRevalCadence', value: 'NONE' } },
+            { answerFalsy:  { questionId: 'odoo.accounting.currencyRevalCadence' } },
+          ] },
+        ],
+      },
+    },
+
+    // R3: Budgets in scope but no analytic axes captured. Odoo budgets
+    // are scoped to analytic plans/tags — without at least one axis,
+    // there's nothing to budget against beyond the GL account itself.
+    {
+      id: 'odoo.accounting.budgets-need-analytic-axes',
+      type: 'DATA_WARNING',
+      severity: 'WARN',
+      questionIds: ['odoo.accounting.budgetsInScope', 'odoo.accounting.analyticAxes'],
+      message: 'Budgets are in scope but no analytic axes are captured. Odoo budgets are scoped to analytic plans — without an axis, budget vs actual is meaningless beyond the GL.',
+      resolution: 'List the analytic axes (e.g. Cost Centers, Projects, Departments) on the Analytic Accounting & Budgets section.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.accounting.budgetsInScope' } },
+          { answerFalsy:  { questionId: 'odoo.accounting.analyticAxes' } },
+        ],
+      },
+    },
+
+    // R4: Consolidation needs a real multi-entity setup. Either
+    // multiCompany=false (no companies to consolidate) OR multiCompany
+    // =true but entityList is empty (companies not enumerated). Both
+    // are blocking: without entities you cannot configure consolidation.
+    {
+      id: 'odoo.accounting.consolidation-needs-multi-entity',
+      type: 'CONFIG_CONFLICT',
+      severity: 'BLOCK',
+      questionIds: ['odoo.accounting.consolidationInScope', 'odoo.foundation.multiCompany', 'odoo.foundation.entityList'],
+      message: 'Consolidation is in scope but the engagement does not have a real multi-entity setup (multiCompany=false or entities not listed).',
+      resolution: 'Set multiCompany=true and list each legal entity in the entities field, or disable consolidation.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.accounting.consolidationInScope' } },
+          { any: [
+            { answerFalsy: { questionId: 'odoo.foundation.multiCompany' } },
+            { answerFalsy: { questionId: 'odoo.foundation.entityList' } },
+          ] },
+        ],
+      },
+    },
+
+    // R5: Native bank-feed integrations (Plaid, Yodlee, Salt Edge,
+    // Ponto) are an Odoo Enterprise feature. Community has no
+    // bank-feed connectors — the consultant has to import statements
+    // by file. Fires hard when bankFeedIntegration=true on Community.
+    {
+      id: 'odoo.accounting.bank-feeds-need-enterprise',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: ['odoo.accounting.bankFeedIntegration', 'odoo.foundation.edition'],
+      message: 'Automated bank feeds (Plaid, Yodlee, Salt Edge, Ponto) are an Odoo Enterprise feature. Community has no native bank-feed connectors.',
+      resolution: 'Upgrade edition to Enterprise, or set bankFeedIntegration=false and plan for file-based statement import (CAMT.053 / MT940 / OFX / CSV).',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.accounting.bankFeedIntegration' } },
+          { answerEquals: { questionId: 'odoo.foundation.edition', value: 'COMMUNITY' } },
+        ],
+      },
+    },
+
+    // R6: Self-hosted Enterprise can use bank-feed integrations but
+    // typically needs a connector account with the provider (the
+    // user, not Odoo S.A., contracts the bank-data provider).
+    // INFO-level reminder so the consultant captures it as a Phase 1
+    // dependency.
+    {
+      id: 'odoo.accounting.bank-feeds-on-selfhosted-needs-connector',
+      type: 'DATA_WARNING',
+      severity: 'INFO',
+      questionIds: ['odoo.accounting.bankFeedIntegration', 'odoo.foundation.deploymentMode'],
+      message: 'Self-hosted Odoo bank feeds require a separate connector account with the bank-data provider (Plaid, Yodlee, Salt Edge, Ponto) — Odoo S.A. only contracts the provider on Online / Odoo.sh.',
+      resolution: 'Add bank-data provider account procurement as a Phase 1 dependency in the implementation plan.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.accounting.bankFeedIntegration' } },
+          { answerEquals: { questionId: 'odoo.foundation.deploymentMode', value: 'SELFHOSTED' } },
+        ],
+      },
+    },
+
+    // R7: Auto-validate on inter-company documents skips human review.
+    // Counterpart entity gets a posted journal entry as soon as the
+    // source is validated — fine when both books are tightly governed,
+    // but risky when periods may need adjustment in one entity but
+    // not the other. WARN nudges the consultant to confirm.
+    {
+      id: 'odoo.accounting.intercompany-auto-validate-risk',
+      type: 'CONFIG_CONFLICT',
+      severity: 'WARN',
+      questionIds: ['odoo.accounting.intercompanyValidation'],
+      message: 'Auto-validating mirror inter-company documents skips human review and posts to the counterpart entity immediately. This is risky when one entity may need a period adjustment that the other does not.',
+      resolution: 'Consider AUTO_DRAFT — drafts mirror documents for review, then validate on confirmation. Document the decision in the Solution Design.',
+      when: {
+        answerEquals: { questionId: 'odoo.accounting.intercompanyValidation', value: 'AUTO_VALIDATE' },
+      },
+    },
+
+    // R8: Transfer-pricing policy without multiple entities is
+    // meaningless — there are no inter-company transactions to
+    // price. Fires when policy is a real OECD policy (COST_PLUS /
+    // MARKET / FIXED_MARGIN) AND multiCompany=false.
+    {
+      id: 'odoo.accounting.transfer-pricing-without-multi-entity',
+      type: 'CONFIG_CONFLICT',
+      severity: 'WARN',
+      questionIds: ['odoo.accounting.transferPricingPolicy', 'odoo.foundation.multiCompany'],
+      message: 'A transfer-pricing policy is set but the engagement is single-entity. Transfer pricing only applies to inter-company transactions.',
+      resolution: 'Set transferPricingPolicy to NA, OR enable multiCompany and list the entities.',
+      when: {
+        all: [
+          { answerIn: {
+            questionId: 'odoo.accounting.transferPricingPolicy',
+            values: ['COST_PLUS', 'MARKET', 'FIXED_MARGIN'],
+          } },
+          { answerFalsy: { questionId: 'odoo.foundation.multiCompany' } },
+        ],
+      },
+    },
+
+    // R9: Monthly close with no lock-dates policy is a known leak —
+    // entries can be back-dated into closed periods, breaking
+    // reconciliations and audit trails. INFO-level nudge to enable
+    // at least TAX_LOCK on monthly closers.
+    {
+      id: 'odoo.accounting.lockdates-recommended-for-monthly-close',
+      type: 'DATA_WARNING',
+      severity: 'INFO',
+      questionIds: ['odoo.accounting.closeCadence', 'odoo.accounting.lockDatesPolicy'],
+      message: 'Monthly close cadence without an Odoo lock-dates policy lets entries back-date into closed periods and breaks reconciliations.',
+      resolution: 'Set lockDatesPolicy to TAX_LOCK (minimum) or FULL_LOCK after each monthly close.',
+      when: {
+        all: [
+          { answerIn: {
+            questionId: 'odoo.accounting.closeCadence',
+            values: ['MONTHLY', 'BOTH'],
+          } },
+          { answerEquals: { questionId: 'odoo.accounting.lockDatesPolicy', value: 'NONE' } },
         ],
       },
     },

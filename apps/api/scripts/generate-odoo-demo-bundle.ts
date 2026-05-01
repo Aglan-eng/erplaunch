@@ -117,6 +117,25 @@ const answers: Record<string, unknown> = {
   'odoo.localization.dataResidencyJurisdiction': 'UAE / GCC',
   'odoo.localization.gdprApplicable': true,
 
+  // Pack 4 — Accounting & Multi-Company depth
+  'odoo.accounting.reportingStandard': 'IFRS',
+  'odoo.accounting.tradition': 'ANGLO_SAXON',
+  'odoo.accounting.basis': 'ACCRUAL',
+  'odoo.accounting.closeCadence': 'MONTHLY',
+  'odoo.accounting.lockDatesPolicy': 'TAX_LOCK',
+  'odoo.accounting.analyticAxes': 'Cost Centers\nProjects\nDepartments',
+  'odoo.accounting.budgetsInScope': true,
+  'odoo.accounting.budgetControlMode': 'WARNING',
+  'odoo.accounting.consolidationInScope': true,
+  'odoo.accounting.bankFeedIntegration': true,
+  'odoo.accounting.bankStatementFormat': 'CAMT.053\nMT940',
+  'odoo.accounting.reconciliationMethod': 'AUTO_SUGGEST',
+  'odoo.accounting.currencyRevalCadence': 'MONTHLY',
+  'odoo.accounting.intercompanyValidation': 'AUTO_DRAFT',
+  'odoo.accounting.intercompanyCurrencyRule': 'GROUP_CURRENCY',
+  'odoo.accounting.transferPricingPolicy': 'COST_PLUS',
+  'odoo.accounting.sharedAccountsStrategy': 'CONSOLIDATION_ONLY',
+
   // Legacy R2R / P2P / O2C / MRP / Returns answers (preserved)
   'odoo.company.multiCompany': true,
   'odoo.company.currency': 'AED',
