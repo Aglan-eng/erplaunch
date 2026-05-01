@@ -126,6 +126,137 @@ describe('generateBRD — Odoo adaptor (new path)', () => {
   });
 });
 
+// ─── Regression class: rendered prose contains wizard-answer content ─────────
+//
+// Previously only the cover/license/footer were asserted; the workstream
+// loop's hardcoded r2r/p2p/o2c/mfg/rtn list silently produced an empty
+// Workstream Requirements section for every Odoo engagement. These tests
+// pin that the schema-driven walk now flows wizard answers into the
+// rendered markdown.
+
+describe('generateBRD — workstream loop reads from adaptor.flows (regression class)', () => {
+  // Minimal Odoo-shaped adaptor schema spanning Foundation + Tax + a
+  // legacy R2R section, mirroring the live seed-odoo answer namespace
+  // ('odoo.foundation.X', 'odoo.tax.X', 'odoo.company.X').
+  const ODOO_FLOWS = [
+    {
+      id: 'FOUNDATION',
+      label: 'Project Foundation',
+      description: 'Deployment, edition, geography, entity structure.',
+      sections: [
+        {
+          id: 'deployment',
+          label: 'Deployment & Licensing',
+          order: 1,
+          questions: [
+            {
+              id: 'odoo.foundation.deploymentMode',
+              label: 'Hosting & deployment mode',
+              inputType: 'SINGLE_SELECT' as const,
+              options: [
+                { value: 'ONLINE',     label: 'Odoo Online' },
+                { value: 'ODOOSH',     label: 'Odoo.sh' },
+                { value: 'SELFHOSTED', label: 'Self-hosted' },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'TAX',
+      label: 'Tax Engine',
+      description: 'Tax behavior, defaults, fiscal positions.',
+      sections: [
+        {
+          id: 'behavior',
+          label: 'Default Tax Behavior',
+          order: 1,
+          questions: [
+            {
+              id: 'odoo.tax.defaultSalesTax',
+              label: 'Default Sales Tax (rate name + percent)',
+              inputType: 'TEXT' as const,
+            },
+          ],
+        },
+      ],
+    },
+  ];
+
+  const ODOO_CTX_WITH_FLOWS: AdaptorContext = {
+    ...ODOO_CTX,
+    flows: ODOO_FLOWS,
+  };
+
+  it('renders the Project Foundation flow heading + question label + answer when the Odoo schema is present and answers are populated', () => {
+    const md = generateBRD(baseData(ODOO_CTX_WITH_FLOWS, {
+      answers: {
+        'odoo.foundation.deploymentMode': 'ODOOSH',
+        'odoo.tax.defaultSalesTax': 'VAT 5%',
+      },
+    }));
+    expect(md).toContain('Project Foundation');
+    expect(md).toContain('Hosting & deployment mode');
+    // SINGLE_SELECT answers render the option label, not the raw value.
+    expect(md).toContain('Odoo.sh');
+  });
+
+  it('renders the Tax Engine flow heading + question label + answer', () => {
+    const md = generateBRD(baseData(ODOO_CTX_WITH_FLOWS, {
+      answers: {
+        'odoo.foundation.deploymentMode': 'ODOOSH',
+        'odoo.tax.defaultSalesTax': 'VAT 5%',
+      },
+    }));
+    expect(md).toContain('Tax Engine');
+    expect(md).toContain('Default Sales Tax');
+    expect(md).toContain('VAT 5%');
+  });
+
+  it('skips a flow entirely when none of its questions are answered', () => {
+    // Only Foundation answered; Tax should not produce a heading.
+    const md = generateBRD(baseData(ODOO_CTX_WITH_FLOWS, {
+      answers: { 'odoo.foundation.deploymentMode': 'ODOOSH' },
+    }));
+    expect(md).toContain('Project Foundation');
+    expect(md).not.toContain('Tax Engine');
+  });
+
+  it('NetSuite flow labels still render (regression guard for the existing branch)', () => {
+    // Construct a minimal NetSuite-style schema where the question.id
+    // carries the lowercased flow prefix, mirroring the real adaptor.
+    const NS_FLOWS = [
+      {
+        id: 'R2R',
+        label: 'Record-to-Report',
+        description: 'GL, periods, reporting.',
+        sections: [
+          {
+            id: 'entities',
+            label: 'Entities',
+            order: 1,
+            questions: [
+              {
+                id: 'r2r.entities.multiEntity',
+                label: 'Multi-entity / OneWorld',
+                inputType: 'BOOLEAN' as const,
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    const md = generateBRD(baseData({ ...NETSUITE_CTX, flows: NS_FLOWS }, {
+      answers: { 'r2r.entities.multiEntity': true },
+    }));
+    expect(md).toContain('Record-to-Report');
+    expect(md).toContain('Multi-entity');
+    // BOOLEAN true renders as "Yes" via formatAnswer.
+    expect(md).toMatch(/Yes/);
+  });
+});
+
 describe('generateBRD — custom adaptor (fall-through default)', () => {
   // Custom adaptors get a Capitalize(adaptorId) name resolved upstream in
   // generation.ts; the generator just consumes whatever the context says.
