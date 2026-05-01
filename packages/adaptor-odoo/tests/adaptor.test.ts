@@ -20,7 +20,7 @@ describe('odooAdaptor: manifest', () => {
 });
 
 describe('odooAdaptor: schema', () => {
-  it('exposes FOUNDATION + TAX + LOCALIZATION + ACCOUNTING + R2R + INVENTORY before the four execution flows', () => {
+  it('exposes the documented flow order — Foundation packs, R2R, INVENTORY, operational flows, MANUFACTURING_DEPTH, PRODUCTION, RETURNS', () => {
     const ids = odooAdaptor.schema.flows.map((f) => f.id);
     // Pack 1 — Foundation gates everything downstream.
     // Pack 2 — Tax engine sits between Foundation and R2R.
@@ -34,9 +34,14 @@ describe('odooAdaptor: schema', () => {
     // valuation method, lot/serial tracking, replenishment strategy.
     // Sits AFTER R2R (so the GL/CoA decisions feed inventory accounting)
     // and BEFORE P2P (so PO/receiving rules see warehouse + tracking).
+    // Pack 6 — Manufacturing depth (MANUFACTURING_DEPTH): BoM
+    // architecture, routing & work centers, quality plans,
+    // subcontracting, PLM, maintenance. Sits AFTER O2C (sales-side
+    // visibility into BoMs is captured first) and BEFORE the
+    // existing PRODUCTION flow (whose mrp.* answers it deepens).
     expect(ids).toEqual([
       'FOUNDATION', 'TAX', 'LOCALIZATION', 'ACCOUNTING',
-      'R2R', 'INVENTORY', 'P2P', 'O2C', 'PRODUCTION', 'RETURNS',
+      'R2R', 'INVENTORY', 'P2P', 'O2C', 'MANUFACTURING_DEPTH', 'PRODUCTION', 'RETURNS',
     ]);
   });
 
@@ -2126,5 +2131,335 @@ describe('odooAdaptor: Pack 5 — Inventory rule evaluation', () => {
       license: { edition: 'ENTERPRISE', modules: [] },
     });
     expect(conflicts.map((c) => c.id)).not.toContain('odoo.inventory.barcode-needs-app-or-iot');
+  });
+});
+
+// ─── Pack 6 — Manufacturing depth ─────────────────────────────────────────────
+
+describe('odooAdaptor: Pack 6 — MANUFACTURING_DEPTH flow shape', () => {
+  const mfg = odooAdaptor.schema.flows.find((f) => f.id === 'MANUFACTURING_DEPTH');
+
+  it('MANUFACTURING_DEPTH flow exists with the expected label + description', () => {
+    expect(mfg).toBeDefined();
+    expect(mfg!.label).toBe('Manufacturing — Depth');
+    expect(mfg!.description).toMatch(/bom|routing|quality|subcontract|plm|maintenance/i);
+  });
+
+  it('MANUFACTURING_DEPTH sits between O2C and PRODUCTION (after INVENTORY, before PRODUCTION)', () => {
+    const ids = odooAdaptor.schema.flows.map((f) => f.id);
+    const invIdx = ids.indexOf('INVENTORY');
+    const mfgIdx = ids.indexOf('MANUFACTURING_DEPTH');
+    const prodIdx = ids.indexOf('PRODUCTION');
+    expect(mfgIdx).toBeGreaterThan(invIdx);
+    expect(mfgIdx).toBeLessThan(prodIdx);
+    expect(prodIdx).toBe(mfgIdx + 1);
+  });
+
+  it('renders four sections in the documented order', () => {
+    const ids = (mfg!.sections as Array<{ id: string; order: number }>)
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .map((s) => s.id);
+    expect(ids).toEqual(['bom', 'routing', 'quality', 'operations']);
+  });
+
+  it('BoM Architecture — 4 questions with the right ids + types + options', () => {
+    const sec = mfg!.sections.find((s) => s.id === 'bom')!;
+    expect(sec.label).toBe('BoM Architecture');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('odoo.mfg.bomTypes')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('odoo.mfg.multiLevelBom')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('odoo.mfg.plmInScope')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('odoo.mfg.bomCostMethod')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('odoo.mfg.bomCostMethod')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['COMPONENT_BASED', 'REAL_TIME', 'STANDARD_FIXED']);
+  });
+
+  it('Routing & Work Centers — 4 questions with the right ids + types', () => {
+    const sec = mfg!.sections.find((s) => s.id === 'routing')!;
+    expect(sec.label).toBe('Routing & Work Centers');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('odoo.mfg.routingRequired')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('odoo.mfg.workCenterCount')?.inputType).toBe('NUMBER');
+    expect(byId.get('odoo.mfg.capacityPlanning')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('odoo.mfg.operationTimeTracking')?.inputType).toBe('BOOLEAN');
+  });
+
+  it('Quality Control — 3 questions with the right ids + types + options', () => {
+    const sec = mfg!.sections.find((s) => s.id === 'quality')!;
+    expect(sec.label).toBe('Quality Control');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('odoo.mfg.qualityPlansRequired')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('odoo.mfg.qualityCheckpoints')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('odoo.mfg.qualityFailBlocks')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('odoo.mfg.qualityFailBlocks')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['BLOCK_HARD', 'BLOCK_SOFT', 'NO_BLOCK']);
+  });
+
+  it('Subcontracting & Maintenance — 5 questions with the right ids + types + options', () => {
+    const sec = mfg!.sections.find((s) => s.id === 'operations')!;
+    expect(sec.label).toBe('Subcontracting & Maintenance');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('odoo.mfg.subcontractingInScope')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('odoo.mfg.subcontractingComponentsTracking')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('odoo.mfg.maintenanceInScope')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('odoo.mfg.maintenanceType')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('odoo.mfg.maintenanceType')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['BOTH', 'CORRECTIVE', 'PREVENTIVE']);
+    expect(byId.get('odoo.mfg.backflushing')?.inputType).toBe('BOOLEAN');
+  });
+});
+
+describe('odooAdaptor: Pack 6 — Manufacturing rules registered in odoo-rules', () => {
+  const ids = odooAdaptor.rules.rules.map((r) => r.id);
+
+  it('R1 routing needs work centers', () => {
+    expect(ids).toContain('odoo.mfg.routing-needs-work-centers');
+  });
+  it('R2 quality needs Quality module', () => {
+    expect(ids).toContain('odoo.mfg.quality-needs-quality-module');
+  });
+  it('R3 subcontracting needs MRP module', () => {
+    expect(ids).toContain('odoo.mfg.subcontracting-needs-module');
+  });
+  it('R4 PLM is Enterprise-only', () => {
+    expect(ids).toContain('odoo.mfg.plm-is-enterprise-only');
+  });
+  it('R5 maintenance needs Maintenance module', () => {
+    expect(ids).toContain('odoo.mfg.maintenance-needs-module');
+  });
+  it('R6 multi-level BoM rough edge on Community (INFO)', () => {
+    expect(ids).toContain('odoo.mfg.multi-level-bom-on-community-rough-edge');
+  });
+  it('R7 standard cost vs Continental tradition (INFO)', () => {
+    expect(ids).toContain('odoo.mfg.standard-cost-needs-anglo-saxon-alignment');
+  });
+  it('R8 backflushing with lots creates noise (INFO)', () => {
+    expect(ids).toContain('odoo.mfg.backflushing-with-lots-creates-noise');
+  });
+  it('R9 subcontracting needs component tracking', () => {
+    expect(ids).toContain('odoo.mfg.subcontracting-needs-component-tracking');
+  });
+});
+
+describe('odooAdaptor: Pack 6 — Manufacturing rule evaluation', () => {
+  it('R1 fires (WARN) when routingRequired=true AND workCenterCount unset', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'odoo.mfg.routingRequired': true },
+      license: { edition: 'ENTERPRISE', modules: ['MRP'] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.mfg.routing-needs-work-centers');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R1 fires (WARN) when routingRequired=true AND workCenterCount=0', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.mfg.routingRequired': true,
+        'odoo.mfg.workCenterCount': 0,
+      },
+      license: { edition: 'ENTERPRISE', modules: ['MRP'] },
+    });
+    expect(conflicts.map((c) => c.id)).toContain('odoo.mfg.routing-needs-work-centers');
+  });
+
+  it('R1 does NOT fire when workCenterCount>=1', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.mfg.routingRequired': true,
+        'odoo.mfg.workCenterCount': 3,
+      },
+      license: { edition: 'ENTERPRISE', modules: ['MRP'] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.mfg.routing-needs-work-centers');
+  });
+
+  it('R2 fires (BLOCK) when qualityPlansRequired=true AND QUALITY missing', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'odoo.mfg.qualityPlansRequired': true },
+      license: { edition: 'ENTERPRISE', modules: ['MRP'] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.mfg.quality-needs-quality-module');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R2 does NOT fire when QUALITY is licensed', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'odoo.mfg.qualityPlansRequired': true },
+      license: { edition: 'ENTERPRISE', modules: ['MRP', 'QUALITY'] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.mfg.quality-needs-quality-module');
+  });
+
+  it('R3 fires (BLOCK) when subcontractingInScope=true AND MRP missing', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'odoo.mfg.subcontractingInScope': true },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.mfg.subcontracting-needs-module');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R3 does NOT fire when MRP is licensed', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'odoo.mfg.subcontractingInScope': true },
+      license: { edition: 'ENTERPRISE', modules: ['MRP'] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.mfg.subcontracting-needs-module');
+  });
+
+  it('R4 fires (BLOCK) when plmInScope=true AND foundation.edition=COMMUNITY', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.mfg.plmInScope': true,
+        'odoo.foundation.edition': 'COMMUNITY',
+      },
+      license: { edition: 'COMMUNITY', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.mfg.plm-is-enterprise-only');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R4 does NOT fire on Enterprise edition', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.mfg.plmInScope': true,
+        'odoo.foundation.edition': 'ENTERPRISE',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.mfg.plm-is-enterprise-only');
+  });
+
+  it('R5 fires (WARN) when maintenanceInScope=true AND MAINTENANCE missing', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'odoo.mfg.maintenanceInScope': true },
+      license: { edition: 'ENTERPRISE', modules: ['MRP'] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.mfg.maintenance-needs-module');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R5 does NOT fire when MAINTENANCE is licensed', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'odoo.mfg.maintenanceInScope': true },
+      license: { edition: 'ENTERPRISE', modules: ['MRP', 'MAINTENANCE'] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.mfg.maintenance-needs-module');
+  });
+
+  it('R6 fires (INFO) when multiLevelBom=true AND foundation.edition=COMMUNITY', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.mfg.multiLevelBom': true,
+        'odoo.foundation.edition': 'COMMUNITY',
+      },
+      license: { edition: 'COMMUNITY', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.mfg.multi-level-bom-on-community-rough-edge');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('INFO');
+  });
+
+  it('R6 does NOT fire on Enterprise edition', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.mfg.multiLevelBom': true,
+        'odoo.foundation.edition': 'ENTERPRISE',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.mfg.multi-level-bom-on-community-rough-edge');
+  });
+
+  it('R7 fires (INFO) when bomCostMethod=STANDARD_FIXED AND tradition=CONTINENTAL', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.mfg.bomCostMethod': 'STANDARD_FIXED',
+        'odoo.accounting.tradition': 'CONTINENTAL',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.mfg.standard-cost-needs-anglo-saxon-alignment');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('INFO');
+  });
+
+  it('R7 does NOT fire under Anglo-Saxon tradition', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.mfg.bomCostMethod': 'STANDARD_FIXED',
+        'odoo.accounting.tradition': 'ANGLO_SAXON',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.mfg.standard-cost-needs-anglo-saxon-alignment');
+  });
+
+  it('R7 does NOT fire when bomCostMethod=COMPONENT_BASED', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.mfg.bomCostMethod': 'COMPONENT_BASED',
+        'odoo.accounting.tradition': 'CONTINENTAL',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.mfg.standard-cost-needs-anglo-saxon-alignment');
+  });
+
+  it('R8 fires (INFO) when backflushing=true AND lotsSerialsRequired=true', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.mfg.backflushing': true,
+        'odoo.inventory.lotsSerialsRequired': true,
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.mfg.backflushing-with-lots-creates-noise');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('INFO');
+  });
+
+  it('R8 does NOT fire when lotsSerialsRequired=false', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.mfg.backflushing': true,
+        'odoo.inventory.lotsSerialsRequired': false,
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.mfg.backflushing-with-lots-creates-noise');
+  });
+
+  it('R9 fires (WARN) when subcontractingInScope=true AND subcontractingComponentsTracking=false', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.mfg.subcontractingInScope': true,
+        'odoo.mfg.subcontractingComponentsTracking': false,
+      },
+      license: { edition: 'ENTERPRISE', modules: ['MRP'] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.mfg.subcontracting-needs-component-tracking');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R9 does NOT fire when subcontractingComponentsTracking=true', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.mfg.subcontractingInScope': true,
+        'odoo.mfg.subcontractingComponentsTracking': true,
+      },
+      license: { edition: 'ENTERPRISE', modules: ['MRP'] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.mfg.subcontracting-needs-component-tracking');
   });
 });

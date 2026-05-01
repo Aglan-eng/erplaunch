@@ -155,6 +155,24 @@ const answers: Record<string, unknown> = {
   'odoo.inventory.countMethod': 'BOTH',
   'odoo.inventory.putawayRules': true,
 
+  // Pack 6 — Manufacturing depth
+  'odoo.mfg.bomTypes': 'Manufacture\nPhantom (kit explosion at sales)\nSubcontracting (vendor produces)',
+  'odoo.mfg.multiLevelBom': true,
+  'odoo.mfg.plmInScope': true,
+  'odoo.mfg.bomCostMethod': 'COMPONENT_BASED',
+  'odoo.mfg.routingRequired': true,
+  'odoo.mfg.workCenterCount': 6,
+  'odoo.mfg.capacityPlanning': true,
+  'odoo.mfg.operationTimeTracking': true,
+  'odoo.mfg.qualityPlansRequired': true,
+  'odoo.mfg.qualityCheckpoints': 'Receiving (incoming inspection)\nIn-process (during MO)\nFinal (before stock)',
+  'odoo.mfg.qualityFailBlocks': 'BLOCK_HARD',
+  'odoo.mfg.subcontractingInScope': true,
+  'odoo.mfg.subcontractingComponentsTracking': true,
+  'odoo.mfg.maintenanceInScope': true,
+  'odoo.mfg.maintenanceType': 'BOTH',
+  'odoo.mfg.backflushing': false,
+
   // Legacy R2R / P2P / O2C / MRP / Returns answers (preserved)
   'odoo.company.multiCompany': true,
   'odoo.company.currency': 'AED',

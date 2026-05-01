@@ -142,6 +142,12 @@ const schema: QuestionnaireSchema = {
     buildInventoryFlow(),
     buildP2PFlow(),
     buildO2CFlow(),
+    // Pack 6 — Manufacturing depth (flow id MANUFACTURING_DEPTH; the
+    // existing PRODUCTION flow keeps its three legacy mrp.* questions
+    // for now). Sits AFTER O2C (sales-side BoM visibility captured
+    // first) and DIRECTLY BEFORE the existing PRODUCTION flow whose
+    // shop-floor execution is shaped by these depth answers.
+    buildManufacturingDepthFlow(),
     buildProductionFlow(),
     buildReturnsFlow(),
   ],
@@ -1195,6 +1201,198 @@ function buildO2CFlow(): FlowDefinition {
               { value: 'ORDERED', label: 'Invoiced quantity = ordered quantity' },
               { value: 'DELIVERED', label: 'Invoiced quantity = delivered quantity' },
             ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+// ─── Pack 6 — Manufacturing depth ────────────────────────────────────────────
+//
+// 16 questions across 4 sections:
+//   - bom         (4): BoM types, multi-level BoMs, PLM, BoM cost method.
+//   - routing     (4): routing required, work-center count, capacity
+//                      planning, operation time tracking.
+//   - quality     (3): quality plans required, checkpoints, fail blocks.
+//   - operations  (5): subcontracting, subcontracting component tracking,
+//                      maintenance, maintenance type, backflushing.
+//
+// Naming note: flow id is MANUFACTURING_DEPTH (not MANUFACTURING) to
+// coexist with the existing PRODUCTION flow's three legacy mrp.*
+// questions. A later refactor pack will collapse the two; this pack
+// intentionally keeps both alive to stay non-breaking.
+//
+// Sources: Odoo 19 MRP docs (BoM types — Manufacture / Phantom /
+// Subcontracting / Kit), Quality module, Subcontracting feature,
+// PLM (Enterprise — ECO workflows + BoM revisions), Maintenance
+// module, backflushing in MO completion flow.
+function buildManufacturingDepthFlow(): FlowDefinition {
+  return {
+    id: 'MANUFACTURING_DEPTH',
+    label: 'Manufacturing — Depth',
+    description:
+      "BoM architecture, routing & work centers, quality control plans, subcontracting, PLM, and maintenance integration. The configuration that determines whether the manufacturing layer actually models the client's shop floor.",
+    sections: [
+      {
+        id: 'bom',
+        label: 'BoM Architecture',
+        order: 1,
+        questions: [
+          {
+            id: 'odoo.mfg.bomTypes',
+            inputType: 'TEXTAREA',
+            required: true,
+            label:
+              "BoM types in use (one per line — 'Manufacture', 'Phantom (kit explosion at sales)', 'Subcontracting (vendor produces)', 'Kit (sells as bundle, no MO)')",
+            help: {
+              title: 'Multiple BoM types per instance',
+              body: 'Different products can have different BoM types in the same Odoo instance. List each type the client uses.',
+            },
+          },
+          {
+            id: 'odoo.mfg.multiLevelBom',
+            inputType: 'BOOLEAN',
+            required: true,
+            label:
+              'Multi-level BoMs in scope? (sub-assemblies — a BoM where a component is itself a manufactured product with its own BoM)',
+          },
+          {
+            id: 'odoo.mfg.plmInScope',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'PLM (Product Lifecycle Management) in scope for BoM versioning + ECO workflows?',
+            help: {
+              title: 'Odoo PLM (Enterprise)',
+              body: 'Odoo PLM is Enterprise-only. Use for engineering-change orders, BoM revisions with approval workflows, and obsolete-product retirement.',
+            },
+          },
+          {
+            id: 'odoo.mfg.bomCostMethod',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'BoM cost method',
+            options: [
+              { value: 'COMPONENT_BASED', label: 'Component-based (sum of component costs at MO time — typical)' },
+              { value: 'STANDARD_FIXED', label: 'Fixed standard cost per BoM (variance posted to P&L)' },
+              { value: 'REAL_TIME', label: 'Real-time (recompute on every component cost change)' },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'routing',
+        label: 'Routing & Work Centers',
+        order: 2,
+        questions: [
+          {
+            id: 'odoo.mfg.routingRequired',
+            inputType: 'BOOLEAN',
+            required: true,
+            label:
+              "Routing required? (define operation sequence — e.g., 'Cut → Weld → Paint → QC')",
+          },
+          {
+            id: 'odoo.mfg.workCenterCount',
+            inputType: 'NUMBER',
+            required: false,
+            label:
+              'Approximate number of work centers (count distinct stations / cells / machines that perform operations)',
+          },
+          {
+            id: 'odoo.mfg.capacityPlanning',
+            inputType: 'BOOLEAN',
+            required: true,
+            label:
+              'Work-center capacity planning required? (load leveling, finite vs infinite capacity, schedule visibility)',
+          },
+          {
+            id: 'odoo.mfg.operationTimeTracking',
+            inputType: 'BOOLEAN',
+            required: true,
+            label:
+              'Operator time tracking on operations? (start/stop per work order; feeds analytic + payroll)',
+          },
+        ],
+      },
+      {
+        id: 'quality',
+        label: 'Quality Control',
+        order: 3,
+        questions: [
+          {
+            id: 'odoo.mfg.qualityPlansRequired',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'Quality control plans required?',
+          },
+          {
+            id: 'odoo.mfg.qualityCheckpoints',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "If yes — checkpoints in scope (one per line — 'Receiving (incoming inspection)', 'In-process (during MO)', 'Final (before stock)', 'Sampling vs 100%')",
+            dependsOn: { questionId: 'odoo.mfg.qualityPlansRequired', value: true },
+          },
+          {
+            id: 'odoo.mfg.qualityFailBlocks',
+            inputType: 'SINGLE_SELECT',
+            required: false,
+            label: 'Does a quality FAIL block the production order?',
+            dependsOn: { questionId: 'odoo.mfg.qualityPlansRequired', value: true },
+            options: [
+              { value: 'BLOCK_HARD', label: 'Hard block — MO cannot complete until quality passes' },
+              { value: 'BLOCK_SOFT', label: 'Soft block — MO can complete with a quality alert raised' },
+              { value: 'NO_BLOCK', label: 'No block — quality is informational only' },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'operations',
+        label: 'Subcontracting & Maintenance',
+        order: 4,
+        questions: [
+          {
+            id: 'odoo.mfg.subcontractingInScope',
+            inputType: 'BOOLEAN',
+            required: true,
+            label:
+              'Subcontracting in scope? (a vendor performs the manufacturing — Odoo creates an MO that the subcontractor fulfils)',
+          },
+          {
+            id: 'odoo.mfg.subcontractingComponentsTracking',
+            inputType: 'BOOLEAN',
+            required: false,
+            label:
+              'If yes — track components shipped to subcontractor as separate inventory location?',
+            dependsOn: { questionId: 'odoo.mfg.subcontractingInScope', value: true },
+          },
+          {
+            id: 'odoo.mfg.maintenanceInScope',
+            inputType: 'BOOLEAN',
+            required: true,
+            label:
+              'Maintenance integration in scope? (preventive + corrective maintenance on work centers / equipment)',
+          },
+          {
+            id: 'odoo.mfg.maintenanceType',
+            inputType: 'SINGLE_SELECT',
+            required: false,
+            label: 'If yes — maintenance scope',
+            dependsOn: { questionId: 'odoo.mfg.maintenanceInScope', value: true },
+            options: [
+              { value: 'PREVENTIVE', label: 'Preventive only (scheduled)' },
+              { value: 'CORRECTIVE', label: 'Corrective only (break-fix)' },
+              { value: 'BOTH', label: 'Both preventive and corrective' },
+            ],
+          },
+          {
+            id: 'odoo.mfg.backflushing',
+            inputType: 'BOOLEAN',
+            required: true,
+            label:
+              'Backflushing on MO completion? (auto-consume components when MO is marked done; vs explicit issue transactions)',
           },
         ],
       },
@@ -2315,6 +2513,175 @@ const rules: RulePack = {
       message: 'Barcode scanning requires either the Odoo Barcode app (Enterprise) installed on tablets, or USB barcode scanners on receiving stations.',
       resolution: 'Confirm hardware approach in the implementation plan: tablet count + Barcode app licenses, OR list of fixed scanning stations and supported scanner models. Allocate ~1 person-day per scanning station for setup.',
       when: { answerTruthy: { questionId: 'odoo.inventory.barcodeScanning' } },
+    },
+
+    // ── Pack 6 — Manufacturing depth rules ────────────────────────────────
+
+    // R1: Routing requires at least one work center to be configured.
+    // The DSL doesn't expose a "less than" operator directly so we use
+    // NOT(answerNumberGreaterThan ≥ 1) — i.e. fire when the count is
+    // missing OR is 0. answerNumberGreaterThan returns false for
+    // unset values, which is what we want.
+    {
+      id: 'odoo.mfg.routing-needs-work-centers',
+      type: 'DATA_WARNING',
+      severity: 'WARN',
+      questionIds: ['odoo.mfg.routingRequired', 'odoo.mfg.workCenterCount'],
+      message: 'Routing is required but no work centers are listed — routing cannot be configured without at least one work center.',
+      resolution: "Capture the work-center count and types. If the client doesn't have distinct work centers, set routingRequired=false and use simple BoMs without operations.",
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.mfg.routingRequired' } },
+          { not: { answerNumberGreaterThan: { questionId: 'odoo.mfg.workCenterCount', value: 0 } } },
+        ],
+      },
+    },
+
+    // R2: Quality plans need the QUALITY module. Quality integrates
+    // with both Inventory (incoming/outgoing checks) and MRP
+    // (in-process checks).
+    {
+      id: 'odoo.mfg.quality-needs-quality-module',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: ['odoo.mfg.qualityPlansRequired'],
+      message: 'Quality control plans are in scope but the Quality module is not provisioned.',
+      resolution: 'Add QUALITY to license.modules. Note: Quality integrates with both Inventory (incoming/outgoing checks) and MRP (in-process checks).',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.mfg.qualityPlansRequired' } },
+          { licenseMissingModule: 'QUALITY' },
+        ],
+      },
+    },
+
+    // R3: Subcontracting in Odoo 17+ is a feature inside MRP — there
+    // is no separate subcontracting module. So MRP must be licensed.
+    {
+      id: 'odoo.mfg.subcontracting-needs-module',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: ['odoo.mfg.subcontractingInScope'],
+      message: 'Subcontracting requires the MRP module — the subcontracting flow is built on top of standard manufacturing orders.',
+      resolution: 'Add MRP to license.modules. Subcontracting itself is a feature within MRP; no separate module is needed in Odoo 17+.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.mfg.subcontractingInScope' } },
+          { licenseMissingModule: 'MRP' },
+        ],
+      },
+    },
+
+    // R4: PLM (Product Lifecycle Management — ECO workflows, BoM
+    // revisions) is Odoo Enterprise-only. Community has no PLM
+    // module — manual versioning only.
+    {
+      id: 'odoo.mfg.plm-is-enterprise-only',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: ['odoo.mfg.plmInScope', 'odoo.foundation.edition'],
+      message: 'PLM (Product Lifecycle Management — ECO workflows, BoM revisions) is an Odoo Enterprise feature.',
+      resolution: 'Either upgrade edition to Enterprise, or disable plmInScope and manage BoM revisions manually (with version notes in product description). Manual versioning is workable for <100 BoMs; not at scale.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.mfg.plmInScope' } },
+          { answerEquals: { questionId: 'odoo.foundation.edition', value: 'COMMUNITY' } },
+        ],
+      },
+    },
+
+    // R5: Maintenance integration needs the MAINTENANCE module.
+    // Required for both preventive schedules and corrective work-order
+    // routing from quality alerts.
+    {
+      id: 'odoo.mfg.maintenance-needs-module',
+      type: 'LICENSE_GAP',
+      severity: 'WARN',
+      questionIds: ['odoo.mfg.maintenanceInScope'],
+      message: 'Maintenance integration is in scope but the Maintenance module is not provisioned.',
+      resolution: 'Add MAINTENANCE to license.modules. Required for both preventive maintenance schedules and corrective work-order routing from quality alerts.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.mfg.maintenanceInScope' } },
+          { licenseMissingModule: 'MAINTENANCE' },
+        ],
+      },
+    },
+
+    // R6: Multi-level BoMs technically work on Community but the
+    // advanced auto-replenish + schedule-cascade features are
+    // Enterprise. INFO-level — confirms the client's complexity
+    // tolerance rather than blocking.
+    {
+      id: 'odoo.mfg.multi-level-bom-on-community-rough-edge',
+      type: 'DATA_WARNING',
+      severity: 'INFO',
+      questionIds: ['odoo.mfg.multiLevelBom', 'odoo.foundation.edition'],
+      message: 'Multi-level BoMs work on Community but advanced features (auto-replenish sub-assemblies, schedule cascade) require Enterprise.',
+      resolution: "Confirm client's complexity tolerance. If sub-assembly replenishment is manual today, Community is fine. If they expect auto-cascade, Enterprise is needed.",
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.mfg.multiLevelBom' } },
+          { answerEquals: { questionId: 'odoo.foundation.edition', value: 'COMMUNITY' } },
+        ],
+      },
+    },
+
+    // R7: Standard fixed cost on BoMs is most natural under Anglo-Saxon
+    // accounting (variance posts to P&L on receipt). Continental +
+    // standard cost is workable but less common — auditors often ask
+    // for explicit reconciliation.
+    {
+      id: 'odoo.mfg.standard-cost-needs-anglo-saxon-alignment',
+      type: 'DATA_WARNING',
+      severity: 'INFO',
+      questionIds: ['odoo.mfg.bomCostMethod', 'odoo.accounting.tradition'],
+      message: 'Standard fixed cost on BoMs is most natural in Anglo-Saxon accounting (variance posts to P&L). The engagement uses Continental — confirm cost variance posting flow.',
+      resolution: 'Document expected cost-variance journals in Solution Design. Continental + standard cost is workable but less common; auditors often ask for explicit reconciliation.',
+      when: {
+        all: [
+          { answerEquals: { questionId: 'odoo.mfg.bomCostMethod', value: 'STANDARD_FIXED' } },
+          { answerEquals: { questionId: 'odoo.accounting.tradition', value: 'CONTINENTAL' } },
+        ],
+      },
+    },
+
+    // R8: Backflushing auto-consumes components on MO completion. With
+    // lot tracking, Odoo picks lots based on removal strategy — operators
+    // don't get to choose, and FEFO/FIFO conflicts can produce inventory
+    // variance. INFO-level nudge to confirm the operations team is OK
+    // with that.
+    {
+      id: 'odoo.mfg.backflushing-with-lots-creates-noise',
+      type: 'DATA_WARNING',
+      severity: 'INFO',
+      questionIds: ['odoo.mfg.backflushing', 'odoo.inventory.lotsSerialsRequired'],
+      message: "Backflushing auto-consumes components on MO completion. With lot tracking, Odoo picks lots based on removal strategy — operators don't get to choose, and FEFO/FIFO conflicts can produce inventory variance.",
+      resolution: 'Either disable backflushing for lot-tracked products (force explicit component issue), OR confirm the removal strategy is acceptable for the operations team.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.mfg.backflushing' } },
+          { answerTruthy: { questionId: 'odoo.inventory.lotsSerialsRequired' } },
+        ],
+      },
+    },
+
+    // R9: Subcontracting without component tracking means consigned
+    // inventory at the subcontractor is invisible — risk of unrecorded
+    // WIP, lost components, and audit issues.
+    {
+      id: 'odoo.mfg.subcontracting-needs-component-tracking',
+      type: 'DATA_WARNING',
+      severity: 'WARN',
+      questionIds: ['odoo.mfg.subcontractingInScope', 'odoo.mfg.subcontractingComponentsTracking'],
+      message: 'Subcontracting without component tracking means consigned inventory at the subcontractor is invisible — risk of unrecorded WIP, lost components, and audit issues.',
+      resolution: 'Enable subcontractingComponentsTracking and configure a per-subcontractor inventory location. Standard practice in Odoo subcontracting setups.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.mfg.subcontractingInScope' } },
+          { answerFalsy:  { questionId: 'odoo.mfg.subcontractingComponentsTracking' } },
+        ],
+      },
     },
   ],
 };
