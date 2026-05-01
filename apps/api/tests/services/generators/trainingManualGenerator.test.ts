@@ -137,6 +137,82 @@ describe('generateTrainingManual — Odoo adaptor (new path)', () => {
   });
 });
 
+// ─── Regression class: rendered prose contains wizard-answer content ─────────
+describe('generateTrainingManual — non-NetSuite Wizard Configuration Summary walks adaptor.flows', () => {
+  const ODOO_FLOWS = [
+    {
+      id: 'FOUNDATION',
+      label: 'Project Foundation',
+      description: 'Deployment, edition, geography.',
+      sections: [
+        {
+          id: 'deployment',
+          label: 'Deployment & Licensing',
+          order: 1,
+          questions: [
+            {
+              id: 'odoo.foundation.deploymentMode',
+              label: 'Hosting & deployment mode',
+              inputType: 'SINGLE_SELECT' as const,
+              options: [{ value: 'ODOOSH', label: 'Odoo.sh' }],
+            },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'TAX',
+      label: 'Tax Engine',
+      description: 'Tax behavior, defaults, fiscal positions.',
+      sections: [
+        {
+          id: 'behavior',
+          label: 'Default Tax Behavior',
+          order: 1,
+          questions: [
+            {
+              id: 'odoo.tax.defaultSalesTax',
+              label: 'Default Sales Tax',
+              inputType: 'TEXT' as const,
+            },
+          ],
+        },
+      ],
+    },
+  ];
+
+  it('Odoo training manual contains Project Foundation + Tax Engine + question labels + answer text', () => {
+    const md = generateTrainingManual(baseData(
+      { ...ODOO_CTX, flows: ODOO_FLOWS },
+      {
+        answers: {
+          'odoo.foundation.deploymentMode': 'ODOOSH',
+          'odoo.tax.defaultSalesTax': 'VAT 5%',
+        },
+      },
+    ));
+    expect(md).toContain('Wizard Configuration Summary');
+    expect(md).toContain('Project Foundation');
+    expect(md).toContain('Tax Engine');
+    expect(md).toContain('Hosting & deployment mode');
+    expect(md).toContain('Odoo.sh');
+    expect(md).toContain('Default Sales Tax');
+    expect(md).toContain('VAT 5%');
+  });
+
+  it('NetSuite training manual still renders the hardcoded Quick Reference Card (regression guard)', () => {
+    const md = generateTrainingManual(baseData(NETSUITE_CTX, {
+      answers: {
+        'p2p.purchasing.usePurchaseOrders': true,
+        'o2c.salesOrders.requiresApproval': true,
+      },
+    }));
+    expect(md).toContain('# NetSuite Training Manual');
+    expect(md).toContain('Quick Reference Card');
+    expect(md).toContain('Transactions > Purchases > Enter Purchase Orders');
+  });
+});
+
 describe('generateTrainingManual — custom adaptor (fall-through default)', () => {
   it('renders Acme ERP-flavored shell with no NetSuite leak', () => {
     const md = generateTrainingManual(baseData(CUSTOM_CTX));

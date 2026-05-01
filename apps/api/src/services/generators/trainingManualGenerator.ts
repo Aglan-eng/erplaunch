@@ -1,5 +1,22 @@
 import MarkdownIt from 'markdown-it';
-import type { AdaptorContext } from './brdGenerator.js';
+import type { AdaptorContext, AdaptorQuestion } from './brdGenerator.js';
+
+/** Mirror of brdGenerator.formatAnswer — same input/output contract. */
+function fmt(question: AdaptorQuestion, raw: unknown): string {
+  if (raw === undefined || raw === null) return '—';
+  if (question.inputType === 'BOOLEAN') return raw === true ? 'Yes' : raw === false ? 'No' : '—';
+  if (question.inputType === 'SINGLE_SELECT' && question.options) {
+    return question.options.find((o) => o.value === raw)?.label ?? String(raw);
+  }
+  if (question.inputType === 'MULTI_SELECT' && Array.isArray(raw)) {
+    if (raw.length === 0) return 'None selected';
+    return raw.map((v) => question.options?.find((o) => o.value === v)?.label ?? String(v)).join(', ');
+  }
+  if (question.inputType === 'TABLE' && Array.isArray(raw)) {
+    return raw.length === 0 ? 'None configured' : (raw as string[]).map((r, i) => `${i + 1}. ${r}`).join('\n');
+  }
+  return String(raw);
+}
 
 const md = new MarkdownIt({ html: true, typographer: true });
 
@@ -267,22 +284,49 @@ export function generateTrainingManual(data: TrainingManualData): string {
     doc += `| Run a Report | Reports > [Module] > [Report Name] |\n`;
     doc += `| Global Search | Search bar at the top-right of any page |\n\n`;
   } else {
-    // Platform-neutral placeholder. The Phase-4 follow-up replaces this
-    // with an adaptor-specific training generator that knows the menu
-    // vocabulary of the target platform. For now we acknowledge that
-    // detailed step-by-step training for ${adaptor.name} will be
-    // delivered separately so the consultant doesn't ship an empty
-    // training manual.
+    // Non-NetSuite branch. Detailed step-by-step training is still a
+    // per-adaptor follow-up (each platform has its own menu vocabulary)
+    // so we don't emit hardcoded NetSuite menu paths here. What we DO
+    // emit, schema-driven, is a "Wizard Configuration Summary" that
+    // surfaces every flow the consultant captured during discovery —
+    // grouping by flow + section, listing each populated question
+    // with its formatted answer. This gives the consultant a real
+    // training reference (what was decided per area) instead of a
+    // bare "training will follow" placeholder.
     doc += `### How to Use This Manual\n\n`;
     doc += `Detailed step-by-step ${adaptor.name} training will be issued separately as part of the platform-specific configuration plan that accompanies this engagement. `;
     doc += `That document includes role-specific menu paths, transaction screens, and the day-to-day flows your team will perform in ${adaptor.name}.\n\n`;
-    doc += `In the interim, this manual records the participants who will receive training; the per-module step-by-step content is intentionally omitted until the configuration plan is finalised.\n\n`;
+    doc += `The Wizard Configuration Summary below captures the discovery decisions that drive every training module. Use it as a reference when running role-based training sessions.\n\n`;
     doc += `---\n\n`;
 
-    // Note: we do NOT enumerate the wizard-derived `modules` here because
-    // their titles ("NetSuite Navigation & Basics", etc.) are
-    // NetSuite-specific by design. The Phase-4 per-adaptor training
-    // generator will produce platform-correct module titles.
+    doc += `## Wizard Configuration Summary\n\n`;
+    let any = false;
+    for (const flow of adaptor.flows ?? []) {
+      const renderedSections = flow.sections
+        .map((s) => ({
+          section: s,
+          answered: s.questions.filter((q) => {
+            const v = answers[q.id];
+            return v !== undefined && v !== null && !(typeof v === 'string' && v.trim() === '');
+          }),
+        }))
+        .filter((x) => x.answered.length > 0);
+      if (renderedSections.length === 0) continue;
+      any = true;
+      doc += `### ${flow.label}\n\n`;
+      if (flow.description) doc += `_${flow.description}_\n\n`;
+      for (const { section, answered } of renderedSections) {
+        doc += `**${section.label}**\n\n`;
+        for (const q of answered) {
+          doc += `- ${q.label}: **${fmt(q, answers[q.id])}**\n`;
+        }
+        doc += `\n`;
+      }
+    }
+    if (!any) {
+      doc += `_No wizard answers have been captured yet. Run the discovery wizard before scheduling training._\n\n`;
+    }
+    doc += `---\n\n`;
   }
 
   doc += `## Training Sign-off\n\n`;
