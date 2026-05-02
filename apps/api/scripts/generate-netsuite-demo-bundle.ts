@@ -118,6 +118,49 @@ const answers: Record<string, unknown> = {
   'ns.tax.multiJurisdictionReporting': true,
   'ns.tax.salesTaxAutomation': true,
   'ns.tax.salesTaxAutomationProvider': 'Avalara AvaTax',
+
+  // NS Pack 3 — Localization & SuiteSuccess
+  'ns.localization.bundlePerSubsidiary':
+    'Atlas Industries Group Inc. | US (SuiteSuccess Wholesale Distribution)\n' +
+    'Atlas Manufacturing UK Ltd. | UK (SuiteSuccess Manufacturing)\n' +
+    'Atlas Trading Pty. | Australia (SuiteSuccess Wholesale Distribution)\n' +
+    'Atlas Services GmbH | Germany (SuiteSuccess Services)',
+  'ns.localization.coaCustomScope':
+    'Add: 2350-Withholding Tax Payable (DE-only)\n' +
+    'Add: 1490-Inventory in Transit (Group)\n' +
+    'Rename: 4100 → Wholesale Revenue\n' +
+    'Add: 2360-VAT Reverse Charge Output (UK + DE)',
+  'ns.localization.countrySpecificGlAccounts': true,
+  'ns.localization.fiscalCalendarPerSubsidiary': false,
+  'ns.localization.statutoryReports':
+    'US: 1099-NEC, 1099-MISC, FBAR, Form 5472\n' +
+    'UK: VAT 100, Corporation Tax CT600, P11D\n' +
+    'AU: BAS, IAS, FBT, Payroll Tax\n' +
+    'DE: USt-VA, ZM (recapitulative statement), ELSTER',
+  'ns.localization.taxReportingSuiteApps':
+    'US Tax Reports\n' +
+    'UK MTD VAT (Making Tax Digital)\n' +
+    'EU SAF-T (Germany)\n' +
+    'Australia BAS Reports',
+  'ns.localization.auditTrailRequired': true,
+  'ns.localization.periodLockPerSubsidiary': true,
+  'ns.localization.dataResidencyRequired': true,
+  'ns.localization.dataResidencyJurisdiction': 'European Union',
+  'ns.localization.gdprApplicable': true,
+  'ns.localization.dpaSignedWithNetsuite': 'YES',
+  'ns.localization.uiLanguages':
+    'en — English\n' +
+    'de — German\n' +
+    'fr — French',
+  'ns.localization.languagesPerSubsidiary':
+    'Atlas Industries Group Inc. | en\n' +
+    'Atlas Manufacturing UK Ltd. | en\n' +
+    'Atlas Trading Pty. | en\n' +
+    'Atlas Services GmbH | de',
+  'ns.localization.localizationSuiteApps':
+    'EU SAF-T Germany — partner SuiteApp\n' +
+    'Germany ZUGFeRD/XRechnung e-invoicing — partner SuiteApp',
+  'ns.localization.customLocalizationDev': false,
 };
 
 const comments = [

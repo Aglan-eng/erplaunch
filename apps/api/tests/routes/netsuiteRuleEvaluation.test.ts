@@ -483,3 +483,206 @@ describe('NetSuite engagement — NS Pack 2 Tax rules through the route', () => 
     expect(hit?.severity).toBe('INFO');
   });
 });
+
+// ─── NS Pack 3 — Localization & SuiteSuccess through the route ───────────────
+
+describe('NetSuite engagement — NS Pack 3 Localization rules through the route', () => {
+  it('R1: multi-sub paid edition + bundle list populated fires custom-bundle-on-mid-market-or-above-warn (WARN)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createNetSuiteEngagement(firmId, 'Multi-Sub Custom-Bundle Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ONEWORLD', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'ns.foundation.subsidiaryCount': 3,
+        'ns.foundation.edition': 'ONEWORLD',
+        'ns.localization.bundlePerSubsidiary': 'Atlas US | Custom — no bundle\nAtlas UK | UK',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'ns.localization.custom-bundle-on-mid-market-or-above-warn');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('WARN');
+  });
+
+  it('R2: subsidiaryCount>1 + bundlePerSubsidiary empty fires bundle-list-must-cover-all-subsidiaries (WARN)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createNetSuiteEngagement(firmId, 'Multi-Sub No-Bundle Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ONEWORLD', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'ns.foundation.subsidiaryCount': 3,
+        'ns.localization.bundlePerSubsidiary': '',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'ns.localization.bundle-list-must-cover-all-subsidiaries');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('WARN');
+  });
+
+  it('R3: statutoryReports populated + taxReportingSuiteApps empty fires statutory-reports-need-framework (BLOCK)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createNetSuiteEngagement(firmId, 'Statutory No-Framework Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'MID_MARKET', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'ns.localization.statutoryReports': 'US: 1099-NEC, FBAR\nUK: VAT 100',
+        'ns.localization.taxReportingSuiteApps': '',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'ns.localization.statutory-reports-need-framework');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('BLOCK');
+  });
+
+  it('R4: gdprApplicable=true + dpa=NO fires gdpr-needs-dpa (BLOCK)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createNetSuiteEngagement(firmId, 'GDPR No-DPA Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'MID_MARKET', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'ns.localization.gdprApplicable': true,
+        'ns.localization.dpaSignedWithNetsuite': 'NO',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'ns.localization.gdpr-needs-dpa');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('BLOCK');
+  });
+
+  it('R5: residency required + jurisdiction outside US/EU/AU fires data-residency-may-not-be-supported (WARN)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createNetSuiteEngagement(firmId, 'Saudi Residency Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'MID_MARKET', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'ns.localization.dataResidencyRequired': true,
+        'ns.localization.dataResidencyJurisdiction': 'Saudi Arabia',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'ns.localization.data-residency-may-not-be-supported');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('WARN');
+  });
+
+  it('R6: languagesPerSubsidiary populated + edition=MID_MARKET fires multi-language-needs-oneworld (WARN)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createNetSuiteEngagement(firmId, 'Multi-Lang Mid-Market Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'MID_MARKET', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'ns.localization.languagesPerSubsidiary': 'Sub A | en\nSub B | de',
+        'ns.foundation.edition': 'MID_MARKET',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'ns.localization.multi-language-needs-oneworld');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('WARN');
+  });
+
+  it('R7: countrySpecificGlAccounts=true + coaCustomScope empty fires coa-custom-modifications-need-scope (WARN)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createNetSuiteEngagement(firmId, 'Country GL No-Scope Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'MID_MARKET', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'ns.localization.countrySpecificGlAccounts': true,
+        'ns.localization.coaCustomScope': '',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'ns.localization.coa-custom-modifications-need-scope');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('WARN');
+  });
+
+  it('R8: fiscalCalendarPerSubsidiary=true + edition=ENTERPRISE fires fiscal-calendar-per-subsidiary-needs-oneworld (BLOCK)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createNetSuiteEngagement(firmId, 'Multi-Calendar Enterprise Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'MID_MARKET', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'ns.localization.fiscalCalendarPerSubsidiary': true,
+        'ns.foundation.edition': 'ENTERPRISE',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'ns.localization.fiscal-calendar-per-subsidiary-needs-oneworld');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('BLOCK');
+  });
+
+  it('R9: customLocalizationDev=true + suiteCloudPlus=false fires custom-localization-dev-needs-suitecloud-plus (INFO)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createNetSuiteEngagement(firmId, 'Custom Loc Dev No-Plus Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'MID_MARKET', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'ns.localization.customLocalizationDev': true,
+        'ns.foundation.suiteCloudPlus': false,
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'ns.localization.custom-localization-dev-needs-suitecloud-plus');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('INFO');
+  });
+});

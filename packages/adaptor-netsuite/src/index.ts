@@ -92,9 +92,14 @@ function buildSchema(): QuestionnaireSchema {
     // NS Pack 2 — TAX flow sits between FOUNDATION and R2R because
     // SuiteTax engine, nexus list, and e-invoicing SuiteApps gate
     // every accounting transaction downstream.
+    // NS Pack 3 — LOCALIZATION flow sits AFTER TAX and BEFORE R2R.
+    // SuiteSuccess country bundles, statutory reporting frameworks,
+    // data residency, multi-language UI, and country-specific
+    // localization SuiteApps all gate the COA / forms that R2R uses.
     flows: [
       buildFoundationFlow(),
       buildTaxFlow(),
+      buildLocalizationFlow(),
       ...['R2R', 'P2P', 'O2C', 'PRODUCTION', 'RETURNS']
         .map((id) => flows[id])
         .filter((f): f is FlowDefinition => !!f),
@@ -484,6 +489,204 @@ function buildTaxFlow(): FlowDefinition {
               title: 'NetSuite-shipped connectors',
               body: 'Common for US engagements with multi-state nexus (10+ jurisdictions). NetSuite ships connectors for Avalara, Vertex, Sovos.',
             },
+          },
+        ],
+      },
+    ],
+  };
+}
+
+// ─── NS Pack 3 — Localization & SuiteSuccess ─────────────────────────────────
+//
+// 16 questions across 4 sections:
+//   - bundles          (4): SuiteSuccess bundle per subsidiary, COA
+//                           customization scope, country-specific GL
+//                           accounts, fiscal calendar per subsidiary.
+//   - statutory        (4): statutory reports per country, Tax Reporting
+//                           Framework SuiteApps, audit trail, period lock
+//                           per subsidiary.
+//   - datasovereignty  (4): data residency required, jurisdiction, GDPR /
+//                           equivalent, DPA signed with NetSuite.
+//   - languages        (4): UI languages, languages per subsidiary,
+//                           localization SuiteApps, custom localization
+//                           dev required.
+//
+// Allow-list for R5 (data residency may not be supported): the supported
+// NetSuite data center jurisdictions. Variants (full names + codes)
+// match what consultants typically type.
+const NETSUITE_SUPPORTED_RESIDENCY_JURISDICTIONS = [
+  'US', 'United States', 'USA',
+  'EU', 'Europe', 'European Union',
+  'AU', 'Australia',
+];
+
+function buildLocalizationFlow(): FlowDefinition {
+  return {
+    id: 'LOCALIZATION',
+    label: 'Localization & SuiteSuccess',
+    description:
+      'SuiteSuccess country bundles per subsidiary, COA customization, statutory reporting frameworks, data residency / GDPR, multi-language UI, and country-specific localization SuiteApps beyond what SuiteSuccess covers.',
+    sections: [
+      {
+        id: 'bundles',
+        label: 'SuiteSuccess Bundles & Country COA',
+        order: 1,
+        questions: [
+          {
+            id: 'ns.localization.bundlePerSubsidiary',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "SuiteSuccess country bundle per subsidiary (one per line — '<subsidiary> | <bundle>'; use 'Custom — no bundle' for subsidiaries built without SuiteSuccess)",
+            help: {
+              title: 'SuiteSuccess country bundles',
+              body: 'SuiteSuccess preconfigures COA, tax codes, statutory reports, and forms for a country. Saves 4–8 weeks of base configuration per country. Custom = build everything from scratch (specialized engagements only).',
+            },
+          },
+          {
+            id: 'ns.localization.coaCustomScope',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Custom COA modifications planned beyond what SuiteSuccess provides? (one per line — 'Add: 2350-Withholding Tax Payable', 'Rename: 1100 → Cash & Equivalents', 'Remove: 1500-Office Supplies (consolidate into 1490)')",
+            help: {
+              title: 'COA customization',
+              body: 'Common — every implementation tweaks the bundled COA. Capture changes here so Phase 4 builds them as a configuration task, not a discovery surprise.',
+            },
+          },
+          {
+            id: 'ns.localization.countrySpecificGlAccounts',
+            inputType: 'BOOLEAN',
+            required: true,
+            label:
+              'Country-specific GL accounts required? (e.g., Egypt ETA-mandated accounts, KSA ZATCA-mandated accounts, India GST-input/output accounts)',
+          },
+          {
+            id: 'ns.localization.fiscalCalendarPerSubsidiary',
+            inputType: 'BOOLEAN',
+            required: true,
+            label:
+              'Different fiscal calendars per subsidiary? (e.g., US sub on 01-01, UK sub on 04-06, AU sub on 07-01)',
+          },
+        ],
+      },
+      {
+        id: 'statutory',
+        label: 'Statutory Reporting per Country',
+        order: 2,
+        questions: [
+          {
+            id: 'ns.localization.statutoryReports',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Statutory reports per country (one per line — '<country>: <report names>'; e.g., 'US: 1099-NEC, 1099-MISC, FBAR', 'UK: VAT 100, Corporation Tax CT600, P11D', 'AU: BAS, IAS, FBT', 'DE: USt-VA, ZM, ELSTER')",
+          },
+          {
+            id: 'ns.localization.taxReportingSuiteApps',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Tax Reporting Framework SuiteApps to activate (one per line — 'US Tax Reports', 'UK MTD VAT (Making Tax Digital)', 'EU SAF-T', 'Australia BAS', 'Saudi ZATCA Reports', 'Italy IVA Reports')",
+            help: {
+              title: 'Tax Reporting Framework SuiteApps',
+              body: 'Country-specific Tax Reporting Framework SuiteApps from NetSuite. Without one, statutory reports must be built manually from Saved Searches — typically 4–6 weeks per country. Activate the SuiteApp instead where available.',
+            },
+          },
+          {
+            id: 'ns.localization.auditTrailRequired',
+            inputType: 'BOOLEAN',
+            required: true,
+            label:
+              'Audit trail requirements? (SOX, GDPR Article 30 records of processing, country-specific audit log retention)',
+          },
+          {
+            id: 'ns.localization.periodLockPerSubsidiary',
+            inputType: 'BOOLEAN',
+            required: true,
+            label:
+              'Period lock dates per subsidiary (different lock cadences for different country regulatory requirements)',
+          },
+        ],
+      },
+      {
+        id: 'datasovereignty',
+        label: 'Data Residency & Privacy',
+        order: 3,
+        questions: [
+          {
+            id: 'ns.localization.dataResidencyRequired',
+            inputType: 'BOOLEAN',
+            required: true,
+            label:
+              'Are there legal data-residency requirements? (data must reside in a specific country/region — e.g., Saudi PDPL, China DSL, Russia)',
+          },
+          {
+            id: 'ns.localization.dataResidencyJurisdiction',
+            inputType: 'TEXT',
+            required: false,
+            label:
+              "If yes — required jurisdiction (e.g., 'Saudi Arabia', 'European Union', 'Australia')",
+            dependsOn: { questionId: 'ns.localization.dataResidencyRequired', value: true },
+            help: {
+              title: 'NetSuite data center regions',
+              body: "NetSuite has data centers in US (multiple regions), EU (Dublin/Amsterdam), Australia (Sydney). Data residency requirements outside these regions may not be servable on standard NetSuite — confirm with NetSuite Account Centre.",
+            },
+          },
+          {
+            id: 'ns.localization.gdprApplicable',
+            inputType: 'BOOLEAN',
+            required: true,
+            label:
+              'GDPR or equivalent applicable? (UAE PDPL, Saudi PDPL, Brazil LGPD, India DPDP, etc.)',
+          },
+          {
+            id: 'ns.localization.dpaSignedWithNetsuite',
+            inputType: 'SINGLE_SELECT',
+            required: false,
+            label: 'DPA (Data Processing Agreement) signed with NetSuite/Oracle for the relevant jurisdictions?',
+            dependsOn: { questionId: 'ns.localization.gdprApplicable', value: true },
+            options: [
+              { value: 'YES', label: 'Yes — DPA signed and on file' },
+              { value: 'IN_PROGRESS', label: 'In progress — DPA being negotiated' },
+              { value: 'NO', label: 'No — not yet started' },
+              { value: 'N_A', label: 'Not applicable' },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'languages',
+        label: 'Languages & Localization SuiteApps',
+        order: 4,
+        questions: [
+          {
+            id: 'ns.localization.uiLanguages',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "UI languages required (one per line, ISO 639-1 codes — e.g., 'en — English', 'ar — Arabic', 'fr — French', 'de — German', 'es — Spanish', 'zh — Chinese')",
+          },
+          {
+            id: 'ns.localization.languagesPerSubsidiary',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "If multi-subsidiary — primary language per subsidiary (one per line — '<subsidiary> | <language>')",
+          },
+          {
+            id: 'ns.localization.localizationSuiteApps',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Other country-specific localization SuiteApps beyond SuiteSuccess and Tax Reporting Framework (one per line — e.g., 'Egypt ETA SuiteApp (partner)', 'Saudi ZATCA Phase 2 SuiteApp (partner)', 'India GSTN connector', 'Mexico Compliance SuiteApp')",
+          },
+          {
+            id: 'ns.localization.customLocalizationDev',
+            inputType: 'BOOLEAN',
+            required: true,
+            label:
+              'Custom localization development required? (for countries without SuiteApp coverage — e.g., e-invoicing for an unsupported country, country-specific WHT calculation)',
           },
         ],
       },
@@ -1085,6 +1288,193 @@ const rules: RulePack = {
         all: [
           { answerTruthy: { questionId: 'ns.tax.reverseChargeInScope' } },
           { not: { answerEquals: { questionId: 'ns.foundation.edition', value: 'ONEWORLD' } } },
+        ],
+      },
+    },
+
+    // ── NS Pack 3 — Localization & SuiteSuccess rules ─────────────────────
+
+    // R1: Custom bundle (no SuiteSuccess) on Mid-Market+ adds 4–8 weeks
+    // of base configuration per affected subsidiary.
+    //
+    // Implementation note: spec calls for "bundlePerSubsidiary contains
+    // 'Custom'" — DSL has no string-contains operator. Pragmatic
+    // fallback: fire whenever multi-subsidiary paid-edition engagement
+    // has any populated bundle list. Over-broad but WARN-level so
+    // dismissable when all listed bundles are real SuiteSuccess names.
+    // The 'contains Custom' check is a future enhancement once the
+    // SDK gains a string-contains condition.
+    {
+      id: 'ns.localization.custom-bundle-on-mid-market-or-above-warn',
+      type: 'DATA_WARNING',
+      severity: 'WARN',
+      questionIds: ['ns.localization.bundlePerSubsidiary', 'ns.foundation.edition'],
+      message: 'Custom bundle (no SuiteSuccess) on Mid-Market or above edition typically adds 4–8 weeks of base configuration per affected subsidiary. Confirm this is intentional.',
+      resolution: 'If a SuiteSuccess country bundle exists for this country, strongly prefer it — the cost difference is typically negligible vs the time saved. Custom is correct only for countries without bundle coverage or specialized verticals.',
+      when: {
+        all: [
+          { answerNumberGreaterThan: { questionId: 'ns.foundation.subsidiaryCount', value: 1 } },
+          { answerTruthy: { questionId: 'ns.localization.bundlePerSubsidiary' } },
+          { answerIn: {
+            questionId: 'ns.foundation.edition',
+            values: ['MID_MARKET', 'ENTERPRISE', 'ONEWORLD'],
+          } },
+        ],
+      },
+    },
+
+    // R2: Multi-subsidiary OneWorld engagement but no per-subsidiary
+    // SuiteSuccess bundle list captured.
+    {
+      id: 'ns.localization.bundle-list-must-cover-all-subsidiaries',
+      type: 'DATA_WARNING',
+      severity: 'WARN',
+      questionIds: ['ns.foundation.subsidiaryCount', 'ns.localization.bundlePerSubsidiary'],
+      message: 'Multi-subsidiary OneWorld engagement but no per-subsidiary SuiteSuccess bundle list captured.',
+      resolution: "List each subsidiary with its SuiteSuccess bundle (or 'Custom — no bundle'). NetSuite Phase 4 provisions one subsidiary at a time using the listed bundle.",
+      when: {
+        all: [
+          { answerNumberGreaterThan: { questionId: 'ns.foundation.subsidiaryCount', value: 1 } },
+          { answerFalsy: { questionId: 'ns.localization.bundlePerSubsidiary' } },
+        ],
+      },
+    },
+
+    // R3: Statutory reports listed but no Tax Reporting Framework
+    // SuiteApp activated. Manual build = 4–6 weeks per country.
+    {
+      id: 'ns.localization.statutory-reports-need-framework',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: ['ns.localization.statutoryReports', 'ns.localization.taxReportingSuiteApps'],
+      message: 'Statutory reports listed but no Tax Reporting Framework SuiteApps activated. Without a framework SuiteApp, statutory reports must be built manually from Saved Searches — typically 4–6 weeks per country.',
+      resolution: 'Either (a) activate the corresponding Tax Reporting Framework SuiteApp per country (recommended; saves weeks), OR (b) document the manual-build approach explicitly with timeline and budget impact.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'ns.localization.statutoryReports' } },
+          { answerFalsy: { questionId: 'ns.localization.taxReportingSuiteApps' } },
+        ],
+      },
+    },
+
+    // R4: GDPR Article 28 requires a written DPA with the processor
+    // before personal data is processed. Fires when GDPR is applicable
+    // AND DPA is NO or unset.
+    {
+      id: 'ns.localization.gdpr-needs-dpa',
+      type: 'CONFIG_CONFLICT',
+      severity: 'BLOCK',
+      questionIds: ['ns.localization.gdprApplicable', 'ns.localization.dpaSignedWithNetsuite'],
+      message: 'GDPR or equivalent privacy regulation applicable but no DPA signed with NetSuite. GDPR Article 28 requires a written DPA with the processor before personal data is processed.',
+      resolution: "Add DPA negotiation as a Phase 1 dependency in the implementation plan. NetSuite's standard DPA template is available from Oracle Legal — typically 2–4 weeks to negotiate and sign.",
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'ns.localization.gdprApplicable' } },
+          { any: [
+            { answerEquals: { questionId: 'ns.localization.dpaSignedWithNetsuite', value: 'NO' } },
+            { answerFalsy: { questionId: 'ns.localization.dpaSignedWithNetsuite' } },
+          ] },
+        ],
+      },
+    },
+
+    // R5: Data residency required in a jurisdiction outside NetSuite's
+    // supported regions (US / EU / Australia).
+    //
+    // Implementation note: spec calls for "does not match common
+    // NetSuite regions". DSL has no regex/contains, so we use
+    // NOT(answerIn(allowlist)) against a curated list of common
+    // jurisdiction strings (codes + full names). Anything outside the
+    // allow-list fires the WARN, including "Saudi Arabia", "China",
+    // "Russia", "India", etc.
+    {
+      id: 'ns.localization.data-residency-may-not-be-supported',
+      type: 'CONFIG_CONFLICT',
+      severity: 'WARN',
+      questionIds: ['ns.localization.dataResidencyRequired', 'ns.localization.dataResidencyJurisdiction'],
+      message: "Data residency required in a jurisdiction that may not be served by NetSuite's data centers. NetSuite has US, EU, and Australia regions; other jurisdictions (Saudi Arabia, China, Russia) may require alternative hosting or are not supported.",
+      resolution: 'Confirm with NetSuite Account Centre BEFORE contract signature whether the required residency is achievable. If not, NetSuite may not be the right ERP for this engagement.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'ns.localization.dataResidencyRequired' } },
+          { answerTruthy: { questionId: 'ns.localization.dataResidencyJurisdiction' } },
+          { not: { answerIn: {
+            questionId: 'ns.localization.dataResidencyJurisdiction',
+            values: NETSUITE_SUPPORTED_RESIDENCY_JURISDICTIONS,
+          } } },
+        ],
+      },
+    },
+
+    // R6: Multiple UI languages typically need OneWorld.
+    //
+    // Implementation note: spec calls for "uiLanguages contains 2 or
+    // more languages". DSL has no line-count operator. Pragmatic
+    // fallback: use languagesPerSubsidiary as the proxy signal — that
+    // field only gets populated for genuine multi-language engagements.
+    // Less noisy than firing on any populated uiLanguages field.
+    {
+      id: 'ns.localization.multi-language-needs-oneworld',
+      type: 'LICENSE_GAP',
+      severity: 'WARN',
+      questionIds: ['ns.localization.languagesPerSubsidiary', 'ns.foundation.edition'],
+      message: "Multiple UI languages required but edition isn't OneWorld. NetSuite multi-language is typically a OneWorld feature — single-subsidiary editions support one UI language.",
+      resolution: 'Upgrade edition to ONEWORLD if multiple languages are genuinely required, OR restrict scope to a single UI language.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'ns.localization.languagesPerSubsidiary' } },
+          { not: { answerEquals: { questionId: 'ns.foundation.edition', value: 'ONEWORLD' } } },
+        ],
+      },
+    },
+
+    // R7: Country-specific GL accounts flagged but no COA modification
+    // scope captured.
+    {
+      id: 'ns.localization.coa-custom-modifications-need-scope',
+      type: 'DATA_WARNING',
+      severity: 'WARN',
+      questionIds: ['ns.localization.coaCustomScope', 'ns.localization.countrySpecificGlAccounts'],
+      message: 'Country-specific GL accounts flagged but no COA modification scope captured.',
+      resolution: 'List the specific accounts to add/rename/remove per country. Phase 4 builds them as a one-shot bulk-update task; without the list, this work surfaces as scope creep mid-build.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'ns.localization.countrySpecificGlAccounts' } },
+          { answerFalsy: { questionId: 'ns.localization.coaCustomScope' } },
+        ],
+      },
+    },
+
+    // R8: Different fiscal calendars per subsidiary requires OneWorld.
+    {
+      id: 'ns.localization.fiscal-calendar-per-subsidiary-needs-oneworld',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: ['ns.localization.fiscalCalendarPerSubsidiary', 'ns.foundation.edition'],
+      message: 'Different fiscal calendars per subsidiary requires OneWorld. Single-subsidiary editions have one fiscal calendar.',
+      resolution: 'Upgrade edition to ONEWORLD, OR align all entities to a single fiscal calendar.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'ns.localization.fiscalCalendarPerSubsidiary' } },
+          { not: { answerEquals: { questionId: 'ns.foundation.edition', value: 'ONEWORLD' } } },
+        ],
+      },
+    },
+
+    // R9: Custom localization development typically needs more script
+    // governance than standard SuiteCloud allocates. INFO-level
+    // recommendation for SuiteCloud Plus.
+    {
+      id: 'ns.localization.custom-localization-dev-needs-suitecloud-plus',
+      type: 'DATA_WARNING',
+      severity: 'INFO',
+      questionIds: ['ns.localization.customLocalizationDev', 'ns.foundation.suiteCloudPlus'],
+      message: 'Custom localization development typically requires more script governance than the standard SuiteCloud package allocates. SuiteCloud Plus add-on is recommended.',
+      resolution: 'Add SuiteCloud Plus to license. Custom localization typically needs UE scripts, SS scripts, and RESTlets — script governance ceiling on standard SuiteCloud will be hit quickly during build.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'ns.localization.customLocalizationDev' } },
+          { answerFalsy: { questionId: 'ns.foundation.suiteCloudPlus' } },
         ],
       },
     },

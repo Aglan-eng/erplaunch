@@ -20,13 +20,17 @@ describe('netsuiteAdaptor: manifest', () => {
 });
 
 describe('netsuiteAdaptor: schema', () => {
-  it('exposes 7 flows in the canonical order — FOUNDATION + TAX, then the legacy 5', () => {
+  it('exposes 8 flows in the canonical order — FOUNDATION + TAX + LOCALIZATION + the legacy 5', () => {
     const ids = netsuiteAdaptor.schema.flows.map((f) => f.id);
-    // NS Pack 1 added FOUNDATION at the head; NS Pack 2 inserts TAX
-    // after FOUNDATION and before the legacy 5 (R2R / P2P / O2C /
-    // PRODUCTION / RETURNS). NetSuite keeps its native R2R/P2P/O2C
-    // terminology (unlike Odoo where they got restructured in Pack R).
-    expect(ids).toEqual(['FOUNDATION', 'TAX', 'R2R', 'P2P', 'O2C', 'PRODUCTION', 'RETURNS']);
+    // NS Pack 1 added FOUNDATION at the head.
+    // NS Pack 2 inserted TAX after FOUNDATION.
+    // NS Pack 3 inserts LOCALIZATION after TAX, before the legacy 5.
+    // NetSuite keeps its native R2R/P2P/O2C terminology (unlike Odoo
+    // where they got restructured in Pack R).
+    expect(ids).toEqual([
+      'FOUNDATION', 'TAX', 'LOCALIZATION',
+      'R2R', 'P2P', 'O2C', 'PRODUCTION', 'RETURNS',
+    ]);
   });
 
   it('every flow has at least one section with at least one question', () => {
@@ -201,13 +205,15 @@ describe('netsuiteAdaptor: NS Pack 1 — FOUNDATION flow shape', () => {
     expect(foundation!.description).toMatch(/edition|suitesuccess|user|country|subsidiary|fiscal/i);
   });
 
-  it('FOUNDATION renders as the first flow (before TAX, before R2R)', () => {
+  it('FOUNDATION renders as the first flow (before TAX, before LOCALIZATION, before R2R)', () => {
     const ids = netsuiteAdaptor.schema.flows.map((f) => f.id);
     expect(ids[0]).toBe('FOUNDATION');
-    // NS Pack 2 inserted TAX between FOUNDATION and R2R, so R2R now
-    // sits at index 2 instead of 1.
+    // NS Pack 2 inserted TAX (index 1).
+    // NS Pack 3 inserted LOCALIZATION between TAX and R2R, so R2R
+    // now sits at index 3.
     expect(ids.indexOf('TAX')).toBe(1);
-    expect(ids.indexOf('R2R')).toBe(2);
+    expect(ids.indexOf('LOCALIZATION')).toBe(2);
+    expect(ids.indexOf('R2R')).toBe(3);
   });
 
   it('renders four sections in the documented order', () => {
@@ -549,13 +555,13 @@ describe('netsuiteAdaptor: NS Pack 2 — TAX flow shape', () => {
     expect(tax!.description).toMatch(/suitetax|nexus|e-?invoicing|withholding|filing/i);
   });
 
-  it('TAX sits between FOUNDATION and R2R', () => {
+  it('TAX sits between FOUNDATION and LOCALIZATION (Pack 3 inserted LOCALIZATION after)', () => {
     const ids = netsuiteAdaptor.schema.flows.map((f) => f.id);
     const fIdx = ids.indexOf('FOUNDATION');
     const tIdx = ids.indexOf('TAX');
-    const r2rIdx = ids.indexOf('R2R');
+    const locIdx = ids.indexOf('LOCALIZATION');
     expect(tIdx).toBe(fIdx + 1);
-    expect(r2rIdx).toBe(tIdx + 1);
+    expect(locIdx).toBe(tIdx + 1);
   });
 
   it('renders four sections in the documented order', () => {
@@ -854,5 +860,338 @@ describe('netsuiteAdaptor: NS Pack 2 — Tax rule evaluation', () => {
       license: { edition: 'ONEWORLD', modules: [] },
     });
     expect(conflicts.map((c) => c.id)).not.toContain('ns.tax.reverse-charge-typical-on-oneworld');
+  });
+});
+
+// ─── NS Pack 3 — Localization & SuiteSuccess ─────────────────────────────────
+
+describe('netsuiteAdaptor: NS Pack 3 — LOCALIZATION flow shape', () => {
+  const loc = netsuiteAdaptor.schema.flows.find((f) => f.id === 'LOCALIZATION');
+
+  it('LOCALIZATION flow exists with the expected label + description', () => {
+    expect(loc).toBeDefined();
+    expect(loc!.label).toBe('Localization & SuiteSuccess');
+    expect(loc!.description).toMatch(/suitesuccess|coa|statutory|residency|gdpr|language|localization/i);
+  });
+
+  it('LOCALIZATION sits between TAX and R2R', () => {
+    const ids = netsuiteAdaptor.schema.flows.map((f) => f.id);
+    const tIdx = ids.indexOf('TAX');
+    const lIdx = ids.indexOf('LOCALIZATION');
+    const r2rIdx = ids.indexOf('R2R');
+    expect(lIdx).toBe(tIdx + 1);
+    expect(r2rIdx).toBe(lIdx + 1);
+  });
+
+  it('renders four sections in the documented order', () => {
+    const ids = (loc!.sections as Array<{ id: string; order: number }>)
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .map((s) => s.id);
+    expect(ids).toEqual(['bundles', 'statutory', 'datasovereignty', 'languages']);
+  });
+
+  it('SuiteSuccess Bundles & Country COA — 4 questions with the right ids + types', () => {
+    const sec = loc!.sections.find((s) => s.id === 'bundles')!;
+    expect(sec.label).toBe('SuiteSuccess Bundles & Country COA');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('ns.localization.bundlePerSubsidiary')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('ns.localization.coaCustomScope')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('ns.localization.countrySpecificGlAccounts')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('ns.localization.fiscalCalendarPerSubsidiary')?.inputType).toBe('BOOLEAN');
+  });
+
+  it('Statutory Reporting per Country — 4 questions with the right ids + types', () => {
+    const sec = loc!.sections.find((s) => s.id === 'statutory')!;
+    expect(sec.label).toBe('Statutory Reporting per Country');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('ns.localization.statutoryReports')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('ns.localization.taxReportingSuiteApps')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('ns.localization.auditTrailRequired')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('ns.localization.periodLockPerSubsidiary')?.inputType).toBe('BOOLEAN');
+  });
+
+  it('Data Residency & Privacy — 4 questions with the right ids + types + options', () => {
+    const sec = loc!.sections.find((s) => s.id === 'datasovereignty')!;
+    expect(sec.label).toBe('Data Residency & Privacy');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('ns.localization.dataResidencyRequired')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('ns.localization.dataResidencyJurisdiction')?.inputType).toBe('TEXT');
+    expect(byId.get('ns.localization.gdprApplicable')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('ns.localization.dpaSignedWithNetsuite')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('ns.localization.dpaSignedWithNetsuite')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['IN_PROGRESS', 'NO', 'N_A', 'YES']);
+  });
+
+  it('Languages & Localization SuiteApps — 4 questions with the right ids + types', () => {
+    const sec = loc!.sections.find((s) => s.id === 'languages')!;
+    expect(sec.label).toBe('Languages & Localization SuiteApps');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('ns.localization.uiLanguages')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('ns.localization.languagesPerSubsidiary')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('ns.localization.localizationSuiteApps')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('ns.localization.customLocalizationDev')?.inputType).toBe('BOOLEAN');
+  });
+});
+
+describe('netsuiteAdaptor: NS Pack 3 — Localization rules registered in netsuite-rules', () => {
+  const ids = netsuiteAdaptor.rules.rules.map((r) => r.id);
+
+  it('R1 custom bundle on Mid-Market+ (WARN)', () => {
+    expect(ids).toContain('ns.localization.custom-bundle-on-mid-market-or-above-warn');
+  });
+  it('R2 bundle list must cover all subsidiaries', () => {
+    expect(ids).toContain('ns.localization.bundle-list-must-cover-all-subsidiaries');
+  });
+  it('R3 statutory reports need framework', () => {
+    expect(ids).toContain('ns.localization.statutory-reports-need-framework');
+  });
+  it('R4 GDPR needs DPA', () => {
+    expect(ids).toContain('ns.localization.gdpr-needs-dpa');
+  });
+  it('R5 data residency may not be supported', () => {
+    expect(ids).toContain('ns.localization.data-residency-may-not-be-supported');
+  });
+  it('R6 multi-language needs OneWorld', () => {
+    expect(ids).toContain('ns.localization.multi-language-needs-oneworld');
+  });
+  it('R7 COA custom modifications need scope', () => {
+    expect(ids).toContain('ns.localization.coa-custom-modifications-need-scope');
+  });
+  it('R8 fiscal calendar per subsidiary needs OneWorld', () => {
+    expect(ids).toContain('ns.localization.fiscal-calendar-per-subsidiary-needs-oneworld');
+  });
+  it('R9 custom localization dev needs SuiteCloud Plus (INFO)', () => {
+    expect(ids).toContain('ns.localization.custom-localization-dev-needs-suitecloud-plus');
+  });
+});
+
+describe('netsuiteAdaptor: NS Pack 3 — Localization rule evaluation', () => {
+  it('R1 fires (WARN) when multi-sub paid edition has populated bundle list (DSL has no contains operator; pragmatic over-broad fallback)', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.foundation.subsidiaryCount': 3,
+        'ns.foundation.edition': 'ONEWORLD',
+        'ns.localization.bundlePerSubsidiary': 'Atlas US Inc. | Custom — no bundle\nAtlas UK Ltd. | UK',
+      },
+      license: { edition: 'ONEWORLD', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'ns.localization.custom-bundle-on-mid-market-or-above-warn');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R1 does NOT fire on STARTER edition', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.foundation.subsidiaryCount': 3,
+        'ns.foundation.edition': 'STARTER',
+        'ns.localization.bundlePerSubsidiary': 'Sub A | Custom',
+      },
+      license: { edition: 'STARTER', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('ns.localization.custom-bundle-on-mid-market-or-above-warn');
+  });
+
+  it('R1 does NOT fire on single-subsidiary engagements', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.foundation.subsidiaryCount': 1,
+        'ns.foundation.edition': 'MID_MARKET',
+        'ns.localization.bundlePerSubsidiary': 'US',
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('ns.localization.custom-bundle-on-mid-market-or-above-warn');
+  });
+
+  it('R2 fires (WARN) when subsidiaryCount>1 AND bundlePerSubsidiary empty', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.foundation.subsidiaryCount': 3,
+        'ns.localization.bundlePerSubsidiary': '',
+      },
+      license: { edition: 'ONEWORLD', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'ns.localization.bundle-list-must-cover-all-subsidiaries');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R3 fires (BLOCK) when statutoryReports populated AND taxReportingSuiteApps empty', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.localization.statutoryReports': 'US: 1099-NEC, FBAR\nUK: VAT 100',
+        'ns.localization.taxReportingSuiteApps': '',
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'ns.localization.statutory-reports-need-framework');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R3 does NOT fire when taxReportingSuiteApps is populated', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.localization.statutoryReports': 'US: 1099-NEC',
+        'ns.localization.taxReportingSuiteApps': 'US Tax Reports',
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('ns.localization.statutory-reports-need-framework');
+  });
+
+  it('R4 fires (BLOCK) when gdprApplicable=true AND dpaSignedWithNetsuite=NO', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.localization.gdprApplicable': true,
+        'ns.localization.dpaSignedWithNetsuite': 'NO',
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'ns.localization.gdpr-needs-dpa');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R4 fires (BLOCK) when gdprApplicable=true AND dpaSignedWithNetsuite is unset', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: { 'ns.localization.gdprApplicable': true },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).toContain('ns.localization.gdpr-needs-dpa');
+  });
+
+  it('R4 does NOT fire when DPA is signed (YES)', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.localization.gdprApplicable': true,
+        'ns.localization.dpaSignedWithNetsuite': 'YES',
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('ns.localization.gdpr-needs-dpa');
+  });
+
+  it('R5 fires (WARN) when residency required AND jurisdiction is outside US/EU/AU regions', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.localization.dataResidencyRequired': true,
+        'ns.localization.dataResidencyJurisdiction': 'Saudi Arabia',
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'ns.localization.data-residency-may-not-be-supported');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R5 does NOT fire when jurisdiction is in the supported allow-list (e.g., "European Union")', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.localization.dataResidencyRequired': true,
+        'ns.localization.dataResidencyJurisdiction': 'European Union',
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('ns.localization.data-residency-may-not-be-supported');
+  });
+
+  it('R6 fires (WARN) when languagesPerSubsidiary populated AND edition !== ONEWORLD', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.localization.languagesPerSubsidiary': 'Sub A | en\nSub B | de',
+        'ns.foundation.edition': 'MID_MARKET',
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'ns.localization.multi-language-needs-oneworld');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R6 does NOT fire on ONEWORLD edition', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.localization.languagesPerSubsidiary': 'Sub A | en\nSub B | de',
+        'ns.foundation.edition': 'ONEWORLD',
+      },
+      license: { edition: 'ONEWORLD', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('ns.localization.multi-language-needs-oneworld');
+  });
+
+  it('R7 fires (WARN) when countrySpecificGlAccounts=true AND coaCustomScope empty', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.localization.countrySpecificGlAccounts': true,
+        'ns.localization.coaCustomScope': '',
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'ns.localization.coa-custom-modifications-need-scope');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R7 does NOT fire when coaCustomScope is populated', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.localization.countrySpecificGlAccounts': true,
+        'ns.localization.coaCustomScope': 'Add: 2350-Withholding Tax Payable',
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('ns.localization.coa-custom-modifications-need-scope');
+  });
+
+  it('R8 fires (BLOCK) when fiscalCalendarPerSubsidiary=true AND edition !== ONEWORLD', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.localization.fiscalCalendarPerSubsidiary': true,
+        'ns.foundation.edition': 'ENTERPRISE',
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'ns.localization.fiscal-calendar-per-subsidiary-needs-oneworld');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R8 does NOT fire on ONEWORLD edition', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.localization.fiscalCalendarPerSubsidiary': true,
+        'ns.foundation.edition': 'ONEWORLD',
+      },
+      license: { edition: 'ONEWORLD', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('ns.localization.fiscal-calendar-per-subsidiary-needs-oneworld');
+  });
+
+  it('R9 fires (INFO) when customLocalizationDev=true AND suiteCloudPlus=false', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.localization.customLocalizationDev': true,
+        'ns.foundation.suiteCloudPlus': false,
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'ns.localization.custom-localization-dev-needs-suitecloud-plus');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('INFO');
+  });
+
+  it('R9 does NOT fire when SuiteCloud Plus is in scope', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.localization.customLocalizationDev': true,
+        'ns.foundation.suiteCloudPlus': true,
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('ns.localization.custom-localization-dev-needs-suitecloud-plus');
   });
 });
