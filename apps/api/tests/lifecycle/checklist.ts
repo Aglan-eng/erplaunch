@@ -361,6 +361,84 @@ const PHASE_4_BUILD: Phase = {
         return count > 0 || true;
       },
     },
+    // ── Pack H — Custom Forms (Transaction + Entry) ──
+    // Custom forms emit one custform_<client>_<recordtype>.xml per
+    // parent record that has at least one Pack B custom field. All
+    // NetSuite-only — Odoo SKIPs the trio.
+    //
+    // The "emitted" checks are conditional on Pack B having parsed at
+    // least one transaction-side / entity-side parent. Vacuous-truth
+    // when no such parent appears in the wizard answer.
+    {
+      id: 'p4.sdf-transaction-forms-emitted',
+      description:
+        'When customFieldsScope mentions a transaction parent, ≥1 custform_*_<txn>.xml exists',
+      applicable: onlyNetSuite,
+      evaluator: (s) => {
+        // First — any custom field at all on a transaction parent?
+        // Detected by scanning Pack B's emitted custbody_*.xml files
+        // (only transaction-side fields use the custbody_ prefix in
+        // the Pack B field generator's output).
+        let hasTxnCustomField = false;
+        for (const key of s.buildArtefacts.keys()) {
+          if (/^SDF\/Objects\/custbody_[a-z0-9_]+\.xml$/.test(key)) {
+            hasTxnCustomField = true;
+            break;
+          }
+        }
+        if (!hasTxnCustomField) return true; // vacuous-truth: no fields → no forms expected
+        // Then — at least one transaction form emitted? Recordtype
+        // suffixes from sdfTransactionFormGenerator's table:
+        // salesord / purchord / invoice / vendbill / journalentry / itemrcpt.
+        for (const key of s.buildArtefacts.keys()) {
+          if (/^SDF\/Objects\/custform_[a-z0-9_]+_(salesord|purchord|invoice|vendbill|journalentry|itemrcpt)\.xml$/.test(key)) {
+            return true;
+          }
+        }
+        return false;
+      },
+    },
+    {
+      id: 'p4.sdf-entry-forms-emitted',
+      description:
+        'When customFieldsScope mentions an entity parent, ≥1 custform_*_<entity>.xml exists',
+      applicable: onlyNetSuite,
+      evaluator: (s) => {
+        // Any entity-side custom field? custentity_*.xml or custitem_*.xml.
+        let hasEntityCustomField = false;
+        for (const key of s.buildArtefacts.keys()) {
+          if (/^SDF\/Objects\/(custentity|custitem)_[a-z0-9_]+\.xml$/.test(key)) {
+            hasEntityCustomField = true;
+            break;
+          }
+        }
+        if (!hasEntityCustomField) return true; // vacuous-truth pass
+        for (const key of s.buildArtefacts.keys()) {
+          if (/^SDF\/Objects\/custform_[a-z0-9_]+_(customer|vendor|item|employee)\.xml$/.test(key)) {
+            return true;
+          }
+        }
+        return false;
+      },
+    },
+    {
+      id: 'p4.sdf-form-includes-custom-field',
+      description:
+        'At least one emitted custform_*.xml contains a <field><id>cust(body|entity|item)_*</id></field> reference (forms actually embed Pack B fields, not empty containers)',
+      applicable: onlyNetSuite,
+      evaluator: (s) => {
+        let formCount = 0;
+        for (const [key, content] of s.buildArtefacts.entries()) {
+          if (!/^SDF\/Objects\/custform_[a-z0-9_]+\.xml$/.test(key)) continue;
+          formCount++;
+          if (/<id>cust(body|entity|item)_[a-z0-9_]+<\/id>/.test(content)) {
+            return true;
+          }
+        }
+        // Vacuous-truth: no forms emitted = no requirement to embed fields.
+        return formCount === 0;
+      },
+    },
   ],
 };
 

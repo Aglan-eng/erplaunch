@@ -12,6 +12,8 @@ import { generateSdfDeploy } from './generators/sdfDeployGenerator.js';
 import { generatePoApprovalScript } from './generators/sdfPoApprovalScriptGenerator.js';
 import { generateSdfCustomFields } from './generators/sdfCustomFieldsGenerator.js';
 import { generateSdfCustomList } from './generators/sdfCustomListGenerator.js';
+import { generateTransactionForms } from './generators/sdfTransactionFormGenerator.js';
+import { generateEntryForms } from './generators/sdfEntryFormGenerator.js';
 import { validateSDFBundle, isValidationEnabled } from './generators/sdfValidator.js';
 import { generateScripts } from './generators/scriptGenerator.js';
 import { generateRiskRegister } from './generators/riskGenerator.js';
@@ -298,6 +300,26 @@ export async function processJob(jobId: string, db: DbModule) {
         });
         sdfFiles[`Objects/${field.selectListScriptid}.xml`] = listXml;
       }
+
+      // Pack H — Custom Forms (Transaction + Entry). Purely derivative
+      // from Pack B's custom field map: re-parses the same wizard
+      // answer and emits one transactionform / entryform XML per
+      // parent record that has at least one Pack B custom field. Each
+      // form embeds those fields under a "Custom Fields" fieldgroup so
+      // the consultant doesn't have to drag them onto stock forms
+      // manually after deploy.
+      const txnFormsResult = generateTransactionForms({
+        customFieldsScope: answers['ns.design.customFieldsScope'] as string | undefined,
+        clientName: eng.clientName as string,
+        poApprovalInScope: willEmitPoScript,
+      });
+      Object.assign(sdfFiles, txnFormsResult.files);
+
+      const entryFormsResult = generateEntryForms({
+        customFieldsScope: answers['ns.design.customFieldsScope'] as string | undefined,
+        clientName: eng.clientName as string,
+      });
+      Object.assign(sdfFiles, entryFormsResult.files);
 
       // Manifest + deploy fallback: every ACP needs a manifest.xml and a
       // deploy.xml at the SDF root for SuiteCloud CLI to push the bundle.

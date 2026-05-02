@@ -29,6 +29,8 @@ import { generateSdfDeploy } from '../src/services/generators/sdfDeployGenerator
 import { generatePoApprovalScript } from '../src/services/generators/sdfPoApprovalScriptGenerator.js';
 import { generateSdfCustomFields } from '../src/services/generators/sdfCustomFieldsGenerator.js';
 import { generateSdfCustomList } from '../src/services/generators/sdfCustomListGenerator.js';
+import { generateTransactionForms } from '../src/services/generators/sdfTransactionFormGenerator.js';
+import { generateEntryForms } from '../src/services/generators/sdfEntryFormGenerator.js';
 import { validateSDFBundle } from '../src/services/generators/sdfValidator.js';
 import netsuiteAdaptor from '@ofoq/adaptor-netsuite';
 
@@ -396,14 +398,32 @@ for (const field of customFieldsResult.emitted) {
   });
 }
 
+// Pack H — Custom Forms (Transaction + Entry). Purely derivative from
+// Pack B: re-parses the same customFieldsScope and emits one
+// transactionform / entryform XML per parent that has at least one
+// custom field declared. The PO form auto-includes the
+// custbody_nsix_required_approver field when the PO User Event script
+// is in scope.
+const txnFormsResult = generateTransactionForms({
+  customFieldsScope: answers['ns.design.customFieldsScope'] as string | undefined,
+  clientName,
+  poApprovalInScope: willEmitPoScript,
+});
+const entryFormsResult = generateEntryForms({
+  customFieldsScope: answers['ns.design.customFieldsScope'] as string | undefined,
+  clientName,
+});
+
 // Single validator pass over the WHOLE SDF bundle so manifest / deploy /
-// customrecord / custom-field / customlist errors all surface together.
+// customrecord / custom-field / customlist / form errors all surface together.
 const allSdfFiles: Record<string, string> = {
   'manifest.xml': manifestXml,
   'deploy.xml': deployXml,
   ...customRecordsResult.files,
   ...customFieldsResult.files,
   ...selectFieldsCustomLists,
+  ...txnFormsResult.files,
+  ...entryFormsResult.files,
 };
 const validation = validateSDFBundle(allSdfFiles);
 if (!validation.ok) {
@@ -437,6 +457,20 @@ for (const [relPath, content] of Object.entries(customFieldsResult.files)) {
 }
 
 for (const [relPath, content] of Object.entries(selectFieldsCustomLists)) {
+  const fullPath = path.join(sdfRoot, relPath);
+  await fs.mkdir(path.dirname(fullPath), { recursive: true });
+  await fs.writeFile(fullPath, content, 'utf8');
+  process.stdout.write(`  ✓ SDF/${relPath}\n`);
+}
+
+for (const [relPath, content] of Object.entries(txnFormsResult.files)) {
+  const fullPath = path.join(sdfRoot, relPath);
+  await fs.mkdir(path.dirname(fullPath), { recursive: true });
+  await fs.writeFile(fullPath, content, 'utf8');
+  process.stdout.write(`  ✓ SDF/${relPath}\n`);
+}
+
+for (const [relPath, content] of Object.entries(entryFormsResult.files)) {
   const fullPath = path.join(sdfRoot, relPath);
   await fs.mkdir(path.dirname(fullPath), { recursive: true });
   await fs.writeFile(fullPath, content, 'utf8');
@@ -488,7 +522,9 @@ console.log(
     `${customRecordsResult.emitted.length} customrecord(s) + ` +
     `${customRecordsResult.emitted.length} status customlist(s) + ` +
     `${customFieldsResult.emitted.length} custom field(s) + ` +
-    `${Object.keys(selectFieldsCustomLists).length} SELECT companion customlist(s)`,
+    `${Object.keys(selectFieldsCustomLists).length} SELECT companion customlist(s) + ` +
+    `${Object.keys(txnFormsResult.files).length} transaction form(s) + ` +
+    `${Object.keys(entryFormsResult.files).length} entry form(s)`,
 );
 if (missingTerms === 0) {
   // eslint-disable-next-line no-console
