@@ -83,9 +83,207 @@ function buildSchema(): QuestionnaireSchema {
 
   return {
     version: '1.0.0',
-    flows: ['R2R', 'P2P', 'O2C', 'PRODUCTION', 'RETURNS']
-      .map((id) => flows[id])
-      .filter((f): f is FlowDefinition => !!f),
+    // NS Pack 1 — FOUNDATION flow renders FIRST so the consultant locks
+    // in edition / OneWorld / SuiteSuccess / sandbox / user counts /
+    // subsidiary structure before R2R/P2P/O2C/MFG/RTN. Unlike the Odoo
+    // adaptor (where R2R/P2P/O2C were NetSuite-cargo-cult and got
+    // restructured in Pack R), NetSuite's R2R/P2P/O2C terminology is
+    // native — those flows stay.
+    flows: [
+      buildFoundationFlow(),
+      ...['R2R', 'P2P', 'O2C', 'PRODUCTION', 'RETURNS']
+        .map((id) => flows[id])
+        .filter((f): f is FlowDefinition => !!f),
+    ],
+  };
+}
+
+// ─── NS Pack 1 — Foundation & Account Type ───────────────────────────────────
+//
+// 16 questions across 4 sections:
+//   - edition       (4): NetSuite edition (Starter / Standard / Mid-Market /
+//                        Enterprise / OneWorld / Financials First),
+//                        SuiteSuccess country bundle, SuiteCloud Plus add-on,
+//                        sandbox account.
+//   - users         (4): full user count, ESS user count, custom roles,
+//                        SSO in scope.
+//   - country       (4): primary country, fiscal year start, Multi-Book
+//                        Accounting, Advanced Revenue Management (ARM).
+//   - subsidiaries  (4): subsidiary count, subsidiary list, multi-currency,
+//                        elimination entity (for consolidation).
+//
+// Sources: NetSuite Editions (Oracle docs), OneWorld + multi-subsidiary,
+// SuiteSuccess methodology + country bundles, Multi-Book Accounting
+// SuiteApp, Advanced Revenue Management (ARM — ASC 606 / IFRS 15),
+// SuiteCloud Plus license tiers.
+function buildFoundationFlow(): FlowDefinition {
+  return {
+    id: 'FOUNDATION',
+    label: 'Project Foundation',
+    description:
+      'NetSuite edition, SuiteSuccess country bundle, account-type and add-ons, user counts, country, subsidiary structure, and fiscal calendar — the decisions that gate everything downstream.',
+    sections: [
+      {
+        id: 'edition',
+        label: 'Edition & Account Type',
+        order: 1,
+        questions: [
+          {
+            id: 'ns.foundation.edition',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'NetSuite edition',
+            options: [
+              { value: 'STARTER', label: 'Starter (SuiteSuccess Starter — small business, single subsidiary)' },
+              { value: 'STANDARD', label: 'Standard / Limited Edition (single subsidiary, ≤10 full users)' },
+              { value: 'MID_MARKET', label: 'Mid-Market (single subsidiary, larger user count, no multi-currency)' },
+              { value: 'ENTERPRISE', label: 'Enterprise (single subsidiary, all features except OneWorld)' },
+              { value: 'ONEWORLD', label: 'OneWorld (required for multi-subsidiary, multi-currency, multi-language, intercompany)' },
+              { value: 'FINANCIALS_FIRST', label: 'SuiteSuccess Financials First (accounting-only entry point)' },
+            ],
+          },
+          {
+            id: 'ns.foundation.suiteSuccessBundle',
+            inputType: 'TEXT',
+            required: true,
+            label:
+              "SuiteSuccess country bundle (e.g., 'US', 'UK', 'Australia', 'Canada', 'Germany', or 'Custom — no SuiteSuccess')",
+            help: {
+              title: 'SuiteSuccess country bundles',
+              body: 'SuiteSuccess bundles preconfigure COA, tax codes, statutory reports, and forms for a country. Saves 4–8 weeks of base configuration. Custom = build everything from scratch.',
+            },
+          },
+          {
+            id: 'ns.foundation.suiteCloudPlus',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'SuiteCloud Plus add-on in scope?',
+            help: {
+              title: 'SuiteCloud Plus',
+              body: 'SuiteCloud Plus = more script-governance units, more concurrent integrations, more web-services calls. Required for any non-trivial integration or custom-script footprint.',
+            },
+          },
+          {
+            id: 'ns.foundation.sandboxAccount',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'Sandbox account in scope? (full-copy or release-preview)',
+            options: [
+              { value: 'FULL_COPY', label: 'Full-copy sandbox (data + customizations refreshed periodically)' },
+              { value: 'RELEASE_PREVIEW', label: 'Release Preview only (early access to upcoming releases, no full data)' },
+              { value: 'BOTH', label: 'Both Full-copy + Release Preview' },
+              { value: 'NONE', label: 'No sandbox (production-only — strongly discouraged for non-trivial work)' },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'users',
+        label: 'Users & Access',
+        order: 2,
+        questions: [
+          {
+            id: 'ns.foundation.fullUserCount',
+            inputType: 'NUMBER',
+            required: true,
+            label: 'Full user count at go-live (named users with full UI access)',
+          },
+          {
+            id: 'ns.foundation.essUserCount',
+            inputType: 'NUMBER',
+            required: true,
+            label:
+              'Employee Self-Service (ESS) user count (limited UI: time entry, expense reports, leave requests)',
+            help: {
+              title: 'ESS users',
+              body: 'ESS users license at ~10% of full-user cost. Use for distributed workforces where most employees only enter time/expenses.',
+            },
+          },
+          {
+            id: 'ns.foundation.customRolesRequired',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'Custom roles required beyond the ~50 standard NetSuite roles?',
+          },
+          {
+            id: 'ns.foundation.ssoInScope',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'Single Sign-On (SAML / OIDC) in scope?',
+          },
+        ],
+      },
+      {
+        id: 'country',
+        label: 'Country & Fiscal Calendar',
+        order: 3,
+        questions: [
+          {
+            id: 'ns.foundation.primaryCountry',
+            inputType: 'TEXT',
+            required: true,
+            label: 'Primary country of operation (ISO 3166 alpha-2 — e.g., US, GB, AU, AE, EG)',
+          },
+          {
+            id: 'ns.foundation.fiscalYearStart',
+            inputType: 'TEXT',
+            required: true,
+            label: "Fiscal year start (MM-DD, e.g., '01-01' or '07-01')",
+          },
+          {
+            id: 'ns.foundation.multiBookAccounting',
+            inputType: 'BOOLEAN',
+            required: true,
+            label:
+              'Multi-Book Accounting in scope? (parallel ledgers — e.g., IFRS + US GAAP, statutory + management)',
+            help: {
+              title: 'Multi-Book Accounting',
+              body: 'Multi-Book is a paid SuiteApp on top of OneWorld. Allows posting to multiple books from one transaction with different rules per book.',
+            },
+          },
+          {
+            id: 'ns.foundation.advancedRevRecInScope',
+            inputType: 'BOOLEAN',
+            required: true,
+            label:
+              'Advanced Revenue Management (ARM) in scope? (ASC 606 / IFRS 15 revenue recognition)',
+          },
+        ],
+      },
+      {
+        id: 'subsidiaries',
+        label: 'Subsidiary Structure',
+        order: 4,
+        questions: [
+          {
+            id: 'ns.foundation.subsidiaryCount',
+            inputType: 'NUMBER',
+            required: true,
+            label: 'Number of legal subsidiaries (use 1 for single-entity engagements)',
+          },
+          {
+            id: 'ns.foundation.subsidiaryList',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              'If >1 — list each subsidiary (name, country, base currency, parent — one per line)',
+          },
+          {
+            id: 'ns.foundation.multiCurrencyInScope',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'Multi-currency operations? (transactions in non-base currency)',
+          },
+          {
+            id: 'ns.foundation.eliminationEntity',
+            inputType: 'TEXT',
+            required: false,
+            label:
+              'Consolidation / elimination entity name (only if subsidiary count > 1; this is the dummy entity that holds intercompany eliminations)',
+          },
+        ],
+      },
+    ],
   };
 }
 
@@ -352,6 +550,173 @@ const rules: RulePack = {
                 'July', 'August', 'September', 'October', 'November', 'December',
               ],
             },
+          } },
+        ],
+      },
+    },
+
+    // ── NS Pack 1 — Foundation rules ──────────────────────────────────────
+
+    // R1: Multi-subsidiary deployments require OneWorld. The other
+    // editions (Starter, Standard, Mid-Market, Enterprise,
+    // Financials First) all support a single subsidiary only.
+    {
+      id: 'ns.foundation.multi-subsidiary-requires-oneworld',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: ['ns.foundation.subsidiaryCount', 'ns.foundation.edition'],
+      message: 'Multi-subsidiary deployments require NetSuite OneWorld. The selected edition does not support multiple legal subsidiaries.',
+      resolution: 'Either upgrade edition to ONEWORLD, or set subsidiaryCount to 1 and document any future entities as a Phase 2 OneWorld migration.',
+      when: {
+        all: [
+          { answerNumberGreaterThan: { questionId: 'ns.foundation.subsidiaryCount', value: 1 } },
+          { not: { answerEquals: { questionId: 'ns.foundation.edition', value: 'ONEWORLD' } } },
+        ],
+      },
+    },
+
+    // R2: Multi-currency requires OneWorld. Other editions support a
+    // single base currency only.
+    {
+      id: 'ns.foundation.multi-currency-requires-oneworld',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: ['ns.foundation.multiCurrencyInScope', 'ns.foundation.edition'],
+      message: 'Multi-currency transactions require OneWorld. Other editions support a single base currency only.',
+      resolution: 'Upgrade to ONEWORLD, or restrict scope to a single base currency.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'ns.foundation.multiCurrencyInScope' } },
+          { not: { answerEquals: { questionId: 'ns.foundation.edition', value: 'ONEWORLD' } } },
+        ],
+      },
+    },
+
+    // R3: Multi-Book Accounting (parallel ledgers — IFRS + US GAAP,
+    // statutory + management) requires OneWorld. Multi-Book is a
+    // paid SuiteApp on top of OneWorld.
+    {
+      id: 'ns.foundation.multi-book-requires-oneworld',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: ['ns.foundation.multiBookAccounting', 'ns.foundation.edition'],
+      message: 'Multi-Book Accounting (parallel ledgers — IFRS + US GAAP) requires OneWorld.',
+      resolution: 'Upgrade edition to ONEWORLD. Multi-Book is a paid SuiteApp on top of OneWorld; budget the additional license cost.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'ns.foundation.multiBookAccounting' } },
+          { not: { answerEquals: { questionId: 'ns.foundation.edition', value: 'ONEWORLD' } } },
+        ],
+      },
+    },
+
+    // R4: Mid-Market / Enterprise / OneWorld engagements without any
+    // sandbox is high risk — production-only changes are unsafe and
+    // audit findings flag this.
+    {
+      id: 'ns.foundation.no-sandbox-on-mid-market-or-above',
+      type: 'DATA_WARNING',
+      severity: 'WARN',
+      questionIds: ['ns.foundation.sandboxAccount', 'ns.foundation.edition'],
+      message: 'Mid-Market/Enterprise/OneWorld engagements without any sandbox is high risk — production-only changes are unsafe and audit findings flag this.',
+      resolution: 'Add Full-copy sandbox at minimum. Sandboxes price as ~10–15% of production license; standard practice for NetSuite implementations above Starter tier.',
+      when: {
+        all: [
+          { answerEquals: { questionId: 'ns.foundation.sandboxAccount', value: 'NONE' } },
+          { answerIn: {
+            questionId: 'ns.foundation.edition',
+            values: ['MID_MARKET', 'ENTERPRISE', 'ONEWORLD'],
+          } },
+        ],
+      },
+    },
+
+    // R5: SuiteSuccess Starter restricts the number of custom roles.
+    // Adding more than the included roles requires upgrading.
+    {
+      id: 'ns.foundation.custom-roles-on-starter-restricted',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: ['ns.foundation.customRolesRequired', 'ns.foundation.edition'],
+      message: 'SuiteSuccess Starter restricts the number of custom roles. Adding more than the included roles requires upgrading.',
+      resolution: 'Either upgrade to STANDARD/MID_MARKET, or scope custom-role need within the Starter limit (typically 5 custom roles).',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'ns.foundation.customRolesRequired' } },
+          { answerEquals: { questionId: 'ns.foundation.edition', value: 'STARTER' } },
+        ],
+      },
+    },
+
+    // R6: SSO works without SuiteCloud Plus, but Plus adds better
+    // governance for the related token-based auth and OAuth 2 flows
+    // that integrations typically need alongside SSO.
+    {
+      id: 'ns.foundation.sso-better-with-suitecloud-plus',
+      type: 'DATA_WARNING',
+      severity: 'INFO',
+      questionIds: ['ns.foundation.ssoInScope', 'ns.foundation.suiteCloudPlus'],
+      message: 'SSO works without SuiteCloud Plus, but Plus adds better governance for the related token-based auth and OAuth 2 flows that integrations typically need alongside SSO.',
+      resolution: 'If non-trivial integration footprint is also in scope, add SuiteCloud Plus. If SSO is the only enterprise-auth requirement, the standard package is sufficient.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'ns.foundation.ssoInScope' } },
+          { answerFalsy: { questionId: 'ns.foundation.suiteCloudPlus' } },
+        ],
+      },
+    },
+
+    // R7: Subsidiary count > 1 but no subsidiary details captured.
+    // Phase 4 builds the subsidiary tree exactly from this list.
+    {
+      id: 'ns.foundation.subsidiary-list-required-when-count-gt-one',
+      type: 'DATA_WARNING',
+      severity: 'WARN',
+      questionIds: ['ns.foundation.subsidiaryCount', 'ns.foundation.subsidiaryList'],
+      message: 'Subsidiary count > 1 but no subsidiary details captured.',
+      resolution: 'List each subsidiary (name, country, base currency, parent). NetSuite Phase 4 builds the subsidiary tree exactly from this list.',
+      when: {
+        all: [
+          { answerNumberGreaterThan: { questionId: 'ns.foundation.subsidiaryCount', value: 1 } },
+          { answerFalsy: { questionId: 'ns.foundation.subsidiaryList' } },
+        ],
+      },
+    },
+
+    // R8: Multi-subsidiary engagements need a consolidation/elimination
+    // entity to hold intercompany eliminations on consolidated
+    // reports. Standard NetSuite OneWorld pattern.
+    {
+      id: 'ns.foundation.elimination-entity-required-for-consolidation',
+      type: 'DATA_WARNING',
+      severity: 'WARN',
+      questionIds: ['ns.foundation.subsidiaryCount', 'ns.foundation.eliminationEntity'],
+      message: 'Multi-subsidiary engagements need a consolidation/elimination entity to hold intercompany eliminations on consolidated reports.',
+      resolution: "Name the elimination entity (e.g., 'ACME Group Eliminations'). Standard NetSuite OneWorld pattern; required for clean consolidated financials.",
+      when: {
+        all: [
+          { answerNumberGreaterThan: { questionId: 'ns.foundation.subsidiaryCount', value: 1 } },
+          { answerFalsy: { questionId: 'ns.foundation.eliminationEntity' } },
+        ],
+      },
+    },
+
+    // R9: Advanced Revenue Management (ARM, for ASC 606 / IFRS 15) is
+    // typically licensed alongside Mid-Market or above. Starter /
+    // Standard / Financials First may not include ARM.
+    {
+      id: 'ns.foundation.advanced-revrec-recommends-mid-market-or-above',
+      type: 'LICENSE_GAP',
+      severity: 'WARN',
+      questionIds: ['ns.foundation.advancedRevRecInScope', 'ns.foundation.edition'],
+      message: 'Advanced Revenue Management (ARM, for ASC 606 / IFRS 15) is typically licensed alongside Mid-Market or above. Starter/Standard may not include ARM.',
+      resolution: 'Confirm ARM is included in the contract, or upgrade edition. ARM without proper licensing is a contract risk and a commit-blocker for revenue recognition.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'ns.foundation.advancedRevRecInScope' } },
+          { answerIn: {
+            questionId: 'ns.foundation.edition',
+            values: ['STARTER', 'STANDARD', 'FINANCIALS_FIRST'],
           } },
         ],
       },

@@ -268,6 +268,24 @@ export async function engagementRoutes(fastify: FastifyInstance) {
       };
       const { conflicts, warnings, infos } = evaluate(ruleInput);
       allConflicts = [...conflicts, ...warnings, ...infos];
+      // NS Pack 1+ — NetSuite registry rules also evaluate via the
+      // generic adaptor-sdk evaluator. Legacy `evaluate()` continues
+      // to fire the LIC-* and R2R-* rules sourced from @ofoq/shared;
+      // the registry's RulePack adds the new ns.foundation.* /
+      // ns.tax.* / ns.localization.* rules. Append + de-dupe by rule
+      // id so a rule listed in both sources doesn't surface twice.
+      const pack = await resolveRulePack(engagementAdaptorId, request.jwtUser.firmId);
+      if (pack) {
+        const seen = new Set(allConflicts.map((c) => c.id));
+        const packConflicts = evaluateAdaptorRules(pack, {
+          answers: merged,
+          license: {
+            edition: (license?.edition as string) ?? 'MID_MARKET',
+            modules: (license?.modules as string[]) ?? [],
+          },
+        });
+        for (const c of packConflicts) if (!seen.has(c.id)) allConflicts.push(c);
+      }
     } else {
       const pack = await resolveRulePack(engagementAdaptorId, request.jwtUser.firmId);
       if (pack) {
@@ -361,6 +379,20 @@ export async function engagementRoutes(fastify: FastifyInstance) {
       };
       const { conflicts, warnings, infos } = evaluate(ruleInput);
       allConflicts = [...conflicts, ...warnings, ...infos];
+      // NS Pack 1+ — also run the registry-side RulePack against the
+      // updated license. See PATCH /profile for the rationale.
+      const pack = await resolveRulePack(engagementAdaptorId, request.jwtUser.firmId);
+      if (pack) {
+        const seen = new Set(allConflicts.map((c) => c.id));
+        const packConflicts = evaluateAdaptorRules(pack, {
+          answers: (profile?.answers ?? {}) as Record<string, unknown>,
+          license: {
+            edition: (license.edition as string) ?? 'MID_MARKET',
+            modules: (license.modules as string[]) ?? [],
+          },
+        });
+        for (const c of packConflicts) if (!seen.has(c.id)) allConflicts.push(c);
+      }
     } else {
       const pack = await resolveRulePack(engagementAdaptorId, request.jwtUser.firmId);
       if (pack) {
@@ -806,6 +838,20 @@ export async function engagementRoutes(fastify: FastifyInstance) {
         phases: ((phases || []) as unknown) as Phase[],
       });
       allConflicts = [...conflicts, ...warnings, ...infos];
+      // NS Pack 1+ — also run the registry-side RulePack alongside
+      // the legacy evaluator. See PATCH /profile for the rationale.
+      const pack = await resolveRulePack(adaptorId, request.jwtUser.firmId);
+      if (pack) {
+        const seen = new Set(allConflicts.map((c) => c.id));
+        const packConflicts = evaluateAdaptorRules(pack, {
+          answers: merged,
+          license: {
+            edition: (updatedLicense?.edition as string) ?? 'MID_MARKET',
+            modules: (updatedLicense?.modules as string[]) ?? [],
+          },
+        });
+        for (const c of packConflicts) if (!seen.has(c.id)) allConflicts.push(c);
+      }
     } else {
       const pack = await resolveRulePack(adaptorId, request.jwtUser.firmId);
       if (pack) {

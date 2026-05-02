@@ -20,9 +20,13 @@ describe('netsuiteAdaptor: manifest', () => {
 });
 
 describe('netsuiteAdaptor: schema', () => {
-  it('exposes 5 flows in the canonical order', () => {
+  it('exposes 6 flows in the canonical order — FOUNDATION first, then the legacy 5 (NetSuite uses R2R/P2P/O2C — its native vocabulary)', () => {
     const ids = netsuiteAdaptor.schema.flows.map((f) => f.id);
-    expect(ids).toEqual(['R2R', 'P2P', 'O2C', 'PRODUCTION', 'RETURNS']);
+    // NS Pack 1 adds FOUNDATION at the head; the legacy 5 NetSuite-shape
+    // flows stay because R2R/P2P/O2C/MFG/RTN are how NetSuite consultants
+    // actually think about implementations (unlike Odoo where they were
+    // a NetSuite-cargo-cult; see Pack R for the Odoo restructure).
+    expect(ids).toEqual(['FOUNDATION', 'R2R', 'P2P', 'O2C', 'PRODUCTION', 'RETURNS']);
   });
 
   it('every flow has at least one section with at least one question', () => {
@@ -183,5 +187,350 @@ describe('AdaptorRegistry', () => {
     const reg = new AdaptorRegistry();
     const malformed = { manifest: { id: 'bad' } } as never;
     expect(() => reg.register(malformed)).toThrow(/invalid adaptor/);
+  });
+});
+
+// ─── NS Pack 1 — Foundation & Account Type ───────────────────────────────────
+
+describe('netsuiteAdaptor: NS Pack 1 — FOUNDATION flow shape', () => {
+  const foundation = netsuiteAdaptor.schema.flows.find((f) => f.id === 'FOUNDATION');
+
+  it('FOUNDATION flow exists with the expected label + description', () => {
+    expect(foundation).toBeDefined();
+    expect(foundation!.label).toBe('Project Foundation');
+    expect(foundation!.description).toMatch(/edition|suitesuccess|user|country|subsidiary|fiscal/i);
+  });
+
+  it('FOUNDATION renders as the first flow (before R2R)', () => {
+    const ids = netsuiteAdaptor.schema.flows.map((f) => f.id);
+    expect(ids[0]).toBe('FOUNDATION');
+    expect(ids.indexOf('R2R')).toBe(1);
+  });
+
+  it('renders four sections in the documented order', () => {
+    const ids = (foundation!.sections as Array<{ id: string; order: number }>)
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .map((s) => s.id);
+    expect(ids).toEqual(['edition', 'users', 'country', 'subsidiaries']);
+  });
+
+  it('Edition & Account Type — 4 questions with the right ids + types + options', () => {
+    const sec = foundation!.sections.find((s) => s.id === 'edition')!;
+    expect(sec.label).toBe('Edition & Account Type');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('ns.foundation.edition')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('ns.foundation.edition')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['ENTERPRISE', 'FINANCIALS_FIRST', 'MID_MARKET', 'ONEWORLD', 'STANDARD', 'STARTER']);
+    expect(byId.get('ns.foundation.suiteSuccessBundle')?.inputType).toBe('TEXT');
+    expect(byId.get('ns.foundation.suiteCloudPlus')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('ns.foundation.sandboxAccount')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('ns.foundation.sandboxAccount')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['BOTH', 'FULL_COPY', 'NONE', 'RELEASE_PREVIEW']);
+  });
+
+  it('Users & Access — 4 questions with the right ids + types', () => {
+    const sec = foundation!.sections.find((s) => s.id === 'users')!;
+    expect(sec.label).toBe('Users & Access');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('ns.foundation.fullUserCount')?.inputType).toBe('NUMBER');
+    expect(byId.get('ns.foundation.essUserCount')?.inputType).toBe('NUMBER');
+    expect(byId.get('ns.foundation.customRolesRequired')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('ns.foundation.ssoInScope')?.inputType).toBe('BOOLEAN');
+  });
+
+  it('Country & Fiscal Calendar — 4 questions with the right ids + types', () => {
+    const sec = foundation!.sections.find((s) => s.id === 'country')!;
+    expect(sec.label).toBe('Country & Fiscal Calendar');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('ns.foundation.primaryCountry')?.inputType).toBe('TEXT');
+    expect(byId.get('ns.foundation.fiscalYearStart')?.inputType).toBe('TEXT');
+    expect(byId.get('ns.foundation.multiBookAccounting')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('ns.foundation.advancedRevRecInScope')?.inputType).toBe('BOOLEAN');
+  });
+
+  it('Subsidiary Structure — 4 questions with the right ids + types', () => {
+    const sec = foundation!.sections.find((s) => s.id === 'subsidiaries')!;
+    expect(sec.label).toBe('Subsidiary Structure');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('ns.foundation.subsidiaryCount')?.inputType).toBe('NUMBER');
+    expect(byId.get('ns.foundation.subsidiaryList')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('ns.foundation.multiCurrencyInScope')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('ns.foundation.eliminationEntity')?.inputType).toBe('TEXT');
+  });
+});
+
+describe('netsuiteAdaptor: NS Pack 1 — Foundation rules registered in netsuite-rules', () => {
+  const ids = netsuiteAdaptor.rules.rules.map((r) => r.id);
+
+  it('R1 multi-subsidiary requires OneWorld', () => {
+    expect(ids).toContain('ns.foundation.multi-subsidiary-requires-oneworld');
+  });
+  it('R2 multi-currency requires OneWorld', () => {
+    expect(ids).toContain('ns.foundation.multi-currency-requires-oneworld');
+  });
+  it('R3 multi-book requires OneWorld', () => {
+    expect(ids).toContain('ns.foundation.multi-book-requires-oneworld');
+  });
+  it('R4 no sandbox on Mid-Market or above (WARN)', () => {
+    expect(ids).toContain('ns.foundation.no-sandbox-on-mid-market-or-above');
+  });
+  it('R5 custom roles on Starter restricted', () => {
+    expect(ids).toContain('ns.foundation.custom-roles-on-starter-restricted');
+  });
+  it('R6 SSO better with SuiteCloud Plus (INFO)', () => {
+    expect(ids).toContain('ns.foundation.sso-better-with-suitecloud-plus');
+  });
+  it('R7 subsidiary list required when count > 1', () => {
+    expect(ids).toContain('ns.foundation.subsidiary-list-required-when-count-gt-one');
+  });
+  it('R8 elimination entity required for consolidation', () => {
+    expect(ids).toContain('ns.foundation.elimination-entity-required-for-consolidation');
+  });
+  it('R9 ARM recommends Mid-Market or above', () => {
+    expect(ids).toContain('ns.foundation.advanced-revrec-recommends-mid-market-or-above');
+  });
+});
+
+describe('netsuiteAdaptor: NS Pack 1 — Foundation rule evaluation', () => {
+  it('R1 fires (BLOCK) when subsidiaryCount>1 AND edition!==ONEWORLD', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.foundation.subsidiaryCount': 3,
+        'ns.foundation.edition': 'ENTERPRISE',
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'ns.foundation.multi-subsidiary-requires-oneworld');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R1 does NOT fire when edition is ONEWORLD', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.foundation.subsidiaryCount': 3,
+        'ns.foundation.edition': 'ONEWORLD',
+      },
+      license: { edition: 'ONEWORLD', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('ns.foundation.multi-subsidiary-requires-oneworld');
+  });
+
+  it('R1 does NOT fire when subsidiaryCount=1', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.foundation.subsidiaryCount': 1,
+        'ns.foundation.edition': 'STANDARD',
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('ns.foundation.multi-subsidiary-requires-oneworld');
+  });
+
+  it('R2 fires (BLOCK) when multiCurrencyInScope=true AND edition!==ONEWORLD', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.foundation.multiCurrencyInScope': true,
+        'ns.foundation.edition': 'MID_MARKET',
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'ns.foundation.multi-currency-requires-oneworld');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R2 does NOT fire on ONEWORLD', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.foundation.multiCurrencyInScope': true,
+        'ns.foundation.edition': 'ONEWORLD',
+      },
+      license: { edition: 'ONEWORLD', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('ns.foundation.multi-currency-requires-oneworld');
+  });
+
+  it('R3 fires (BLOCK) when multiBookAccounting=true AND edition!==ONEWORLD', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.foundation.multiBookAccounting': true,
+        'ns.foundation.edition': 'ENTERPRISE',
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'ns.foundation.multi-book-requires-oneworld');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R4 fires (WARN) when sandboxAccount=NONE AND edition is Mid-Market or above', () => {
+    for (const edition of ['MID_MARKET', 'ENTERPRISE', 'ONEWORLD']) {
+      const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+        answers: {
+          'ns.foundation.sandboxAccount': 'NONE',
+          'ns.foundation.edition': edition,
+        },
+        license: { edition: 'MID_MARKET', modules: [] },
+      });
+      const r = conflicts.find((c) => c.id === 'ns.foundation.no-sandbox-on-mid-market-or-above');
+      expect(r, `R4 should fire when edition=${edition}`).toBeDefined();
+      expect(r?.severity).toBe('WARN');
+    }
+  });
+
+  it('R4 does NOT fire on Starter', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.foundation.sandboxAccount': 'NONE',
+        'ns.foundation.edition': 'STARTER',
+      },
+      license: { edition: 'STARTER', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('ns.foundation.no-sandbox-on-mid-market-or-above');
+  });
+
+  it('R4 does NOT fire when sandbox is configured', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.foundation.sandboxAccount': 'FULL_COPY',
+        'ns.foundation.edition': 'ONEWORLD',
+      },
+      license: { edition: 'ONEWORLD', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('ns.foundation.no-sandbox-on-mid-market-or-above');
+  });
+
+  it('R5 fires (BLOCK) when customRolesRequired=true AND edition=STARTER', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.foundation.customRolesRequired': true,
+        'ns.foundation.edition': 'STARTER',
+      },
+      license: { edition: 'STARTER', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'ns.foundation.custom-roles-on-starter-restricted');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R5 does NOT fire on STANDARD or higher', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.foundation.customRolesRequired': true,
+        'ns.foundation.edition': 'STANDARD',
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('ns.foundation.custom-roles-on-starter-restricted');
+  });
+
+  it('R6 fires (INFO) when ssoInScope=true AND suiteCloudPlus=false', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.foundation.ssoInScope': true,
+        'ns.foundation.suiteCloudPlus': false,
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'ns.foundation.sso-better-with-suitecloud-plus');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('INFO');
+  });
+
+  it('R6 does NOT fire when SuiteCloud Plus is in scope', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.foundation.ssoInScope': true,
+        'ns.foundation.suiteCloudPlus': true,
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('ns.foundation.sso-better-with-suitecloud-plus');
+  });
+
+  it('R7 fires (WARN) when subsidiaryCount>1 AND subsidiaryList empty', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.foundation.subsidiaryCount': 4,
+        'ns.foundation.subsidiaryList': '',
+        'ns.foundation.edition': 'ONEWORLD',
+      },
+      license: { edition: 'ONEWORLD', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'ns.foundation.subsidiary-list-required-when-count-gt-one');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R7 does NOT fire when subsidiaryList is populated', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.foundation.subsidiaryCount': 4,
+        'ns.foundation.subsidiaryList': 'Holdco US USD parent\nSubco UK GBP Holdco',
+        'ns.foundation.edition': 'ONEWORLD',
+      },
+      license: { edition: 'ONEWORLD', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('ns.foundation.subsidiary-list-required-when-count-gt-one');
+  });
+
+  it('R8 fires (WARN) when subsidiaryCount>1 AND eliminationEntity empty', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.foundation.subsidiaryCount': 3,
+        'ns.foundation.eliminationEntity': '',
+        'ns.foundation.edition': 'ONEWORLD',
+      },
+      license: { edition: 'ONEWORLD', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'ns.foundation.elimination-entity-required-for-consolidation');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R8 does NOT fire on single-entity engagements', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.foundation.subsidiaryCount': 1,
+        'ns.foundation.eliminationEntity': '',
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('ns.foundation.elimination-entity-required-for-consolidation');
+  });
+
+  it('R9 fires (WARN) when ARM in scope AND edition is Starter/Standard/Financials First', () => {
+    for (const edition of ['STARTER', 'STANDARD', 'FINANCIALS_FIRST']) {
+      const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+        answers: {
+          'ns.foundation.advancedRevRecInScope': true,
+          'ns.foundation.edition': edition,
+        },
+        license: { edition: 'MID_MARKET', modules: [] },
+      });
+      const r = conflicts.find((c) => c.id === 'ns.foundation.advanced-revrec-recommends-mid-market-or-above');
+      expect(r, `R9 should fire when edition=${edition}`).toBeDefined();
+      expect(r?.severity).toBe('WARN');
+    }
+  });
+
+  it('R9 does NOT fire on MID_MARKET / ENTERPRISE / ONEWORLD', () => {
+    for (const edition of ['MID_MARKET', 'ENTERPRISE', 'ONEWORLD']) {
+      const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+        answers: {
+          'ns.foundation.advancedRevRecInScope': true,
+          'ns.foundation.edition': edition,
+        },
+        license: { edition: 'MID_MARKET', modules: [] },
+      });
+      expect(
+        conflicts.map((c) => c.id),
+        `R9 should NOT fire when edition=${edition}`,
+      ).not.toContain('ns.foundation.advanced-revrec-recommends-mid-market-or-above');
+    }
   });
 });
