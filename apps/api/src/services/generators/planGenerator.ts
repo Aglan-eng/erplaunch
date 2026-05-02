@@ -98,6 +98,48 @@ export function generateImplementationPlanHtml(data: ImplementationPlanData): st
   const blockingRisks = conflicts.filter(c => c.severity === 'BLOCK');
   const warningRisks = conflicts.filter(c => c.severity === 'WARN');
 
+  // Cutover Plan — closes the long-standing p4.cutover-references-in-plan
+  // gap in the lifecycle harness. Reads adaptor-aware migration answers
+  // when present (Odoo's Pack 7 migration flow asks these explicitly;
+  // NetSuite's schema doesn't gather them today, so NS engagements get
+  // TBD placeholders the consultant must fill in). Whether or not
+  // answers are present, the section ALWAYS renders so the harness
+  // sees "Cutover" in the file and the consultant sees the slot exists.
+  //
+  // Adaptor-aware prose: NetSuite engagements say "the NetSuite cutover",
+  // Odoo engagements say "the Odoo cutover" — surfaced in the section
+  // intro so the document reads as platform-specific guidance, not a
+  // generic checklist. Custom adaptors get "the {adaptor.name} cutover".
+  const cutoverStyleRaw =
+    answers['odoo.migration.cutoverStyle'] ??
+    answers['ns.migration.cutoverStyle'] ?? // future-proof: NS will get this when the migration flow ships
+    null;
+  const cutoverStyleLabel = ((): string => {
+    if (typeof cutoverStyleRaw !== 'string' || cutoverStyleRaw.length === 0) return 'TBD';
+    const map: Record<string, string> = {
+      BIG_BANG: 'Big bang (single weekend / week — all modules + entities go live together)',
+      PHASED_MODULE: 'Phased by module (Accounting first, then Inventory, then Sales, etc.)',
+      PHASED_ENTITY: 'Phased by entity (one company at a time)',
+      PARALLEL_RUN: 'Parallel run (legacy + new system run together for N weeks)',
+    };
+    return map[cutoverStyleRaw] ?? cutoverStyleRaw;
+  })();
+  const parallelRunDays =
+    answers['odoo.migration.parallelRunDays'] ?? answers['ns.migration.parallelRunDays'] ?? null;
+  const preFreezeDays =
+    answers['odoo.migration.preFreezeDays'] ?? answers['ns.migration.preFreezeDays'] ?? null;
+  const cutoverWindowHours =
+    answers['odoo.migration.cutoverWindowHours'] ?? answers['ns.migration.cutoverWindowHours'] ?? null;
+  const showParallelRunRow = cutoverStyleRaw === 'PARALLEL_RUN';
+  const formatNumberOrTbd = (v: unknown, suffix: string): string => {
+    if (typeof v === 'number' && Number.isFinite(v) && v > 0) return `${v} ${suffix}`;
+    if (typeof v === 'string' && v.trim().length > 0 && !Number.isNaN(Number(v))) {
+      const n = Number(v);
+      if (n > 0) return `${n} ${suffix}`;
+    }
+    return 'TBD';
+  };
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -329,6 +371,52 @@ export function generateImplementationPlanHtml(data: ImplementationPlanData): st
     `).join('')}
     ` : ''}
     `}
+
+    <!-- Cutover Plan — adaptor-aware, reads Pack 7 migration answers when present -->
+    <h2>Cutover Plan</h2>
+    <p>This section captures the high-level shape of the ${adaptor.name} cutover.
+      ${hasDataMigration
+        ? `Detailed dependencies, freeze windows, and go/no-go criteria are tracked alongside the data-migration workstream and revisited at each migration dry-run.`
+        : `Detailed dependencies, freeze windows, and go/no-go criteria will be developed during build and tracked through hypercare.`}
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>Cutover dimension</th>
+          <th>Value</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Cutover style</td>
+          <td>${cutoverStyleLabel}</td>
+        </tr>
+        <tr>
+          <td>Pre-cutover freeze period</td>
+          <td>${formatNumberOrTbd(preFreezeDays, 'day(s)')}</td>
+        </tr>
+        <tr>
+          <td>Cutover execution window</td>
+          <td>${formatNumberOrTbd(cutoverWindowHours, 'hour(s)')}</td>
+        </tr>
+        ${showParallelRunRow ? `
+        <tr>
+          <td>Parallel-run duration</td>
+          <td>${formatNumberOrTbd(parallelRunDays, 'day(s)')}</td>
+        </tr>
+        ` : ''}
+        <tr>
+          <td>Cutover dependencies</td>
+          <td>${blockingRisks.length + warningRisks.length > 0
+            ? `${blockingRisks.length + warningRisks.length} open risk(s) tracked in the Risk Summary above must be closed before cutover.`
+            : 'None recorded — confirm during cutover dress-rehearsal.'}</td>
+        </tr>
+        <tr>
+          <td>Go/no-go criteria</td>
+          <td>TBD per workstream — finalised during cutover dress-rehearsal and signed off by ${adaptor.name} Admin + Client Lead.</td>
+        </tr>
+      </tbody>
+    </table>
 
     <!-- Standard Assumptions -->
     <h2>Standard Assumptions</h2>

@@ -200,6 +200,75 @@ describe('generateImplementationPlanHtml — Workstreams in Scope reads from ada
   });
 });
 
+// ─── Cutover Plan section (closes p4.cutover-references-in-plan harness gap) ─
+describe('generateImplementationPlanHtml — Cutover Plan section', () => {
+  it('NetSuite plan always includes a "Cutover Plan" heading (TBD when no migration answers)', () => {
+    const html = generateImplementationPlanHtml(baseData(NETSUITE_CTX));
+    expect(html).toContain('Cutover Plan');
+    expect(html).toContain('the NetSuite cutover');
+    // No migration answers → all values default to TBD
+    expect(html).toContain('TBD');
+  });
+
+  it('Odoo plan always includes a "Cutover Plan" heading even with no migration answers', () => {
+    const html = generateImplementationPlanHtml(baseData(ODOO_CTX, { answers: {} }));
+    expect(html).toContain('Cutover Plan');
+    expect(html).toContain('the Odoo cutover');
+  });
+
+  it('Odoo plan reads cutoverStyle / preFreezeDays / cutoverWindowHours from Pack 7 migration answers', () => {
+    const html = generateImplementationPlanHtml(baseData(ODOO_CTX, {
+      answers: {
+        'odoo.migration.cutoverStyle': 'BIG_BANG',
+        'odoo.migration.preFreezeDays': 3,
+        'odoo.migration.cutoverWindowHours': 36,
+      },
+    }));
+    expect(html).toContain('Cutover Plan');
+    expect(html).toContain('Big bang');
+    expect(html).toContain('3 day(s)');
+    expect(html).toContain('36 hour(s)');
+  });
+
+  it('Odoo plan surfaces parallelRunDays only when cutoverStyle = PARALLEL_RUN', () => {
+    const parallel = generateImplementationPlanHtml(baseData(ODOO_CTX, {
+      answers: {
+        'odoo.migration.cutoverStyle': 'PARALLEL_RUN',
+        'odoo.migration.parallelRunDays': 14,
+        'odoo.migration.preFreezeDays': 1,
+        'odoo.migration.cutoverWindowHours': 8,
+      },
+    }));
+    expect(parallel).toContain('Parallel run');
+    expect(parallel).toContain('Parallel-run duration');
+    expect(parallel).toContain('14 day(s)');
+
+    // BIG_BANG should NOT render the parallel-run row
+    const bigBang = generateImplementationPlanHtml(baseData(ODOO_CTX, {
+      answers: { 'odoo.migration.cutoverStyle': 'BIG_BANG' },
+    }));
+    expect(bigBang).not.toContain('Parallel-run duration');
+  });
+
+  it('Custom adaptor cutover prose flexes via adaptor.name', () => {
+    const html = generateImplementationPlanHtml(baseData(CUSTOM_CTX));
+    expect(html).toContain('Cutover Plan');
+    expect(html).toContain('the Acme ERP cutover');
+    expect(html).not.toContain('the NetSuite cutover');
+    expect(html).not.toContain('the Odoo cutover');
+  });
+
+  it('Cutover dependencies row reflects open risk count when conflicts present', () => {
+    const html = generateImplementationPlanHtml(baseData(NETSUITE_CTX, {
+      conflicts: [
+        { severity: 'BLOCK', message: 'Missing GL', resolution: 'Define GL' },
+        { severity: 'WARN', message: 'No multi-currency', resolution: 'Add MC' },
+      ],
+    }));
+    expect(html).toMatch(/2 open risk\(s\) tracked/);
+  });
+});
+
 describe('generateImplementationPlanHtml — custom adaptor (fall-through default)', () => {
   it('renders Acme ERP-flavored prose with no NetSuite leak', () => {
     const html = generateImplementationPlanHtml(baseData(CUSTOM_CTX));

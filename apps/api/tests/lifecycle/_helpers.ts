@@ -5,19 +5,35 @@ import { fileURLToPath } from 'node:url';
 /**
  * Bundle loader for the lifecycle validation harness.
  *
- * Reads the most-recent NSIX/<adaptor>_DEMO_BUNDLE/<latest_iso>/Documentation/
- * folder and returns Map<filename, contents>. Tests in lifecycleScore.test.ts
- * consume the map to evaluate per-phase rubric checks.
+ * Reads the most-recent NSIX/<adaptor>_DEMO_BUNDLE/<latest_iso>/ folder
+ * and returns a structured snapshot the rubric in checklist.ts can
+ * evaluate against.
  *
- * NSIX_ROOT layout (mirror of generate-*-demo-bundle.ts drivers):
+ * Layout (mirror of generate-*-demo-bundle.ts drivers):
  *   NSIX/
  *     ofoq-accelerator/                        ← repo root
  *       apps/api/tests/lifecycle/_helpers.ts   ← this file
- *     ODOO_DEMO_BUNDLE/<iso>/Documentation/
- *     NETSUITE_DEMO_BUNDLE/<iso>/Documentation/
+ *     ODOO_DEMO_BUNDLE/<iso>/Documentation/   ← prose deliverables
+ *     NETSUITE_DEMO_BUNDLE/<iso>/
+ *       Documentation/                          ← prose deliverables
+ *       SDF/Objects/customrecord_*.xml          ← build artefacts
+ *       SDF/manifest.xml, SDF/deploy.xml        ← build artefacts (future)
  *
- * apps/api/tests/lifecycle/ → repo root → NSIX/ → <ADAPTOR>_DEMO_BUNDLE/.
- * Same path arithmetic generate-odoo-demo-bundle.ts uses.
+ * The snapshot exposes two separate maps:
+ *   - docs            — flat map of files in Documentation/ (filename
+ *                        only; e.g. 'BRD.md'). Existing 45 phase checks
+ *                        consume this. No path change.
+ *   - buildArtefacts  — recursive map of everything ELSE under the
+ *                        bundle root, keyed by path relative to the
+ *                        bundle root (e.g. 'SDF/Objects/customrecord_
+ *                        approval_tracker.xml'). New Phase 4 checks
+ *                        consume this. Empty for adaptors / engagements
+ *                        that don't ship build artefacts (e.g. Odoo
+ *                        today; future Odoo packs will populate it
+ *                        with .xml + .py module templates).
+ *
+ * Plus the adaptor identity, so per-adaptor `applicable` predicates
+ * in the rubric (e.g. SDF checks N/A on Odoo) can branch cleanly.
  */
 
 const __filename = fileURLToPath(import.meta.url);
@@ -28,22 +44,30 @@ const NSIX_ROOT = path.resolve(__dirname, '..', '..', '..', '..', '..');
 
 export type AdaptorId = 'odoo' | 'netsuite';
 
-export interface BundleLoadResult {
-  /** Absolute path to the Documentation/ folder used. */
+export interface BundleSnapshot {
+  /** Absolute path to the bundle root (parent of Documentation/ + SDF/ etc.). */
   bundlePath: string;
-  /** Map<filename, fileContents> — all .md / .html files under Documentation/. */
-  files: Map<string, string>;
+  /** Which adaptor produced the bundle — drives per-adaptor rubric checks. */
+  adaptor: AdaptorId;
+  /** Flat map of files in <bundle>/Documentation/. Filename only — no
+   *  'Documentation/' prefix. Existing 45 phase checks read this. */
+  docs: ReadonlyMap<string, string>;
+  /** Recursive map of files under <bundle>/ EXCLUDING Documentation/.
+   *  Key is the relative path from bundle root, e.g.
+   *  'SDF/Objects/customrecord_approval_tracker.xml'. New Phase 4
+   *  checks read this. Empty when the bundle ships no build artefacts. */
+  buildArtefacts: ReadonlyMap<string, string>;
 }
 
 /**
  * Locate the most-recent timestamped bundle for the given adaptor and
- * load every file under its Documentation/ folder into a map.
+ * load it into a BundleSnapshot.
  *
- * Throws if no bundle exists yet — the caller is expected to have run
- * generate-*-demo-bundle.ts at least once before invoking this. The test
- * harness re-runs the drivers in beforeAll.
+ * Throws with a clear "run generate-*-demo-bundle.ts first" message if
+ * no bundle exists yet — the caller is expected to have run the demo
+ * driver before invoking the harness.
  */
-export async function loadLatestBundle(adaptor: AdaptorId): Promise<BundleLoadResult> {
+export async function loadLatestBundle(adaptor: AdaptorId): Promise<BundleSnapshot> {
   const bundleRoot = path.join(
     NSIX_ROOT,
     adaptor === 'odoo' ? 'ODOO_DEMO_BUNDLE' : 'NETSUITE_DEMO_BUNDLE',
@@ -67,39 +91,74 @@ export async function loadLatestBundle(adaptor: AdaptorId): Promise<BundleLoadRe
     throw new Error(`Lifecycle harness: no timestamped bundles in ${bundleRoot}.`);
   }
   const latest = timestamps[timestamps.length - 1];
-  const docDir = path.join(bundleRoot, latest, 'Documentation');
+  const bundlePath = path.join(bundleRoot, latest);
 
-  let docFiles: string[];
+  // ── docs map: flat read of bundle/Documentation/ ──
+  const docDir = path.join(bundlePath, 'Documentation');
+  const docs = new Map<string, string>();
   try {
-    docFiles = await fs.readdir(docDir);
+    const docFiles = await fs.readdir(docDir);
+    for (const filename of docFiles) {
+      const full = path.join(docDir, filename);
+      const stat = await fs.stat(full);
+      if (!stat.isFile()) continue;
+      docs.set(filename, await fs.readFile(full, 'utf8'));
+    }
   } catch {
-    throw new Error(`Lifecycle harness: Documentation/ not found in ${docDir}.`);
+    // Documentation/ missing means the bundle is broken — surface it.
+    throw new Error(`Lifecycle harness: Documentation/ not found in ${bundlePath}.`);
   }
 
-  const files = new Map<string, string>();
-  for (const filename of docFiles) {
-    const full = path.join(docDir, filename);
-    const stat = await fs.stat(full);
-    if (!stat.isFile()) continue;
-    const content = await fs.readFile(full, 'utf8');
-    files.set(filename, content);
-  }
+  // ── buildArtefacts map: recursive walk of bundle/ excluding Documentation/ ──
+  const buildArtefacts = new Map<string, string>();
+  await collectBuildArtefacts(bundlePath, '', buildArtefacts);
 
-  return { bundlePath: docDir, files };
+  return { bundlePath, adaptor, docs, buildArtefacts };
 }
 
 /**
- * Convenience predicate: does any file in the bundle contain the given
- * substring (case-insensitive)? Used by checks like "contains
- * 'Acceptance Criteria'" without pinning to a specific file.
- *
- * Most checks pin to a specific file via files.get(name) and substring
- * search the contents directly; this helper covers the cross-file
- * "appears anywhere in the bundle" pattern.
- *
- * Signature accepts ReadonlyMap so checklist.ts (which exports
- * BundleFiles = ReadonlyMap<string, string>) can call directly without
- * a cast.
+ * Recursively walk dir under bundle root, skipping Documentation/ at
+ * the top level. Files are added to `out` keyed by the path RELATIVE
+ * to bundle root (using forward slashes for cross-OS test stability).
+ */
+async function collectBuildArtefacts(
+  bundleRoot: string,
+  relativeSoFar: string,
+  out: Map<string, string>,
+): Promise<void> {
+  const absoluteDir = path.join(bundleRoot, relativeSoFar);
+  let entries: import('node:fs').Dirent[];
+  try {
+    entries = await fs.readdir(absoluteDir, { withFileTypes: true });
+  } catch {
+    return; // missing dir is fine — just no build artefacts
+  }
+
+  for (const entry of entries) {
+    // Skip Documentation/ at the top level — it's the docs map.
+    if (relativeSoFar === '' && entry.name === 'Documentation') continue;
+
+    // Always use forward slashes in the relative key so test
+    // assertions are portable across Windows + Unix runners.
+    const childRel = relativeSoFar
+      ? `${relativeSoFar}/${entry.name}`
+      : entry.name;
+
+    if (entry.isDirectory()) {
+      await collectBuildArtefacts(bundleRoot, childRel, out);
+    } else if (entry.isFile()) {
+      const full = path.join(bundleRoot, childRel);
+      out.set(childRel, await fs.readFile(full, 'utf8'));
+    }
+  }
+}
+
+// ─── Convenience predicates (consumed by checklist.ts) ───────────────────────
+
+/**
+ * Cross-doc substring search (case-insensitive). Used by checks like
+ * "contains 'Acceptance Criteria' anywhere" without pinning to a
+ * specific filename.
  */
 export function bundleContains(files: ReadonlyMap<string, string>, needle: string): boolean {
   const n = needle.toLowerCase();
@@ -110,8 +169,8 @@ export function bundleContains(files: ReadonlyMap<string, string>, needle: strin
 }
 
 /**
- * Convenience predicate: does the named file exist AND contain the
- * given substring (case-insensitive)?
+ * Pin to a specific file + substring search (case-insensitive). Most
+ * phase checks use this against the docs map.
  */
 export function fileContains(
   files: ReadonlyMap<string, string>,

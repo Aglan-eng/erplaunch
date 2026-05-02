@@ -24,6 +24,8 @@ import { generateSolutionDoc, generateSolutionDocHtml } from '../src/services/ge
 import { generateTrainingManual, generateTrainingManualHtml } from '../src/services/generators/trainingManualGenerator.js';
 import { generateImplementationPlanHtml } from '../src/services/generators/planGenerator.js';
 import { generateSdfCustomRecords } from '../src/services/generators/sdfCustomRecordsGenerator.js';
+import { generateSdfManifest } from '../src/services/generators/sdfManifestGenerator.js';
+import { generateSdfDeploy } from '../src/services/generators/sdfDeployGenerator.js';
 import { validateSDFBundle } from '../src/services/generators/sdfValidator.js';
 import netsuiteAdaptor from '@ofoq/adaptor-netsuite';
 
@@ -328,35 +330,59 @@ for (const [filename, content] of writes) {
   process.stdout.write(`  ✓ ${filename}\n`);
 }
 
-// ── Real-code generation: SDF custom records ────────────────────────────────
-// First real-code artifact in the demo bundle. Reads the same
-// ns.design.customRecords answer the wizard captures and emits one
-// deployable Objects/customrecord_<slug>.xml per declared record.
-// Runs the structural validator before writing — fails the bundle
-// build if any emitted XML would be rejected by Oracle SDF.
+// ── Real-code generation: SDF bundle ────────────────────────────────────────
+// Every NetSuite Account Customization Project needs three things at the
+// SDF root for SuiteCloud CLI to deploy it:
+//   1. manifest.xml  — declares projecttype + required features
+//   2. deploy.xml    — tells SuiteCloud which paths to push
+//   3. Objects/      — the actual customisations
+//
+// Manifest + deploy are emitted unconditionally on NetSuite (any customisation
+// — current or future — needs them). Custom records are emitted only when
+// the wizard's ns.design.customRecords answer is non-empty. Everything is
+// validated together against sdfValidator.ts before writing — we fail the
+// bundle build if any emitted XML would be rejected by Oracle SDF, so the
+// demo bundle is always deployable.
 const sdfRoot = path.join(outRoot, 'SDF');
+
+const manifestXml = generateSdfManifest({
+  firmName: 'NSIX',
+  clientName,
+});
+const deployXml = generateSdfDeploy();
 const customRecordsResult = generateSdfCustomRecords({
   customRecordsAnswer: answers['ns.design.customRecords'] as string | undefined,
 });
 
-if (customRecordsResult.emitted.length > 0) {
-  const validation = validateSDFBundle(customRecordsResult.files);
-  if (!validation.ok) {
+// Single validator pass over the WHOLE SDF bundle so manifest / deploy /
+// customrecord errors all surface together.
+const allSdfFiles: Record<string, string> = {
+  'manifest.xml': manifestXml,
+  'deploy.xml': deployXml,
+  ...customRecordsResult.files,
+};
+const validation = validateSDFBundle(allSdfFiles);
+if (!validation.ok) {
+  // eslint-disable-next-line no-console
+  console.error(`  ✗ SDF VALIDATION FAILED:`);
+  for (const err of validation.errors) {
     // eslint-disable-next-line no-console
-    console.error(`  ✗ SDF VALIDATION FAILED:`);
-    for (const err of validation.errors) {
-      // eslint-disable-next-line no-console
-      console.error(`    ${err.file}: ${err.rule} — ${err.detail}`);
-    }
-    process.exit(1);
+    console.error(`    ${err.file}: ${err.rule} — ${err.detail}`);
   }
+  process.exit(1);
+}
 
-  for (const [relPath, content] of Object.entries(customRecordsResult.files)) {
-    const fullPath = path.join(sdfRoot, relPath);
-    await fs.mkdir(path.dirname(fullPath), { recursive: true });
-    await fs.writeFile(fullPath, content, 'utf8');
-    process.stdout.write(`  ✓ SDF/${relPath}\n`);
-  }
+await fs.mkdir(sdfRoot, { recursive: true });
+await fs.writeFile(path.join(sdfRoot, 'manifest.xml'), manifestXml, 'utf8');
+process.stdout.write(`  ✓ SDF/manifest.xml\n`);
+await fs.writeFile(path.join(sdfRoot, 'deploy.xml'), deployXml, 'utf8');
+process.stdout.write(`  ✓ SDF/deploy.xml\n`);
+
+for (const [relPath, content] of Object.entries(customRecordsResult.files)) {
+  const fullPath = path.join(sdfRoot, relPath);
+  await fs.mkdir(path.dirname(fullPath), { recursive: true });
+  await fs.writeFile(fullPath, content, 'utf8');
+  process.stdout.write(`  ✓ SDF/${relPath}\n`);
 }
 
 // ── Anti-bleed verification ─────────────────────────────────────────────────
@@ -380,7 +406,7 @@ console.log('');
 // eslint-disable-next-line no-console
 console.log(`  Bundle: ${outRoot}`);
 // eslint-disable-next-line no-console
-console.log(`  Files:  ${writes.length} doc + ${customRecordsResult.emitted.length} SDF custom records`);
+console.log(`  Files:  ${writes.length} doc + manifest.xml + deploy.xml + ${customRecordsResult.emitted.length} SDF custom records`);
 if (missingTerms === 0) {
   // eslint-disable-next-line no-console
   console.log(`  Sanity: ✓ NetSuite terminology present in BRD`);

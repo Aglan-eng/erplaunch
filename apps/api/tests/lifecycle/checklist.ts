@@ -1,27 +1,30 @@
-import { fileContains, fileLineCount, bundleContains } from './_helpers.js';
+import { fileContains, fileLineCount, bundleContains, type BundleSnapshot } from './_helpers.js';
 
 /**
  * 9-phase lifecycle rubric — automated coverage scoring for ERPLaunch
- * generated bundles. Each phase has 3-6 binary checks; phase score is
- * (passed / total) × 10, rounded to 1 decimal.
+ * generated bundles. Each phase has 3-9 binary checks; phase score is
+ * computed from passed / (passed + failed) — SKIP excluded.
+ *
+ * Three states per check:
+ *   - PASS — evaluator returned true
+ *   - FAIL — evaluator returned false
+ *   - SKIP — applicable() returned false (e.g. SDF checks N/A on Odoo)
  *
  * Authored from the LIFECYCLE_COVERAGE_AUDIT rubric. Some checks are
- * marked `currentlyFailing: true` to flag known gaps that future packs
- * will close — the test harness asserts a uniform threshold (currently
- * 4.0) and a front-half-weighted threshold (currently 6.0), so failing
- * checks lower the score but don't fail the test on day one. Each pack
- * that closes a gap raises the bar.
+ * documented gaps that future packs will close. Each pack that closes
+ * a gap raises the bar via threshold ratchets in lifecycleScore.test.ts.
  */
-
-export type BundleFiles = ReadonlyMap<string, string>;
 
 export interface PhaseCheck {
   /** Stable id used in the gap report and threshold-bumping. */
   id: string;
   /** Human-readable description shown in the gap report. */
   description: string;
-  /** True = check passes for this bundle. */
-  evaluator: (files: BundleFiles) => boolean;
+  /** When false, the check is treated as SKIP and excluded from the
+   *  phase denominator. Defaults to "always applicable" if omitted. */
+  applicable?: (snap: BundleSnapshot) => boolean;
+  /** True when the check passes for this snapshot. */
+  evaluator: (snap: BundleSnapshot) => boolean;
 }
 
 export interface Phase {
@@ -32,6 +35,17 @@ export interface Phase {
   checks: ReadonlyArray<PhaseCheck>;
 }
 
+// Convenience: the 45 existing checks all read from snap.docs. This
+// wrapper keeps their bodies tidy without touching the public types.
+function docs(s: BundleSnapshot) {
+  return s.docs;
+}
+
+// Adaptor-conditional applicability — used by the new Phase 4 SDF
+// checks. SDF artefacts only exist on NetSuite bundles; on Odoo they
+// SKIP (excluded from the phase denominator) rather than FAIL.
+const onlyNetSuite = (s: BundleSnapshot): boolean => s.adaptor === 'netsuite';
+
 // ─── Phase 1 — Kickoff ───────────────────────────────────────────────────────
 
 const PHASE_1_KICKOFF: Phase = {
@@ -41,46 +55,44 @@ const PHASE_1_KICKOFF: Phase = {
     {
       id: 'p1.kickoff-doc-exists',
       description: 'Project_Kickoff.md is generated',
-      evaluator: (files) => files.has('Project_Kickoff.md'),
+      evaluator: (s) => docs(s).has('Project_Kickoff.md'),
     },
     {
       id: 'p1.contains-project-charter',
       description: 'Project_Kickoff.md contains "Project Charter" section',
-      evaluator: (files) => fileContains(files, 'Project_Kickoff.md', 'Project Charter'),
+      evaluator: (s) => fileContains(docs(s), 'Project_Kickoff.md', 'Project Charter'),
     },
     {
       id: 'p1.contains-stakeholder-map',
       description: 'Project_Kickoff.md contains "Stakeholder Map" section',
-      evaluator: (files) => fileContains(files, 'Project_Kickoff.md', 'Stakeholder Map'),
+      evaluator: (s) => fileContains(docs(s), 'Project_Kickoff.md', 'Stakeholder Map'),
     },
     {
       id: 'p1.contains-raci-matrix',
       description: 'Project_Kickoff.md contains "RACI Matrix" section',
-      evaluator: (files) => fileContains(files, 'Project_Kickoff.md', 'RACI Matrix'),
+      evaluator: (s) => fileContains(docs(s), 'Project_Kickoff.md', 'RACI Matrix'),
     },
     {
       id: 'p1.contains-governance-plan',
       description: 'Project_Kickoff.md contains "Governance Plan" section',
-      evaluator: (files) => fileContains(files, 'Project_Kickoff.md', 'Governance Plan'),
+      evaluator: (s) => fileContains(docs(s), 'Project_Kickoff.md', 'Governance Plan'),
     },
     {
       id: 'p1.contains-communication-plan',
       description: 'Project_Kickoff.md contains "Communication Plan" section',
-      evaluator: (files) => fileContains(files, 'Project_Kickoff.md', 'Communication Plan'),
+      evaluator: (s) => fileContains(docs(s), 'Project_Kickoff.md', 'Communication Plan'),
     },
     {
       id: 'p1.contains-kickoff-agenda',
       description: 'Project_Kickoff.md contains "Kickoff Meeting Agenda" section',
-      evaluator: (files) => fileContains(files, 'Project_Kickoff.md', 'Kickoff Meeting Agenda'),
+      evaluator: (s) => fileContains(docs(s), 'Project_Kickoff.md', 'Kickoff Meeting Agenda'),
     },
     {
       id: 'p1.sponsor-populated',
       description: 'Project sponsor is populated (not empty / not [ASSIGN])',
-      evaluator: (files) => {
-        const c = files.get('Project_Kickoff.md');
+      evaluator: (s) => {
+        const c = docs(s).get('Project_Kickoff.md');
         if (!c) return false;
-        // Find the **Project sponsor** label and confirm the next non-blank
-        // line isn't a placeholder.
         const m = c.match(/\*\*Project sponsor\*\*\s*\n([^\n]+)/);
         if (!m) return false;
         const value = m[1].trim();
@@ -99,28 +111,28 @@ const PHASE_2_DISCOVERY: Phase = {
     {
       id: 'p2.brd-exists',
       description: 'BRD.md is generated',
-      evaluator: (files) => files.has('BRD.md'),
+      evaluator: (s) => docs(s).has('BRD.md'),
     },
     {
       id: 'p2.brd-executive-summary',
       description: 'BRD contains "1. Executive Summary"',
-      evaluator: (files) => fileContains(files, 'BRD.md', '## 1. Executive Summary'),
+      evaluator: (s) => fileContains(docs(s), 'BRD.md', '## 1. Executive Summary'),
     },
     {
       id: 'p2.brd-license-edition',
       description: 'BRD contains "2. License & Edition Profile"',
-      evaluator: (files) => fileContains(files, 'BRD.md', '## 2. License & Edition Profile'),
+      evaluator: (s) => fileContains(docs(s), 'BRD.md', '## 2. License & Edition Profile'),
     },
     {
       id: 'p2.brd-workstream-requirements',
       description: 'BRD contains "3. Workstream Requirements"',
-      evaluator: (files) => fileContains(files, 'BRD.md', '## 3. Workstream Requirements'),
+      evaluator: (s) => fileContains(docs(s), 'BRD.md', '## 3. Workstream Requirements'),
     },
     {
       id: 'p2.brd-three-subsections',
       description: 'BRD has at least 3 numbered subsections under section 3',
-      evaluator: (files) => {
-        const c = files.get('BRD.md');
+      evaluator: (s) => {
+        const c = docs(s).get('BRD.md');
         if (!c) return false;
         const matches = c.match(/^### 3\.\d+\./gm);
         return (matches?.length ?? 0) >= 3;
@@ -129,17 +141,17 @@ const PHASE_2_DISCOVERY: Phase = {
     {
       id: 'p2.risk-register-exists',
       description: 'Risk_Register.md is generated',
-      evaluator: (files) => files.has('Risk_Register.md'),
+      evaluator: (s) => docs(s).has('Risk_Register.md'),
     },
     {
       id: 'p2.uat-plan-exists',
       description: 'UAT_Plan.md is generated',
-      evaluator: (files) => files.has('UAT_Plan.md'),
+      evaluator: (s) => docs(s).has('UAT_Plan.md'),
     },
     {
       id: 'p2.solution-design-exists',
       description: 'Solution_Design.md is generated',
-      evaluator: (files) => files.has('Solution_Design.md'),
+      evaluator: (s) => docs(s).has('Solution_Design.md'),
     },
   ],
 };
@@ -153,41 +165,49 @@ const PHASE_3_DESIGN: Phase = {
     {
       id: 'p3.architecture-section',
       description: 'Solution_Design.md has an architecture / technical-spec section',
-      evaluator: (files) =>
-        fileContains(files, 'Solution_Design.md', 'Architecture') ||
-        fileContains(files, 'Solution_Design.md', 'Technical Specifications') ||
-        fileContains(files, 'Solution_Design.md', 'Configuration Design'),
+      evaluator: (s) =>
+        fileContains(docs(s), 'Solution_Design.md', 'Architecture') ||
+        fileContains(docs(s), 'Solution_Design.md', 'Technical Specifications') ||
+        fileContains(docs(s), 'Solution_Design.md', 'Configuration Design'),
     },
     {
       id: 'p3.integration-coverage',
       description: 'Solution_Design.md mentions "Integration" (gap until Discovery — integration architecture pack)',
-      evaluator: (files) => fileContains(files, 'Solution_Design.md', 'Integration'),
+      evaluator: (s) => fileContains(docs(s), 'Solution_Design.md', 'Integration'),
     },
     {
       id: 'p3.data-architecture',
       description: 'Solution_Design.md mentions "Master Data" / "Data Architecture" / "Data Model" (gap until Solution Design — data architecture pack)',
-      evaluator: (files) =>
-        fileContains(files, 'Solution_Design.md', 'Master Data') ||
-        fileContains(files, 'Solution_Design.md', 'Data Architecture') ||
-        fileContains(files, 'Solution_Design.md', 'Data Model'),
+      evaluator: (s) =>
+        fileContains(docs(s), 'Solution_Design.md', 'Master Data') ||
+        fileContains(docs(s), 'Solution_Design.md', 'Data Architecture') ||
+        fileContains(docs(s), 'Solution_Design.md', 'Data Model'),
     },
     {
       id: 'p3.security-roles',
       description: 'Solution_Design.md mentions "Security" or "Roles" or "SoD" (gap until SoD matrix pack)',
-      evaluator: (files) =>
-        fileContains(files, 'Solution_Design.md', 'Security') ||
-        fileContains(files, 'Solution_Design.md', 'Roles') ||
-        fileContains(files, 'Solution_Design.md', 'SoD'),
+      evaluator: (s) =>
+        fileContains(docs(s), 'Solution_Design.md', 'Security') ||
+        fileContains(docs(s), 'Solution_Design.md', 'Roles') ||
+        fileContains(docs(s), 'Solution_Design.md', 'SoD'),
     },
     {
       id: 'p3.solution-design-depth',
       description: 'Solution_Design.md has more than 200 lines (depth proxy)',
-      evaluator: (files) => fileLineCount(files, 'Solution_Design.md') > 200,
+      evaluator: (s) => fileLineCount(docs(s), 'Solution_Design.md') > 200,
     },
   ],
 };
 
 // ─── Phase 4 — Build ─────────────────────────────────────────────────────────
+//
+// Build phase rubric expanded post real-code generator landing.
+// Pre-extension checks (5) measure prose evidence; new SDF checks (4)
+// measure deployable artefacts. SDF checks SKIP on Odoo.
+//
+// Future: when the Odoo real-code generators ship (XML data files +
+// Python module templates), add adaptor: 'odoo' counterparts here so
+// Odoo's Phase 4 ratchets up the same way NetSuite's just did.
 
 const PHASE_4_BUILD: Phase = {
   number: 4,
@@ -195,50 +215,77 @@ const PHASE_4_BUILD: Phase = {
   checks: [
     {
       id: 'p4.config-or-sdf-exists',
-      description: 'Configuration_Plan.md (Odoo) OR SDF manifest content (NetSuite) exists',
-      evaluator: (files) => {
-        // Odoo bundles ship Configuration_Plan.md; NetSuite bundles ship
-        // SDF artifacts via the SDF generator. The demo driver doesn't
-        // currently emit SDF into the bundle (it goes to a sibling
-        // SDF/ folder via generation.ts). For the demo bundle we treat
-        // Implementation_Plan.html as the configuration-equivalent artefact
-        // when Configuration_Plan.md isn't present.
-        return files.has('Configuration_Plan.md') || files.has('Implementation_Plan.html');
-      },
+      description: 'Configuration_Plan.md (Odoo) OR Implementation_Plan.html (NetSuite) exists',
+      evaluator: (s) => docs(s).has('Configuration_Plan.md') || docs(s).has('Implementation_Plan.html'),
     },
     {
       id: 'p4.references-workstream-module',
       description: 'Build artefact references at least one workstream-specific module/app',
-      evaluator: (files) => {
-        const candidates = [
-          'Configuration_Plan.md',
-          'Implementation_Plan.html',
-          'Solution_Design.md',
-        ];
-        const moduleHints = [
-          'Accounting', 'Inventory', 'Purchase', 'Sales', 'Manufacturing',
-          'CRM', 'HR', 'Project',
-        ];
-        return candidates.some((f) =>
-          moduleHints.some((m) => fileContains(files, f, m)),
-        );
+      evaluator: (s) => {
+        const candidates = ['Configuration_Plan.md', 'Implementation_Plan.html', 'Solution_Design.md'];
+        const moduleHints = ['Accounting', 'Inventory', 'Purchase', 'Sales', 'Manufacturing', 'CRM', 'HR', 'Project'];
+        return candidates.some((f) => moduleHints.some((m) => fileContains(docs(s), f, m)));
       },
     },
     {
       id: 'p4.environment-plan',
       description: '"Environment" plan referenced (gap until Build — environment plan pack)',
-      evaluator: (files) => bundleContains(files, 'Environment'),
+      evaluator: (s) => bundleContains(docs(s), 'Environment'),
     },
     {
       id: 'p4.deployment-runbook',
       description: '"Deployment" or "Runbook" referenced (gap until deployment-runbook pack)',
-      evaluator: (files) =>
-        bundleContains(files, 'Deployment') || bundleContains(files, 'Runbook'),
+      evaluator: (s) => bundleContains(docs(s), 'Deployment') || bundleContains(docs(s), 'Runbook'),
     },
     {
       id: 'p4.cutover-references-in-plan',
       description: 'Implementation_Plan references "Cutover"',
-      evaluator: (files) => fileContains(files, 'Implementation_Plan.html', 'Cutover'),
+      evaluator: (s) => fileContains(docs(s), 'Implementation_Plan.html', 'Cutover'),
+    },
+    // ── New SDF / build-artefact checks (NetSuite-only — SKIP on Odoo) ──
+    {
+      id: 'p4.sdf-customrecords-emitted',
+      description: 'When ns.design.customRecords is non-empty, ≥1 customrecord_*.xml file is emitted to SDF/Objects/',
+      applicable: onlyNetSuite,
+      evaluator: (s) => {
+        for (const key of s.buildArtefacts.keys()) {
+          if (/^SDF\/Objects\/customrecord_[a-z0-9_]+\.xml$/.test(key)) return true;
+        }
+        return false;
+      },
+    },
+    {
+      id: 'p4.sdf-customrecords-valid-root',
+      description: 'Every emitted customrecord_*.xml has root <customrecordtype scriptid=...> (audit-fix #1 contract)',
+      applicable: onlyNetSuite,
+      evaluator: (s) => {
+        let count = 0;
+        for (const [key, content] of s.buildArtefacts.entries()) {
+          if (!/^SDF\/Objects\/customrecord_[a-z0-9_]+\.xml$/.test(key)) continue;
+          count++;
+          // Allow optional XML declaration before the root element.
+          if (!/<customrecordtype\s+scriptid="customrecord_[a-z0-9_]+"\s*>/.test(content)) {
+            return false;
+          }
+        }
+        // No customrecord files emitted = no records were declared on
+        // this engagement; treat as a SKIP-equivalent pass (the contract
+        // is "every emitted file is valid", and zero files trivially
+        // satisfies that).
+        return count > 0 || true;
+      },
+    },
+    {
+      id: 'p4.sdf-manifest-present',
+      description: 'SDF/manifest.xml exists in NetSuite bundle',
+      applicable: onlyNetSuite,
+      evaluator: (s) => s.buildArtefacts.has('SDF/manifest.xml'),
+    },
+    {
+      id: 'p4.sdf-deploy-present',
+      description: 'SDF/deploy.xml exists in NetSuite bundle',
+      applicable: onlyNetSuite,
+      evaluator: (s) => s.buildArtefacts.has('SDF/deploy.xml'),
     },
   ],
 };
@@ -252,18 +299,18 @@ const PHASE_5_TEST: Phase = {
     {
       id: 'p5.uat-plan-exists',
       description: 'UAT_Plan.md is generated',
-      evaluator: (files) => files.has('UAT_Plan.md'),
+      evaluator: (s) => docs(s).has('UAT_Plan.md'),
     },
     {
       id: 'p5.acceptance-criteria',
       description: 'UAT_Plan.md contains "Acceptance Criteria" (gap until Test pack)',
-      evaluator: (files) => fileContains(files, 'UAT_Plan.md', 'Acceptance Criteria'),
+      evaluator: (s) => fileContains(docs(s), 'UAT_Plan.md', 'Acceptance Criteria'),
     },
     {
       id: 'p5.three-named-scenarios',
       description: 'UAT_Plan.md has at least 3 named scenarios (lines starting with TC- or Scenario)',
-      evaluator: (files) => {
-        const c = files.get('UAT_Plan.md');
+      evaluator: (s) => {
+        const c = docs(s).get('UAT_Plan.md');
         if (!c) return false;
         const matches = c.match(/^(?:TC-|Scenario|### TC|\| TC-)/gm);
         return (matches?.length ?? 0) >= 3;
@@ -272,12 +319,12 @@ const PHASE_5_TEST: Phase = {
     {
       id: 'p5.signoff-section',
       description: 'UAT_Plan.md contains "Sign-off" (gap until Test pack)',
-      evaluator: (files) => fileContains(files, 'UAT_Plan.md', 'Sign-off'),
+      evaluator: (s) => fileContains(docs(s), 'UAT_Plan.md', 'Sign-off'),
     },
     {
       id: 'p5.performance-section',
       description: 'UAT_Plan.md mentions "Performance" (gap until Test pack)',
-      evaluator: (files) => fileContains(files, 'UAT_Plan.md', 'Performance'),
+      evaluator: (s) => fileContains(docs(s), 'UAT_Plan.md', 'Performance'),
     },
   ],
 };
@@ -291,13 +338,13 @@ const PHASE_6_TRAIN: Phase = {
     {
       id: 'p6.training-manual-exists',
       description: 'Training_Manual.md is generated',
-      evaluator: (files) => files.has('Training_Manual.md'),
+      evaluator: (s) => docs(s).has('Training_Manual.md'),
     },
     {
       id: 'p6.two-sections',
       description: 'Training_Manual.md has at least 2 ## sections',
-      evaluator: (files) => {
-        const c = files.get('Training_Manual.md');
+      evaluator: (s) => {
+        const c = docs(s).get('Training_Manual.md');
         if (!c) return false;
         const matches = c.match(/^## /gm);
         return (matches?.length ?? 0) >= 2;
@@ -306,16 +353,16 @@ const PHASE_6_TRAIN: Phase = {
     {
       id: 'p6.quick-reference',
       description: 'Training_Manual.md contains "Quick Reference" (gap until Train pack)',
-      evaluator: (files) => fileContains(files, 'Training_Manual.md', 'Quick Reference'),
+      evaluator: (s) => fileContains(docs(s), 'Training_Manual.md', 'Quick Reference'),
     },
     {
       id: 'p6.per-role-section',
       description: 'Training_Manual.md has a per-role section (gap until Train pack)',
-      evaluator: (files) =>
-        fileContains(files, 'Training_Manual.md', 'Role:') ||
-        fileContains(files, 'Training_Manual.md', 'For Accountants') ||
-        fileContains(files, 'Training_Manual.md', 'For Managers') ||
-        fileContains(files, 'Training_Manual.md', 'By Role'),
+      evaluator: (s) =>
+        fileContains(docs(s), 'Training_Manual.md', 'Role:') ||
+        fileContains(docs(s), 'Training_Manual.md', 'For Accountants') ||
+        fileContains(docs(s), 'Training_Manual.md', 'For Managers') ||
+        fileContains(docs(s), 'Training_Manual.md', 'By Role'),
     },
   ],
 };
@@ -329,24 +376,24 @@ const PHASE_7_CUTOVER: Phase = {
     {
       id: 'p7.cutover-runbook-exists',
       description: 'Cutover_Runbook.md is generated (gap — not currently produced)',
-      evaluator: (files) => files.has('Cutover_Runbook.md'),
+      evaluator: (s) => docs(s).has('Cutover_Runbook.md'),
     },
     {
       id: 'p7.go-no-go',
       description: '"Go/No-Go" section in cutover artefact (gap)',
-      evaluator: (files) =>
-        bundleContains(files, 'Go/No-Go') || bundleContains(files, 'Go / No-Go'),
+      evaluator: (s) =>
+        bundleContains(docs(s), 'Go/No-Go') || bundleContains(docs(s), 'Go / No-Go'),
     },
     {
       id: 'p7.rollback',
       description: '"Rollback" section in cutover artefact (gap)',
-      evaluator: (files) => bundleContains(files, 'Rollback'),
+      evaluator: (s) => bundleContains(docs(s), 'Rollback'),
     },
     {
       id: 'p7.smoke-checklist',
       description: 'Smoke checklist in cutover artefact (gap)',
-      evaluator: (files) =>
-        bundleContains(files, 'Smoke Test') || bundleContains(files, 'Smoke checklist'),
+      evaluator: (s) =>
+        bundleContains(docs(s), 'Smoke Test') || bundleContains(docs(s), 'Smoke checklist'),
     },
   ],
 };
@@ -360,18 +407,18 @@ const PHASE_8_HYPERCARE: Phase = {
     {
       id: 'p8.hypercare-plan-exists',
       description: 'Hypercare_Plan.md is generated (gap — not currently produced)',
-      evaluator: (files) => files.has('Hypercare_Plan.md'),
+      evaluator: (s) => docs(s).has('Hypercare_Plan.md'),
     },
     {
       id: 'p8.daily-readiness',
       description: 'Daily readiness template (gap)',
-      evaluator: (files) =>
-        bundleContains(files, 'Daily Readiness') || bundleContains(files, 'Daily readiness'),
+      evaluator: (s) =>
+        bundleContains(docs(s), 'Daily Readiness') || bundleContains(docs(s), 'Daily readiness'),
     },
     {
       id: 'p8.escalation-matrix',
       description: 'Escalation matrix (gap)',
-      evaluator: (files) => bundleContains(files, 'Escalation Matrix'),
+      evaluator: (s) => bundleContains(docs(s), 'Escalation Matrix'),
     },
   ],
 };
@@ -385,20 +432,20 @@ const PHASE_9_STABILIZE: Phase = {
     {
       id: 'p9.optimization-roadmap-exists',
       description: 'Optimization_Roadmap.md is generated (gap — not currently produced)',
-      evaluator: (files) => files.has('Optimization_Roadmap.md'),
+      evaluator: (s) => docs(s).has('Optimization_Roadmap.md'),
     },
     {
       id: 'p9.phase-2-or-continuous',
       description: '"Phase 2" or "Continuous improvement" referenced (gap)',
-      evaluator: (files) =>
-        bundleContains(files, 'Continuous Improvement') ||
-        bundleContains(files, 'Phase 2') ||
-        bundleContains(files, 'Continuous improvement'),
+      evaluator: (s) =>
+        bundleContains(docs(s), 'Continuous Improvement') ||
+        bundleContains(docs(s), 'Phase 2') ||
+        bundleContains(docs(s), 'Continuous improvement'),
     },
     {
       id: 'p9.backlog',
       description: '"Backlog" referenced (gap)',
-      evaluator: (files) => bundleContains(files, 'Backlog'),
+      evaluator: (s) => bundleContains(docs(s), 'Backlog'),
     },
   ],
 };
@@ -420,12 +467,20 @@ export const LIFECYCLE_PHASES: ReadonlyArray<Phase> = [
 export interface PhaseScore {
   number: number;
   name: string;
+  /** Checks that ran AND passed. */
   passed: number;
-  total: number;
-  /** Out of 10, 1-decimal precision. */
+  /** Checks that ran AND failed. */
+  failed: number;
+  /** Checks excluded from this run via applicable() === false. */
+  skipped: number;
+  /** passed + failed (the denominator for the phase score). */
+  applicable: number;
+  /** passed / (passed + failed) × 10, 1-decimal. 10 when no checks
+   *  applicable (vacuous-truth contract). */
   score: number;
   failedCheckIds: string[];
   failedCheckDescriptions: string[];
+  skippedCheckIds: string[];
 }
 
 export interface BundleScore {
@@ -436,19 +491,43 @@ export interface BundleScore {
   frontHalfWeightedOverall: number;
 }
 
-export function scoreBundle(files: BundleFiles): BundleScore {
+export function scoreBundle(snap: BundleSnapshot): BundleScore {
   const perPhase: PhaseScore[] = LIFECYCLE_PHASES.map((phase) => {
-    const failed = phase.checks.filter((c) => !c.evaluator(files));
-    const passed = phase.checks.length - failed.length;
-    const score = round1((passed / phase.checks.length) * 10);
+    let passed = 0;
+    let failed = 0;
+    const skipped: string[] = [];
+    const failedIds: string[] = [];
+    const failedDescs: string[] = [];
+
+    for (const check of phase.checks) {
+      const applicable = check.applicable ? check.applicable(snap) : true;
+      if (!applicable) {
+        skipped.push(check.id);
+        continue;
+      }
+      if (check.evaluator(snap)) {
+        passed++;
+      } else {
+        failed++;
+        failedIds.push(check.id);
+        failedDescs.push(check.description);
+      }
+    }
+
+    const applicableCount = passed + failed;
+    const score = applicableCount === 0 ? 10 : round1((passed / applicableCount) * 10);
+
     return {
       number: phase.number,
       name: phase.name,
       passed,
-      total: phase.checks.length,
+      failed,
+      skipped: skipped.length,
+      applicable: applicableCount,
       score,
-      failedCheckIds: failed.map((c) => c.id),
-      failedCheckDescriptions: failed.map((c) => c.description),
+      failedCheckIds: failedIds,
+      failedCheckDescriptions: failedDescs,
+      skippedCheckIds: skipped,
     };
   });
 

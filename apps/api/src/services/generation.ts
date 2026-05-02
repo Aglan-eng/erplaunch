@@ -7,6 +7,8 @@ import { generateKickoff, generateKickoffHtml, type KickoffMember } from './gene
 import { getAdaptorRegistry } from '@ofoq/adaptor-registry';
 import { generateSDFPackage } from './generators/sdfGenerator.js';
 import { generateSdfCustomRecords } from './generators/sdfCustomRecordsGenerator.js';
+import { generateSdfManifest } from './generators/sdfManifestGenerator.js';
+import { generateSdfDeploy } from './generators/sdfDeployGenerator.js';
 import { validateSDFBundle, isValidationEnabled } from './generators/sdfValidator.js';
 import { generateScripts } from './generators/scriptGenerator.js';
 import { generateRiskRegister } from './generators/riskGenerator.js';
@@ -262,6 +264,27 @@ export async function processJob(jobId: string, db: DbModule) {
         customRecordsAnswer: answers['ns.design.customRecords'] as string | undefined,
       });
       Object.assign(sdfFiles, customRecordsResult.files);
+
+      // Manifest + deploy fallback: every ACP needs a manifest.xml and a
+      // deploy.xml at the SDF root for SuiteCloud CLI to push the bundle.
+      // generateSDFPackage above is feature-aware and emits its own
+      // manifest+deploy with a license/answers-derived <features> block —
+      // so its output wins in production. The lean generators here only
+      // fill in for the case where generateSDFPackage didn't emit either
+      // file (shouldn't happen today but a defensive belt + braces means
+      // an SDF/Objects/* bundle is never published without the two
+      // pre-requisite root files). The lean generators are also the
+      // source of truth for the demo bundle driver, where there's no
+      // generateSDFPackage call — see scripts/generate-netsuite-demo-bundle.ts.
+      if (!sdfFiles['manifest.xml']) {
+        sdfFiles['manifest.xml'] = generateSdfManifest({
+          firmName: 'NSIX',
+          clientName: eng.clientName as string,
+        });
+      }
+      if (!sdfFiles['deploy.xml']) {
+        sdfFiles['deploy.xml'] = generateSdfDeploy();
+      }
 
       // Phase 8: structural SDF validation gate. Fails the job loudly if any
       // generated XML file would be rejected by Oracle's schema — catches
