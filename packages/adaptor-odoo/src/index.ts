@@ -125,6 +125,10 @@ const schema: QuestionnaireSchema = {
     buildInventoryFlow(),
     buildPurchaseFlow(),
     buildSalesFlow(),
+    // Pack 8 — Revenue Apps depth (POS + eCommerce + Subscriptions).
+    // Optional revenue-facing apps; sections are conditional per
+    // *.inScope flags so engagements that don't need them stay clean.
+    buildRevenueAppsFlow(),
     buildManufacturingFlow(),
     buildReturnsFlow(),
     buildMigrationFlow(),
@@ -1125,6 +1129,192 @@ function buildSalesFlow(): FlowDefinition {
               { value: 'ORDERED', label: 'Invoiced quantity = ordered quantity' },
               { value: 'DELIVERED', label: 'Invoiced quantity = delivered quantity' },
             ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+// ─── Pack 8 — Revenue Apps depth (POS + eCommerce + Subscriptions) ───────────
+//
+// 15 questions across 3 sections:
+//   - pos           (5): in-scope, type, terminal count, hardware list,
+//                        offline mode.
+//   - ecommerce     (5): in-scope, single/multi-site, languages, payment
+//                        providers, shipping carriers.
+//   - subscriptions (5): in-scope, billing frequencies, auto-renewal
+//                        policy, dunning policy, MRR/ARR reporting.
+//
+// Each section is conditional via dependsOn on the *.inScope flag so
+// engagements that don't need a given app keep the wizard clean.
+//
+// Sources: Odoo 19 Point of Sale docs (hardware setup, restaurant
+// features), Odoo IoT Box pairing (Online vs Self-hosted), Odoo
+// Website + eCommerce (multi-site, payment providers, shipping
+// carriers), Odoo Subscriptions (Enterprise — recurring revenue,
+// auto-renewal, MRR), Odoo Payment Providers list.
+function buildRevenueAppsFlow(): FlowDefinition {
+  return {
+    id: 'REVENUE_APPS',
+    label: 'Revenue Apps (POS, eCommerce, Subscriptions)',
+    description:
+      'Optional revenue-facing Odoo apps — Point of Sale (retail/restaurant), Website + eCommerce (B2C/B2B online), and Subscriptions (recurring billing). Each section is conditional: skip if the app is not in scope.',
+    sections: [
+      {
+        id: 'pos',
+        label: 'Point of Sale',
+        order: 1,
+        questions: [
+          {
+            id: 'odoo.revenue.posInScope',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'Point of Sale in scope?',
+          },
+          {
+            id: 'odoo.revenue.posType',
+            inputType: 'SINGLE_SELECT',
+            required: false,
+            label: 'POS type (only if POS in scope)',
+            dependsOn: { questionId: 'odoo.revenue.posInScope', value: true },
+            options: [
+              { value: 'RETAIL', label: 'Retail (counter, store, kiosk)' },
+              { value: 'RESTAURANT', label: 'Restaurant (table service, kitchen routing, course management)' },
+              { value: 'BOTH', label: 'Both — separate retail and restaurant locations' },
+            ],
+          },
+          {
+            id: 'odoo.revenue.posTerminalCount',
+            inputType: 'NUMBER',
+            required: false,
+            label: 'Number of POS terminals at go-live (count physical devices that take payment)',
+            dependsOn: { questionId: 'odoo.revenue.posInScope', value: true },
+          },
+          {
+            id: 'odoo.revenue.posHardware',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "POS hardware per terminal (list — e.g., 'Receipt printer (Epson TM-T20)', 'Cash drawer', 'Barcode scanner (USB)', 'Payment terminal (Ingenico)', 'Customer display', 'Scale (only F&B)', 'IoT Box')",
+            dependsOn: { questionId: 'odoo.revenue.posInScope', value: true },
+            help: {
+              title: 'POS hardware in Odoo',
+              body: 'Odoo POS supports IoT Box for non-USB hardware (network printers, scales, etc.). Ingenico/Adyen payment terminals integrate via IoT Box; Stripe Terminal works direct.',
+            },
+          },
+          {
+            id: 'odoo.revenue.posOfflineMode',
+            inputType: 'BOOLEAN',
+            required: false,
+            label:
+              'Offline mode required? (POS continues operating when internet is down; syncs on reconnect)',
+            dependsOn: { questionId: 'odoo.revenue.posInScope', value: true },
+            help: {
+              title: 'Offline mode',
+              body: 'Odoo POS supports offline mode natively but offline-only payment terminal integration is provider-dependent.',
+            },
+          },
+        ],
+      },
+      {
+        id: 'ecommerce',
+        label: 'Website + eCommerce',
+        order: 2,
+        questions: [
+          {
+            id: 'odoo.revenue.ecommerceInScope',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'Website + eCommerce in scope?',
+          },
+          {
+            id: 'odoo.revenue.ecommerceSiteCount',
+            inputType: 'SINGLE_SELECT',
+            required: false,
+            label: 'Single site or multiple sites? (only if eCommerce in scope)',
+            dependsOn: { questionId: 'odoo.revenue.ecommerceInScope', value: true },
+            options: [
+              { value: 'SINGLE', label: 'Single site' },
+              { value: 'MULTI_SITE', label: 'Multiple sites (per brand, per region, B2B + B2C separation)' },
+            ],
+          },
+          {
+            id: 'odoo.revenue.ecommerceLanguages',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Storefront languages required (one per line, ISO 639-1 codes — e.g., 'en — English', 'ar — Arabic', 'fr — French')",
+            dependsOn: { questionId: 'odoo.revenue.ecommerceInScope', value: true },
+          },
+          {
+            id: 'odoo.revenue.ecommercePaymentProviders',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Payment providers in scope (one per line — e.g., 'Stripe', 'Adyen', 'PayPal', 'Razorpay', 'Mollie', 'Tabby (UAE/SA BNPL)', 'Fawry (Egypt)')",
+            dependsOn: { questionId: 'odoo.revenue.ecommerceInScope', value: true },
+            help: {
+              title: 'Payment providers',
+              body: 'Odoo ships connectors for ~30 global providers. Local providers (Fawry, Tabby, MyFatoorah) often need community modules or custom connectors.',
+            },
+          },
+          {
+            id: 'odoo.revenue.ecommerceShippingCarriers',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Shipping carriers integrated (one per line — e.g., 'DHL', 'Aramex', 'FedEx', 'Local last-mile via custom CSV')",
+            dependsOn: { questionId: 'odoo.revenue.ecommerceInScope', value: true },
+          },
+        ],
+      },
+      {
+        id: 'subscriptions',
+        label: 'Subscriptions',
+        order: 3,
+        questions: [
+          {
+            id: 'odoo.revenue.subscriptionsInScope',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'Subscriptions / recurring billing in scope?',
+          },
+          {
+            id: 'odoo.revenue.subscriptionFrequencies',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Billing frequencies in use (one per line — e.g., 'Monthly', 'Annual', 'Quarterly', 'Custom: 14-day pilot')",
+            dependsOn: { questionId: 'odoo.revenue.subscriptionsInScope', value: true },
+          },
+          {
+            id: 'odoo.revenue.subscriptionAutoRenewal',
+            inputType: 'SINGLE_SELECT',
+            required: false,
+            label: 'Auto-renewal policy',
+            dependsOn: { questionId: 'odoo.revenue.subscriptionsInScope', value: true },
+            options: [
+              { value: 'AUTO', label: 'Auto-renew with saved payment method' },
+              { value: 'MANUAL', label: 'Manual renewal — customer confirms each cycle' },
+              { value: 'HYBRID', label: 'Hybrid — auto for some plans, manual for others' },
+              { value: 'NA', label: 'Not applicable' },
+            ],
+          },
+          {
+            id: 'odoo.revenue.subscriptionDunningPolicy',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Dunning policy on failed payments (one per line — e.g., 'Retry day 1, day 3, day 7', 'Suspend access after 14 days', 'Cancel after 30 days')",
+            dependsOn: { questionId: 'odoo.revenue.subscriptionsInScope', value: true },
+          },
+          {
+            id: 'odoo.revenue.mrrArrReporting',
+            inputType: 'BOOLEAN',
+            required: false,
+            label: 'MRR / ARR reporting required? (Monthly / Annual Recurring Revenue dashboards)',
+            dependsOn: { questionId: 'odoo.revenue.subscriptionsInScope', value: true },
           },
         ],
       },
@@ -2953,6 +3143,191 @@ const rules: RulePack = {
         all: [
           { answerEquals: { questionId: 'odoo.migration.postValidationApproach', value: 'FULL_CHECK' } },
           { answerNumberGreaterThan: { questionId: 'odoo.migration.customerCount', value: 5000 } },
+        ],
+      },
+    },
+
+    // ── Pack 8 — Revenue Apps depth rules ─────────────────────────────────
+
+    // R1: POS in scope but POINT_OF_SALE module not licensed.
+    // POS Restaurant features ride on the same module — no separate
+    // Restaurant license in Odoo 17+.
+    {
+      id: 'odoo.revenue.pos-needs-module',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: ['odoo.revenue.posInScope'],
+      message: "POS is in scope but the Point of Sale module isn't in the license.",
+      resolution: "Add POINT_OF_SALE to license.modules. Note: POS Restaurant features require the same module — there's no separate Restaurant license in Odoo 17+.",
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.revenue.posInScope' } },
+          { licenseMissingModule: 'POINT_OF_SALE' },
+        ],
+      },
+    },
+
+    // R2: eCommerce in scope but ECOMMERCE module not licensed.
+    // The Website module is auto-included as a dependency.
+    {
+      id: 'odoo.revenue.ecommerce-needs-module',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: ['odoo.revenue.ecommerceInScope'],
+      message: "eCommerce is in scope but the eCommerce module isn't in the license.",
+      resolution: 'Add ECOMMERCE to license.modules. Website module is auto-included as a dependency.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.revenue.ecommerceInScope' } },
+          { licenseMissingModule: 'ECOMMERCE' },
+        ],
+      },
+    },
+
+    // R3: Subscriptions module is Odoo Enterprise-only. Recurring
+    // billing isn't available in Community without significant
+    // Studio + scheduled-action work.
+    {
+      id: 'odoo.revenue.subscriptions-needs-module-and-enterprise',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: ['odoo.revenue.subscriptionsInScope', 'odoo.foundation.edition'],
+      message: "Subscriptions module is Odoo Enterprise-only. Recurring billing isn't available in Community.",
+      resolution: 'Either upgrade edition to Enterprise, or build manual recurring invoicing via Odoo Studio templates and a scheduled action (significantly more work; expert-level).',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.revenue.subscriptionsInScope' } },
+          { answerEquals: { questionId: 'odoo.foundation.edition', value: 'COMMUNITY' } },
+        ],
+      },
+    },
+
+    // R4: Auto-renewal requires at least one payment provider that
+    // supports tokenized recurring charges. No provider listed →
+    // checkout cannot tokenize.
+    {
+      id: 'odoo.revenue.auto-renewal-needs-payment-provider',
+      type: 'CONFIG_CONFLICT',
+      severity: 'BLOCK',
+      questionIds: [
+        'odoo.revenue.subscriptionsInScope',
+        'odoo.revenue.subscriptionAutoRenewal',
+        'odoo.revenue.ecommercePaymentProviders',
+      ],
+      message: 'Auto-renewal requires at least one payment provider that supports saved-card / token-based recurring charges. No payment provider is captured.',
+      resolution: 'List at least one provider with token support: Stripe, Adyen, Authorize.Net, Razorpay all support tokenized recurring. Local-only providers vary — confirm token support per provider with the client.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.revenue.subscriptionsInScope' } },
+          { answerEquals: { questionId: 'odoo.revenue.subscriptionAutoRenewal', value: 'AUTO' } },
+          { answerFalsy: { questionId: 'odoo.revenue.ecommercePaymentProviders' } },
+        ],
+      },
+    },
+
+    // R5: MRR/ARR reporting needs analytic axes to slice by. Without
+    // them, MRR is just a single number — can't be split by product
+    // line, customer segment, or geography.
+    {
+      id: 'odoo.revenue.mrr-needs-analytic-axes',
+      type: 'DATA_WARNING',
+      severity: 'WARN',
+      questionIds: ['odoo.revenue.mrrArrReporting', 'odoo.accounting.analyticAxes'],
+      message: 'MRR/ARR reporting is most useful when sliceable by product line, customer segment, or geography — those are analytic axes. None are configured.',
+      resolution: "Add at least one analytic axis (typically 'Product Lines' or 'Customer Segments') in Pack 4 ACCOUNTING. Otherwise MRR is only viewable as a single number.",
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.revenue.mrrArrReporting' } },
+          { answerFalsy: { questionId: 'odoo.accounting.analyticAxes' } },
+        ],
+      },
+    },
+
+    // R6: IoT Box pairing on Self-hosted Odoo requires direct LAN
+    // reachability. Online and Odoo.sh handle this through Odoo's
+    // pairing service automatically.
+    //
+    // Implementation note: spec calls for "posHardware contains 'IoT'",
+    // but the rule DSL has no string-contains operator. Pragmatic
+    // fallback: fire whenever POS is in scope AND posHardware is
+    // populated AND deployment is SELFHOSTED — all hardware setups on
+    // self-hosted have the same network-reachability concern, so the
+    // INFO-level nudge is appropriate even when no IoT Box is listed.
+    {
+      id: 'odoo.revenue.iotbox-on-selfhosted-extra-setup',
+      type: 'DATA_WARNING',
+      severity: 'INFO',
+      questionIds: ['odoo.revenue.posHardware', 'odoo.foundation.deploymentMode'],
+      message: "IoT Box pairing on Self-hosted Odoo requires direct network reachability between the IoT Box and your Odoo server. Online and Odoo.sh handle this through Odoo's pairing service automatically.",
+      resolution: 'Plan a Configuration-phase task: confirm IoT Box can reach the Odoo server on the same LAN or via VPN. Allocate ~2 hours per terminal for first-time pairing + receipt-printer test print.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.revenue.posInScope' } },
+          { answerTruthy: { questionId: 'odoo.revenue.posHardware' } },
+          { answerEquals: { questionId: 'odoo.foundation.deploymentMode', value: 'SELFHOSTED' } },
+        ],
+      },
+    },
+
+    // R7: Multi-site eCommerce on Community has rough edges (theming,
+    // shipping rules, per-site pricing) — INFO-level nudge to confirm
+    // the per-site differentiation needed.
+    {
+      id: 'odoo.revenue.multi-site-ecommerce-community-rough-edge',
+      type: 'DATA_WARNING',
+      severity: 'INFO',
+      questionIds: ['odoo.revenue.ecommerceSiteCount', 'odoo.foundation.edition'],
+      message: 'Multi-site eCommerce works on Community but per-site theming, advanced shipping rules, and per-site pricing are limited without Enterprise.',
+      resolution: 'Document the per-site differentiation needed. If sites are mostly identical (just different domain + language), Community is fine. If brand/theme/pricing differ significantly, Enterprise is the practical choice.',
+      when: {
+        all: [
+          { answerEquals: { questionId: 'odoo.revenue.ecommerceSiteCount', value: 'MULTI_SITE' } },
+          { answerEquals: { questionId: 'odoo.foundation.edition', value: 'COMMUNITY' } },
+        ],
+      },
+    },
+
+    // R8: eCommerce in scope but no payment providers listed —
+    // checkout cannot complete.
+    {
+      id: 'odoo.revenue.no-payment-providers-blocks-checkout',
+      type: 'CONFIG_CONFLICT',
+      severity: 'BLOCK',
+      questionIds: ['odoo.revenue.ecommerceInScope', 'odoo.revenue.ecommercePaymentProviders'],
+      message: 'eCommerce is in scope but no payment providers are listed. Checkout cannot complete without at least one provider.',
+      resolution: 'List at least one provider. For UAE/GCC engagements: Tabby + Network International common. Egypt: Fawry + Paymob. Global default: Stripe.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.revenue.ecommerceInScope' } },
+          { answerFalsy: { questionId: 'odoo.revenue.ecommercePaymentProviders' } },
+        ],
+      },
+    },
+
+    // R9: Restaurant POS without explicit kitchen-printer planning is
+    // a common gap — orders aren't routed to the kitchen, staff walk
+    // tickets.
+    //
+    // Implementation note: spec calls for "posHardware does NOT contain
+    // 'kitchen'", but the DSL has no string-contains operator. Pragmatic
+    // fallback: fire whenever posType is RESTAURANT or BOTH — the
+    // consultant should confirm kitchen routing is captured even when
+    // other hardware is listed. WARN-level so it's an actionable
+    // confirm-or-dismiss prompt.
+    {
+      id: 'odoo.revenue.restaurant-pos-with-no-mention-of-printer-routing',
+      type: 'DATA_WARNING',
+      severity: 'WARN',
+      questionIds: ['odoo.revenue.posType', 'odoo.revenue.posHardware'],
+      message: "Restaurant POS in scope but kitchen-printer routing should be confirmed. Restaurant flow without kitchen routing means orders aren't routed to the kitchen — staff have to walk tickets.",
+      resolution: 'Confirm at least one kitchen printer per kitchen station is captured in the POS hardware list (one for hot prep, one for cold prep / bar is typical). If already listed, dismiss this warning.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.revenue.posInScope' } },
+          { answerIn: {
+            questionId: 'odoo.revenue.posType',
+            values: ['RESTAURANT', 'BOTH'],
+          } },
         ],
       },
     },

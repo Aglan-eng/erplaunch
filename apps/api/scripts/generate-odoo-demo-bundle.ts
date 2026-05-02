@@ -204,6 +204,26 @@ const answers: Record<string, unknown> = {
   'odoo.sales.priceListStrategy': 'CUSTOMER_TIER',
   'odoo.invoicing.policy': 'DELIVERED',
   'odoo.returns.policy': 'AUTO_REFUND',
+
+  // Pack 8 — Revenue Apps (POS + eCommerce + Subscriptions). The
+  // demo engagement has all three in scope to exercise the full
+  // section render. Real engagements may toggle any combination off
+  // via the *.inScope flags.
+  'odoo.revenue.posInScope': true,
+  'odoo.revenue.posType': 'BOTH',
+  'odoo.revenue.posTerminalCount': 12,
+  'odoo.revenue.posHardware': 'Receipt printer (Epson TM-T20)\nCash drawer\nBarcode scanner (USB)\nPayment terminal (Network International)\nKitchen printer (Epson TM-U220 — hot prep)\nKitchen printer (Epson TM-U220 — cold prep / bar)\nIoT Box',
+  'odoo.revenue.posOfflineMode': true,
+  'odoo.revenue.ecommerceInScope': true,
+  'odoo.revenue.ecommerceSiteCount': 'MULTI_SITE',
+  'odoo.revenue.ecommerceLanguages': 'en — English\nar — Arabic\nfr — French',
+  'odoo.revenue.ecommercePaymentProviders': 'Stripe\nNetwork International\nTabby (UAE/SA BNPL)\nPayPal',
+  'odoo.revenue.ecommerceShippingCarriers': 'DHL\nAramex\nLocal last-mile via custom CSV',
+  'odoo.revenue.subscriptionsInScope': true,
+  'odoo.revenue.subscriptionFrequencies': 'Monthly\nAnnual\nQuarterly',
+  'odoo.revenue.subscriptionAutoRenewal': 'AUTO',
+  'odoo.revenue.subscriptionDunningPolicy': 'Retry day 1, day 3, day 7\nSuspend access after 14 days\nCancel after 30 days',
+  'odoo.revenue.mrrArrReporting': true,
 };
 const comments = [
   { sectionKey: 'license', text: 'Enterprise edition confirmed; Studio + Documents required for approval matrix + contract storage. MRP + Quality modules for the two production lines.' },

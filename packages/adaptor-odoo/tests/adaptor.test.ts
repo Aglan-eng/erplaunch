@@ -20,21 +20,16 @@ describe('odooAdaptor: manifest', () => {
 });
 
 describe('odooAdaptor: schema', () => {
-  it('exposes the canonical Odoo App-shaped flow order (Pack R restructure)', () => {
+  it('exposes the canonical Odoo App-shaped flow order (Pack R + Pack 8)', () => {
     const ids = odooAdaptor.schema.flows.map((f) => f.id);
-    // Pack R — Restructure to Odoo App shape (not NetSuite-shape
-    // R2R/P2P/O2C). Real Odoo consultants organize implementations
-    // by App: Foundation → Accounting → Tax → Localization → Inventory
-    // → Purchase → Sales → Manufacturing → Returns → Migration.
-    // The legacy R2R + PRODUCTION flows were deleted because their
-    // questions are 100% covered by Pack 1 / Pack 4 / Pack 6.
-    // P2P retains its id (route/answer-key compat) but renders as
-    // "Purchase". O2C retains its id but renders as "Sales" with
-    // Invoicing merged into the unified Sales App flow.
-    // MANUFACTURING_DEPTH was renamed to MANUFACTURING (id + label).
+    // Pack R — Restructure to Odoo App shape.
+    // Pack 8 — Revenue Apps (POS + eCommerce + Subscriptions) inserted
+    // between Sales (O2C) and Manufacturing. These are optional
+    // revenue-facing apps; the flow is conditional per-section on the
+    // *.inScope flags.
     expect(ids).toEqual([
       'FOUNDATION', 'ACCOUNTING', 'TAX', 'LOCALIZATION', 'INVENTORY',
-      'P2P', 'O2C', 'MANUFACTURING', 'RETURNS', 'MIGRATION',
+      'P2P', 'O2C', 'REVENUE_APPS', 'MANUFACTURING', 'RETURNS', 'MIGRATION',
     ]);
   });
 
@@ -2169,12 +2164,12 @@ describe('odooAdaptor: Pack 6 — MANUFACTURING flow shape (renamed in Pack R)',
     expect(mfg!.description).toMatch(/bom|routing|quality|subcontract|plm|maintenance/i);
   });
 
-  it('MANUFACTURING sits between Sales (O2C) and Returns', () => {
+  it('MANUFACTURING sits between REVENUE_APPS and Returns (Pack 8 inserted REVENUE_APPS before MFG)', () => {
     const ids = odooAdaptor.schema.flows.map((f) => f.id);
-    const o2cIdx = ids.indexOf('O2C');
+    const revIdx = ids.indexOf('REVENUE_APPS');
     const mfgIdx = ids.indexOf('MANUFACTURING');
     const retIdx = ids.indexOf('RETURNS');
-    expect(mfgIdx).toBe(o2cIdx + 1);
+    expect(mfgIdx).toBe(revIdx + 1);
     expect(retIdx).toBe(mfgIdx + 1);
   });
 
@@ -2894,5 +2889,352 @@ describe('odooAdaptor: Pack 7 — Migration rule evaluation', () => {
       license: { edition: 'ENTERPRISE', modules: [] },
     });
     expect(conflicts.map((c) => c.id)).not.toContain('odoo.migration.full-check-not-feasible-at-scale');
+  });
+});
+
+// ─── Pack 8 — Revenue Apps depth (POS + eCommerce + Subscriptions) ───────────
+
+describe('odooAdaptor: Pack 8 — REVENUE_APPS flow shape', () => {
+  const rev = odooAdaptor.schema.flows.find((f) => f.id === 'REVENUE_APPS');
+
+  it('REVENUE_APPS flow exists with the expected label + description', () => {
+    expect(rev).toBeDefined();
+    expect(rev!.label).toBe('Revenue Apps (POS, eCommerce, Subscriptions)');
+    expect(rev!.description).toMatch(/pos|point of sale|ecommerce|subscription/i);
+  });
+
+  it('REVENUE_APPS sits between Sales (O2C) and Manufacturing', () => {
+    const ids = odooAdaptor.schema.flows.map((f) => f.id);
+    const o2cIdx = ids.indexOf('O2C');
+    const revIdx = ids.indexOf('REVENUE_APPS');
+    const mfgIdx = ids.indexOf('MANUFACTURING');
+    expect(revIdx).toBe(o2cIdx + 1);
+    expect(mfgIdx).toBe(revIdx + 1);
+  });
+
+  it('renders three sections in the documented order', () => {
+    const ids = (rev!.sections as Array<{ id: string; order: number }>)
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .map((s) => s.id);
+    expect(ids).toEqual(['pos', 'ecommerce', 'subscriptions']);
+  });
+
+  it('Point of Sale — 5 questions with the right ids + types + options', () => {
+    const sec = rev!.sections.find((s) => s.id === 'pos')!;
+    expect(sec.label).toBe('Point of Sale');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('odoo.revenue.posInScope')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('odoo.revenue.posType')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('odoo.revenue.posType')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['BOTH', 'RESTAURANT', 'RETAIL']);
+    expect(byId.get('odoo.revenue.posTerminalCount')?.inputType).toBe('NUMBER');
+    expect(byId.get('odoo.revenue.posHardware')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('odoo.revenue.posOfflineMode')?.inputType).toBe('BOOLEAN');
+  });
+
+  it('Website + eCommerce — 5 questions with the right ids + types + options', () => {
+    const sec = rev!.sections.find((s) => s.id === 'ecommerce')!;
+    expect(sec.label).toBe('Website + eCommerce');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('odoo.revenue.ecommerceInScope')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('odoo.revenue.ecommerceSiteCount')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('odoo.revenue.ecommerceSiteCount')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['MULTI_SITE', 'SINGLE']);
+    expect(byId.get('odoo.revenue.ecommerceLanguages')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('odoo.revenue.ecommercePaymentProviders')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('odoo.revenue.ecommerceShippingCarriers')?.inputType).toBe('TEXTAREA');
+  });
+
+  it('Subscriptions — 5 questions with the right ids + types + options', () => {
+    const sec = rev!.sections.find((s) => s.id === 'subscriptions')!;
+    expect(sec.label).toBe('Subscriptions');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('odoo.revenue.subscriptionsInScope')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('odoo.revenue.subscriptionFrequencies')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('odoo.revenue.subscriptionAutoRenewal')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('odoo.revenue.subscriptionAutoRenewal')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['AUTO', 'HYBRID', 'MANUAL', 'NA']);
+    expect(byId.get('odoo.revenue.subscriptionDunningPolicy')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('odoo.revenue.mrrArrReporting')?.inputType).toBe('BOOLEAN');
+  });
+});
+
+describe('odooAdaptor: Pack 8 — Revenue Apps rules registered in odoo-rules', () => {
+  const ids = odooAdaptor.rules.rules.map((r) => r.id);
+
+  it('R1 POS needs POINT_OF_SALE module', () => {
+    expect(ids).toContain('odoo.revenue.pos-needs-module');
+  });
+  it('R2 eCommerce needs ECOMMERCE module', () => {
+    expect(ids).toContain('odoo.revenue.ecommerce-needs-module');
+  });
+  it('R3 Subscriptions needs Enterprise', () => {
+    expect(ids).toContain('odoo.revenue.subscriptions-needs-module-and-enterprise');
+  });
+  it('R4 auto-renewal needs payment provider', () => {
+    expect(ids).toContain('odoo.revenue.auto-renewal-needs-payment-provider');
+  });
+  it('R5 MRR/ARR needs analytic axes', () => {
+    expect(ids).toContain('odoo.revenue.mrr-needs-analytic-axes');
+  });
+  it('R6 IoT/POS hardware on self-hosted (INFO)', () => {
+    expect(ids).toContain('odoo.revenue.iotbox-on-selfhosted-extra-setup');
+  });
+  it('R7 multi-site eCommerce on Community (INFO)', () => {
+    expect(ids).toContain('odoo.revenue.multi-site-ecommerce-community-rough-edge');
+  });
+  it('R8 no payment providers blocks checkout', () => {
+    expect(ids).toContain('odoo.revenue.no-payment-providers-blocks-checkout');
+  });
+  it('R9 restaurant POS without kitchen-printer planning', () => {
+    expect(ids).toContain('odoo.revenue.restaurant-pos-with-no-mention-of-printer-routing');
+  });
+});
+
+describe('odooAdaptor: Pack 8 — Revenue Apps rule evaluation', () => {
+  it('R1 fires (BLOCK) when posInScope=true AND POINT_OF_SALE missing', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'odoo.revenue.posInScope': true },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.revenue.pos-needs-module');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R1 does NOT fire when POINT_OF_SALE is licensed', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'odoo.revenue.posInScope': true },
+      license: { edition: 'ENTERPRISE', modules: ['POINT_OF_SALE'] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.revenue.pos-needs-module');
+  });
+
+  it('R2 fires (BLOCK) when ecommerceInScope=true AND ECOMMERCE missing', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.revenue.ecommerceInScope': true,
+        'odoo.revenue.ecommercePaymentProviders': 'Stripe',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.revenue.ecommerce-needs-module');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R2 does NOT fire when ECOMMERCE is licensed', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.revenue.ecommerceInScope': true,
+        'odoo.revenue.ecommercePaymentProviders': 'Stripe',
+      },
+      license: { edition: 'ENTERPRISE', modules: ['ECOMMERCE'] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.revenue.ecommerce-needs-module');
+  });
+
+  it('R3 fires (BLOCK) when subscriptionsInScope=true AND foundation.edition=COMMUNITY', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.revenue.subscriptionsInScope': true,
+        'odoo.foundation.edition': 'COMMUNITY',
+      },
+      license: { edition: 'COMMUNITY', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.revenue.subscriptions-needs-module-and-enterprise');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R3 does NOT fire on Enterprise edition', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.revenue.subscriptionsInScope': true,
+        'odoo.foundation.edition': 'ENTERPRISE',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.revenue.subscriptions-needs-module-and-enterprise');
+  });
+
+  it('R4 fires (BLOCK) when subscriptionsInScope=true AND autoRenewal=AUTO AND no payment providers', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.revenue.subscriptionsInScope': true,
+        'odoo.revenue.subscriptionAutoRenewal': 'AUTO',
+        'odoo.revenue.ecommercePaymentProviders': '',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.revenue.auto-renewal-needs-payment-provider');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R4 does NOT fire when payment providers are listed', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.revenue.subscriptionsInScope': true,
+        'odoo.revenue.subscriptionAutoRenewal': 'AUTO',
+        'odoo.revenue.ecommercePaymentProviders': 'Stripe',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.revenue.auto-renewal-needs-payment-provider');
+  });
+
+  it('R4 does NOT fire when autoRenewal=MANUAL', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.revenue.subscriptionsInScope': true,
+        'odoo.revenue.subscriptionAutoRenewal': 'MANUAL',
+        'odoo.revenue.ecommercePaymentProviders': '',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.revenue.auto-renewal-needs-payment-provider');
+  });
+
+  it('R5 fires (WARN) when mrrArrReporting=true AND analyticAxes empty', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.revenue.mrrArrReporting': true,
+        'odoo.accounting.analyticAxes': '',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.revenue.mrr-needs-analytic-axes');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R5 does NOT fire when analyticAxes is populated', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.revenue.mrrArrReporting': true,
+        'odoo.accounting.analyticAxes': 'Product Lines\nCustomer Segments',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.revenue.mrr-needs-analytic-axes');
+  });
+
+  it('R6 fires (INFO) when posInScope=true AND posHardware listed AND deploymentMode=SELFHOSTED', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.revenue.posInScope': true,
+        'odoo.revenue.posHardware': 'IoT Box\nReceipt printer (Epson)',
+        'odoo.foundation.deploymentMode': 'SELFHOSTED',
+      },
+      license: { edition: 'ENTERPRISE', modules: ['POINT_OF_SALE'] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.revenue.iotbox-on-selfhosted-extra-setup');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('INFO');
+  });
+
+  it('R6 does NOT fire on Online or Odoo.sh deployment', () => {
+    for (const deployment of ['ONLINE', 'ODOOSH']) {
+      const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+        answers: {
+          'odoo.revenue.posInScope': true,
+          'odoo.revenue.posHardware': 'IoT Box',
+          'odoo.foundation.deploymentMode': deployment,
+        },
+        license: { edition: 'ENTERPRISE', modules: ['POINT_OF_SALE'] },
+      });
+      expect(
+        conflicts.map((c) => c.id),
+        `R6 should NOT fire when deployment=${deployment}`,
+      ).not.toContain('odoo.revenue.iotbox-on-selfhosted-extra-setup');
+    }
+  });
+
+  it('R7 fires (INFO) when ecommerceSiteCount=MULTI_SITE AND foundation.edition=COMMUNITY', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.revenue.ecommerceSiteCount': 'MULTI_SITE',
+        'odoo.foundation.edition': 'COMMUNITY',
+      },
+      license: { edition: 'COMMUNITY', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.revenue.multi-site-ecommerce-community-rough-edge');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('INFO');
+  });
+
+  it('R7 does NOT fire on single-site setups', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.revenue.ecommerceSiteCount': 'SINGLE',
+        'odoo.foundation.edition': 'COMMUNITY',
+      },
+      license: { edition: 'COMMUNITY', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.revenue.multi-site-ecommerce-community-rough-edge');
+  });
+
+  it('R8 fires (BLOCK) when ecommerceInScope=true AND ecommercePaymentProviders empty', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.revenue.ecommerceInScope': true,
+        'odoo.revenue.ecommercePaymentProviders': '',
+      },
+      license: { edition: 'ENTERPRISE', modules: ['ECOMMERCE'] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.revenue.no-payment-providers-blocks-checkout');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R8 does NOT fire when payment providers are listed', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.revenue.ecommerceInScope': true,
+        'odoo.revenue.ecommercePaymentProviders': 'Stripe',
+      },
+      license: { edition: 'ENTERPRISE', modules: ['ECOMMERCE'] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.revenue.no-payment-providers-blocks-checkout');
+  });
+
+  it('R9 fires (WARN) when posType=RESTAURANT (DSL has no contains operator — fires whenever restaurant scope is set)', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.revenue.posInScope': true,
+        'odoo.revenue.posType': 'RESTAURANT',
+      },
+      license: { edition: 'ENTERPRISE', modules: ['POINT_OF_SALE'] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.revenue.restaurant-pos-with-no-mention-of-printer-routing');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R9 fires (WARN) when posType=BOTH', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.revenue.posInScope': true,
+        'odoo.revenue.posType': 'BOTH',
+      },
+      license: { edition: 'ENTERPRISE', modules: ['POINT_OF_SALE'] },
+    });
+    expect(conflicts.map((c) => c.id)).toContain('odoo.revenue.restaurant-pos-with-no-mention-of-printer-routing');
+  });
+
+  it('R9 does NOT fire when posType=RETAIL', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.revenue.posInScope': true,
+        'odoo.revenue.posType': 'RETAIL',
+      },
+      license: { edition: 'ENTERPRISE', modules: ['POINT_OF_SALE'] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.revenue.restaurant-pos-with-no-mention-of-printer-routing');
   });
 });
