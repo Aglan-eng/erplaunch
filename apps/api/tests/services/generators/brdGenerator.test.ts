@@ -279,3 +279,98 @@ describe('generateBRD — custom adaptor (fall-through default)', () => {
     expect(md).not.toContain('SDF');
   });
 });
+
+// ─── Pack R — orphan answer handling (deprecated keys after restructure) ─────
+
+describe('generateBRD — Pack R orphan answer handling', () => {
+  // Adaptor context with one live question. Anything in answers that
+  // isn't this id should be surfaced as an orphan in Migration Notes.
+  const ADAPTOR_WITH_ONE_QUESTION: AdaptorContext = {
+    id: 'odoo',
+    name: 'Odoo',
+    editionLabel: 'Enterprise',
+    consultantQualifier: 'Odoo',
+    nextStepLanguage: 'the Odoo configuration phase',
+    flows: [
+      {
+        id: 'FOUNDATION',
+        label: 'Project Foundation',
+        description: 'Foundation',
+        sections: [
+          {
+            id: 'deployment',
+            label: 'Deployment',
+            order: 1,
+            questions: [
+              {
+                id: 'odoo.foundation.deploymentMode',
+                label: 'Hosting & deployment mode',
+                inputType: 'SINGLE_SELECT',
+                options: [{ value: 'ODOOSH', label: 'Odoo.sh' }],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  it('surfaces deprecated keys in a Migration Notes section', () => {
+    const md = generateBRD({
+      clientName: 'Acme',
+      adaptor: ADAPTOR_WITH_ONE_QUESTION,
+      license: { edition: 'ENTERPRISE', modules: [] },
+      answers: {
+        // Live key — should render in Workstream Requirements, NOT in
+        // Migration Notes.
+        'odoo.foundation.deploymentMode': 'ODOOSH',
+        // Deprecated keys (Pack R deletions) — should appear in
+        // Migration Notes.
+        'odoo.company.multiCompany': true,
+        'odoo.company.fiscalYearStart': '01-01',
+        'odoo.coa.template': 'LOCALIZATION',
+        'odoo.mrp.enabled': true,
+      },
+    });
+
+    expect(md).toContain('## 4. Migration Notes');
+    expect(md).toContain('odoo.company.multiCompany');
+    expect(md).toContain('odoo.company.fiscalYearStart');
+    expect(md).toContain('odoo.coa.template');
+    expect(md).toContain('odoo.mrp.enabled');
+    // Live key MUST NOT appear in Migration Notes (only in Workstream
+    // Requirements rendering).
+    const migrationNotesIdx = md.indexOf('## 4. Migration Notes');
+    const nextStepsIdx = md.indexOf('## 5. Next Steps');
+    const migrationNotesSection = md.slice(migrationNotesIdx, nextStepsIdx);
+    expect(migrationNotesSection).not.toContain('odoo.foundation.deploymentMode');
+  });
+
+  it('does NOT render Migration Notes when there are no orphans', () => {
+    const md = generateBRD({
+      clientName: 'Acme',
+      adaptor: ADAPTOR_WITH_ONE_QUESTION,
+      license: { edition: 'ENTERPRISE', modules: [] },
+      answers: { 'odoo.foundation.deploymentMode': 'ODOOSH' },
+    });
+    expect(md).not.toContain('## 4. Migration Notes');
+    // Next Steps stays at section 4 when no orphans exist.
+    expect(md).toContain('## 4. Next Steps');
+  });
+
+  it('ignores empty / whitespace-only orphan values (preserves intentional clears)', () => {
+    const md = generateBRD({
+      clientName: 'Acme',
+      adaptor: ADAPTOR_WITH_ONE_QUESTION,
+      license: { edition: 'ENTERPRISE', modules: [] },
+      answers: {
+        'odoo.foundation.deploymentMode': 'ODOOSH',
+        'odoo.company.fiscalYearStart': '', // empty — not a real orphan
+        'odoo.coa.template': 'LOCALIZATION', // real orphan with a value
+      },
+    });
+    expect(md).toContain('## 4. Migration Notes');
+    expect(md).toContain('odoo.coa.template');
+    expect(md).not.toContain('odoo.company.fiscalYearStart');
+  });
+});

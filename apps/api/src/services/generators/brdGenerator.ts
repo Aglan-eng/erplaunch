@@ -258,8 +258,43 @@ export function generateBRD(data: BRDData): string {
     }
   }
 
+  // ── Migration Notes (orphan answer keys) ──
+  // Pack R — when the adaptor schema changes (questions renamed or
+  // deleted), in-flight engagements may carry answers stored against
+  // question IDs that no longer exist in the active schema. We do
+  // NOT auto-migrate; instead we surface them here so a consultant
+  // can manually re-enter them against the new question. Silently
+  // dropping them would lose discovery work.
+  const liveQuestionIds = new Set<string>();
+  for (const flow of adaptor.flows ?? []) {
+    for (const section of flow.sections) {
+      for (const q of section.questions) liveQuestionIds.add(q.id);
+    }
+  }
+  const orphanedAnswers = Object.entries(answers).filter(([key, value]) => {
+    if (liveQuestionIds.has(key)) return false;
+    if (value === undefined || value === null) return false;
+    if (typeof value === 'string' && value.trim() === '') return false;
+    return true;
+  });
+  if (orphanedAnswers.length > 0) {
+    md += `## 4. Migration Notes\n\n`;
+    md += `_The wizard schema has changed since this engagement was first answered. The keys below carry stored values that no longer map to a live question — review and re-enter them against the current schema before sign-off. These values are **not** automatically migrated._\n\n`;
+    md += `| Deprecated key | Stored value |\n`;
+    md += `|---|---|\n`;
+    for (const [key, rawValue] of orphanedAnswers) {
+      const display =
+        typeof rawValue === 'object' ? JSON.stringify(rawValue) :
+        String(rawValue).replace(/\n/g, ' / ').slice(0, 120);
+      md += `| \`${key}\` | ${display} |\n`;
+    }
+    md += `\n`;
+  }
+
   // ── Next Steps ──
-  md += `## 4. Next Steps\n\n`;
+  // Section number bumps to 5 if Migration Notes rendered above.
+  const nextStepsNum = orphanedAnswers.length > 0 ? 5 : 4;
+  md += `## ${nextStepsNum}. Next Steps\n\n`;
   md += `1. **Review with client** — walk through this document section-by-section to confirm accuracy and completeness.\n`;
   md += `2. **Identify gaps** — note any questions that were left blank or answered provisionally; schedule follow-up workshops as needed.\n`;
   md += `3. **Resolve conflicts** — any blocking configuration conflicts flagged by the ERPLaunch rule engine must be resolved before configuration begins.\n`;

@@ -193,20 +193,16 @@ const answers: Record<string, unknown> = {
   'odoo.migration.reconciliationStrategy': 'Trial balance: legacy = Odoo to the cent (per entity)\nAR aging: 30/60/90 buckets match within 0.5%\nInventory: variance < AED 5,000 per SKU at Main DC\nCustomer master: 100% spot-check on top-100 by revenue',
   'odoo.migration.signoffOwner': 'CFO + Project Sponsor (joint sign-off on cutover day)',
 
-  // Legacy R2R / P2P / O2C / MRP / Returns answers (preserved)
-  'odoo.company.multiCompany': true,
-  'odoo.company.currency': 'AED',
-  'odoo.company.fiscalYearStart': '01-01',
-  'odoo.coa.template': 'LOCALIZATION',
-  'odoo.coa.analyticAccounting': true,
+  // Pack R restructure — Purchase / Sales / Returns answers (kept).
+  // The legacy odoo.company.* / odoo.coa.* / odoo.mrp.* keys were
+  // removed because their questions were deleted; their semantic
+  // content lives in foundation.* / accounting.* / mfg.* and is
+  // already populated higher up.
   'odoo.purchase.approvalTiers': 'DOUBLE',
   'odoo.purchase.threeWayMatch': true,
   'odoo.sales.quoteTemplate': true,
   'odoo.sales.priceListStrategy': 'CUSTOMER_TIER',
   'odoo.invoicing.policy': 'DELIVERED',
-  'odoo.mrp.enabled': true,
-  'odoo.mrp.workCenters': true,
-  'odoo.mrp.quality': true,
   'odoo.returns.policy': 'AUTO_REFUND',
 };
 const comments = [

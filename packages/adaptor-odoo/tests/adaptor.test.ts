@@ -20,33 +20,21 @@ describe('odooAdaptor: manifest', () => {
 });
 
 describe('odooAdaptor: schema', () => {
-  it('exposes the documented flow order — Foundation packs, R2R, INVENTORY, operational flows, MANUFACTURING_DEPTH, PRODUCTION, RETURNS', () => {
+  it('exposes the canonical Odoo App-shaped flow order (Pack R restructure)', () => {
     const ids = odooAdaptor.schema.flows.map((f) => f.id);
-    // Pack 1 — Foundation gates everything downstream.
-    // Pack 2 — Tax engine sits between Foundation and R2R.
-    // Pack 3 — Localization & Compliance converts country answers into
-    // hard requirements; sits after Tax, before R2R.
-    // Pack 4 — Accounting & Multi-Company depth: reporting standards,
-    // analytic axes, bank reconciliation, intercompany mechanics,
-    // transfer pricing. Sits after Localization (so the COA template +
-    // statutory standards are settled first) and before R2R.
-    // Pack 5 — Inventory & Valuation depth: warehouse structure,
-    // valuation method, lot/serial tracking, replenishment strategy.
-    // Sits AFTER R2R (so the GL/CoA decisions feed inventory accounting)
-    // and BEFORE P2P (so PO/receiving rules see warehouse + tracking).
-    // Pack 6 — Manufacturing depth (MANUFACTURING_DEPTH): BoM
-    // architecture, routing & work centers, quality plans,
-    // subcontracting, PLM, maintenance. Sits AFTER O2C (sales-side
-    // visibility into BoMs is captured first) and BEFORE the
-    // existing PRODUCTION flow (whose mrp.* answers it deepens).
-    // Pack 7 — Data Migration sizing (MIGRATION): volumes,
-    // source systems, cutover style, validation. Last flow in the
-    // array — runs after every other flow has captured its scope so
-    // the consultant can size the migration with full context.
+    // Pack R — Restructure to Odoo App shape (not NetSuite-shape
+    // R2R/P2P/O2C). Real Odoo consultants organize implementations
+    // by App: Foundation → Accounting → Tax → Localization → Inventory
+    // → Purchase → Sales → Manufacturing → Returns → Migration.
+    // The legacy R2R + PRODUCTION flows were deleted because their
+    // questions are 100% covered by Pack 1 / Pack 4 / Pack 6.
+    // P2P retains its id (route/answer-key compat) but renders as
+    // "Purchase". O2C retains its id but renders as "Sales" with
+    // Invoicing merged into the unified Sales App flow.
+    // MANUFACTURING_DEPTH was renamed to MANUFACTURING (id + label).
     expect(ids).toEqual([
-      'FOUNDATION', 'TAX', 'LOCALIZATION', 'ACCOUNTING',
-      'R2R', 'INVENTORY', 'P2P', 'O2C', 'MANUFACTURING_DEPTH', 'PRODUCTION', 'RETURNS',
-      'MIGRATION',
+      'FOUNDATION', 'ACCOUNTING', 'TAX', 'LOCALIZATION', 'INVENTORY',
+      'P2P', 'O2C', 'MANUFACTURING', 'RETURNS', 'MIGRATION',
     ]);
   });
 
@@ -253,17 +241,61 @@ describe('odooAdaptor: Pack 1 — FOUNDATION flow shape', () => {
     expect(byId.get('odoo.foundation.reportingCurrency')?.inputType).toBe('TEXT');
   });
 
-  it('does not move the existing R2R "company" section (parallel, non-breaking)', () => {
-    // We intentionally keep odoo.company.* in R2R alongside the new
-    // odoo.foundation.* parallel set — duplicate-rationalization is a
-    // future pack. This test pins that decision so a refactor that
-    // moves them silently fails.
-    const r2r = odooAdaptor.schema.flows.find((f) => f.id === 'R2R')!;
-    const company = r2r.sections.find((s) => s.id === 'company')!;
-    const qids = company.questions.map((q) => q.id);
-    expect(qids).toContain('odoo.company.multiCompany');
-    expect(qids).toContain('odoo.company.currency');
-    expect(qids).toContain('odoo.company.fiscalYearStart');
+  it('Pack R — R2R flow has been deleted; odoo.company.* are no longer live questions', () => {
+    expect(odooAdaptor.schema.flows.find((f) => f.id === 'R2R')).toBeUndefined();
+    const allQuestionIds = new Set<string>();
+    for (const flow of odooAdaptor.schema.flows) {
+      for (const section of flow.sections) {
+        for (const q of section.questions) allQuestionIds.add(q.id);
+      }
+    }
+    expect(allQuestionIds.has('odoo.company.multiCompany')).toBe(false);
+    expect(allQuestionIds.has('odoo.company.currency')).toBe(false);
+    expect(allQuestionIds.has('odoo.company.fiscalYearStart')).toBe(false);
+    expect(allQuestionIds.has('odoo.coa.template')).toBe(false);
+    expect(allQuestionIds.has('odoo.coa.analyticAccounting')).toBe(false);
+  });
+
+  it('Pack R — PRODUCTION flow has been deleted; odoo.mrp.* are no longer live questions', () => {
+    expect(odooAdaptor.schema.flows.find((f) => f.id === 'PRODUCTION')).toBeUndefined();
+    const allQuestionIds = new Set<string>();
+    for (const flow of odooAdaptor.schema.flows) {
+      for (const section of flow.sections) {
+        for (const q of section.questions) allQuestionIds.add(q.id);
+      }
+    }
+    expect(allQuestionIds.has('odoo.mrp.enabled')).toBe(false);
+    expect(allQuestionIds.has('odoo.mrp.workCenters')).toBe(false);
+    expect(allQuestionIds.has('odoo.mrp.quality')).toBe(false);
+  });
+
+  it('Pack R — P2P flow renders as "Purchase" (label changed; id stays for backward-compat)', () => {
+    const p2p = odooAdaptor.schema.flows.find((f) => f.id === 'P2P')!;
+    expect(p2p.label).toBe('Purchase');
+  });
+
+  it('Pack R — O2C flow renders as "Sales" with Invoicing merged in (label + section changes)', () => {
+    const o2c = odooAdaptor.schema.flows.find((f) => f.id === 'O2C')!;
+    expect(o2c.label).toBe('Sales');
+    // Single Sales section now includes the invoicing.policy question.
+    const sales = o2c.sections.find((s) => s.id === 'sales')!;
+    const qids = sales.questions.map((q) => q.id);
+    expect(qids).toContain('odoo.sales.quoteTemplate');
+    expect(qids).toContain('odoo.sales.priceListStrategy');
+    expect(qids).toContain('odoo.invoicing.policy');
+    // The standalone "invoicing" section no longer exists.
+    expect(o2c.sections.find((s) => s.id === 'invoicing')).toBeUndefined();
+  });
+
+  it('Pack R — MANUFACTURING flow (was MANUFACTURING_DEPTH) — id + label both updated', () => {
+    expect(odooAdaptor.schema.flows.find((f) => f.id === 'MANUFACTURING_DEPTH')).toBeUndefined();
+    const mfg = odooAdaptor.schema.flows.find((f) => f.id === 'MANUFACTURING')!;
+    expect(mfg.label).toBe('Manufacturing');
+  });
+
+  it('Pack R — odoo.mrp.sub-settings-without-parent rule has been deleted', () => {
+    const ids = odooAdaptor.rules.rules.map((r) => r.id);
+    expect(ids).not.toContain('odoo.mrp.sub-settings-without-parent');
   });
 });
 
@@ -466,15 +498,16 @@ describe('odooAdaptor: Pack 1 — Foundation rule evaluation', () => {
 });
 
 describe('odooAdaptor: rule evaluation via evaluateAdaptorRules', () => {
-  it('clean Enterprise scoping raises no conflicts', () => {
+  it('clean Enterprise scoping raises no conflicts (Pack R repointed answer keys)', () => {
     const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
       answers: {
-        'odoo.company.multiCompany': true,
-        'odoo.company.fiscalYearStart': '01-01',
-        'odoo.coa.analyticAccounting': true,
-        'odoo.mrp.enabled': true,
-        'odoo.mrp.workCenters': true,
-        'odoo.mrp.quality': true,
+        'odoo.foundation.multiCompany': true,
+        'odoo.foundation.entityList': 'Holdco AE\nSubco EG',
+        'odoo.foundation.fiscalYearStart': '01-01',
+        'odoo.accounting.analyticAxes': 'Cost Centers\nProjects',
+        'odoo.mfg.routingRequired': true,
+        'odoo.mfg.workCenterCount': 6,
+        'odoo.mfg.qualityPlansRequired': true,
         'odoo.sales.priceListStrategy': 'SINGLE',
       },
       license: {
@@ -485,9 +518,9 @@ describe('odooAdaptor: rule evaluation via evaluateAdaptorRules', () => {
     expect(conflicts).toEqual([]);
   });
 
-  it('flags MRP-enabled with missing MRP module (BLOCK)', () => {
+  it('flags Manufacturing-in-scope with missing MRP module (BLOCK) — repointed to mfg.routingRequired', () => {
     const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
-      answers: { 'odoo.mrp.enabled': true, 'odoo.company.fiscalYearStart': '01-01' },
+      answers: { 'odoo.mfg.routingRequired': true, 'odoo.foundation.fiscalYearStart': '01-01' },
       license: { edition: 'ENTERPRISE', modules: [] },
     });
     const ids = conflicts.map((c) => c.id);
@@ -497,54 +530,40 @@ describe('odooAdaptor: rule evaluation via evaluateAdaptorRules', () => {
 
   it('flags Studio on Community edition (BLOCK)', () => {
     const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
-      answers: { 'odoo.company.fiscalYearStart': '01-01' },
+      answers: { 'odoo.foundation.fiscalYearStart': '01-01' },
       license: { edition: 'COMMUNITY', modules: ['ENTERPRISE_STUDIO'] },
     });
     const ids = conflicts.map((c) => c.id);
     expect(ids).toContain('odoo.studio-is-enterprise-only');
   });
 
-  it('flags Quality Control without MRP or QUALITY modules (BLOCK)', () => {
+  it('flags Quality plans without MRP or QUALITY modules (BLOCK) — repointed to mfg.qualityPlansRequired', () => {
     const missingMrp = evaluateAdaptorRules(odooAdaptor.rules, {
-      answers: { 'odoo.mrp.quality': true, 'odoo.company.fiscalYearStart': '01-01' },
+      answers: { 'odoo.mfg.qualityPlansRequired': true, 'odoo.foundation.fiscalYearStart': '01-01' },
       license: { edition: 'ENTERPRISE', modules: ['QUALITY'] },
     });
     expect(missingMrp.map((c) => c.id)).toContain('odoo.mrp.quality-requires-mrp-and-quality');
 
     const missingQuality = evaluateAdaptorRules(odooAdaptor.rules, {
-      answers: { 'odoo.mrp.quality': true, 'odoo.company.fiscalYearStart': '01-01' },
+      answers: { 'odoo.mfg.qualityPlansRequired': true, 'odoo.foundation.fiscalYearStart': '01-01' },
       license: { edition: 'ENTERPRISE', modules: ['MRP'] },
     });
     expect(missingQuality.map((c) => c.id)).toContain('odoo.mrp.quality-requires-mrp-and-quality');
   });
 
-  it('warns on MRP sub-settings enabled while parent is off (WARN)', () => {
+  it('warns when multi-company is on but analytic axes is empty (Pack R repointed)', () => {
     const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
       answers: {
-        'odoo.mrp.enabled': false,
-        'odoo.mrp.workCenters': true,
-        'odoo.company.fiscalYearStart': '01-01',
-      },
-      license: { edition: 'ENTERPRISE', modules: ['MRP'] },
-    });
-    const rule = conflicts.find((c) => c.id === 'odoo.mrp.sub-settings-without-parent');
-    expect(rule).toBeDefined();
-    expect(rule?.severity).toBe('WARN');
-  });
-
-  it('warns when multi-company is on but analytic accounting is off', () => {
-    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
-      answers: {
-        'odoo.company.multiCompany': true,
-        'odoo.coa.analyticAccounting': false,
-        'odoo.company.fiscalYearStart': '01-01',
+        'odoo.foundation.multiCompany': true,
+        'odoo.accounting.analyticAxes': '',
+        'odoo.foundation.fiscalYearStart': '01-01',
       },
       license: { edition: 'ENTERPRISE', modules: [] },
     });
     expect(conflicts.map((c) => c.id)).toContain('odoo.company.multi-company-needs-analytic');
   });
 
-  it('warns when fiscal year start is missing', () => {
+  it('warns when fiscal year start is missing (Pack R repointed to foundation.fiscalYearStart)', () => {
     const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
       answers: {},
       license: { edition: 'ENTERPRISE', modules: [] },
@@ -554,7 +573,7 @@ describe('odooAdaptor: rule evaluation via evaluateAdaptorRules', () => {
 
   it('INFO-level nudge on customer-tier pricelist strategy', () => {
     const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
-      answers: { 'odoo.sales.priceListStrategy': 'CUSTOMER_TIER', 'odoo.company.fiscalYearStart': '01-01' },
+      answers: { 'odoo.sales.priceListStrategy': 'CUSTOMER_TIER', 'odoo.foundation.fiscalYearStart': '01-01' },
       license: { edition: 'ENTERPRISE', modules: [] },
     });
     const info = conflicts.find((c) => c.id === 'odoo.sales.tiered-pricelist-needs-customer-tiers');
@@ -1763,12 +1782,12 @@ describe('odooAdaptor: Pack 5 — INVENTORY flow shape', () => {
     expect(inv!.description).toMatch(/warehouse|valuation|lot|serial|replenishment|removal/i);
   });
 
-  it('INVENTORY sits between R2R and P2P in flow order', () => {
+  it('INVENTORY sits between LOCALIZATION and P2P (Purchase) in the Pack R flow order', () => {
     const ids = odooAdaptor.schema.flows.map((f) => f.id);
-    const r2rIdx = ids.indexOf('R2R');
+    const locIdx = ids.indexOf('LOCALIZATION');
     const invIdx = ids.indexOf('INVENTORY');
     const p2pIdx = ids.indexOf('P2P');
-    expect(invIdx).toBe(r2rIdx + 1);
+    expect(invIdx).toBe(locIdx + 1);
     expect(p2pIdx).toBe(invIdx + 1);
   });
 
@@ -2141,23 +2160,22 @@ describe('odooAdaptor: Pack 5 — Inventory rule evaluation', () => {
 
 // ─── Pack 6 — Manufacturing depth ─────────────────────────────────────────────
 
-describe('odooAdaptor: Pack 6 — MANUFACTURING_DEPTH flow shape', () => {
-  const mfg = odooAdaptor.schema.flows.find((f) => f.id === 'MANUFACTURING_DEPTH');
+describe('odooAdaptor: Pack 6 — MANUFACTURING flow shape (renamed in Pack R)', () => {
+  const mfg = odooAdaptor.schema.flows.find((f) => f.id === 'MANUFACTURING');
 
-  it('MANUFACTURING_DEPTH flow exists with the expected label + description', () => {
+  it('MANUFACTURING flow exists with the expected label + description', () => {
     expect(mfg).toBeDefined();
-    expect(mfg!.label).toBe('Manufacturing — Depth');
+    expect(mfg!.label).toBe('Manufacturing');
     expect(mfg!.description).toMatch(/bom|routing|quality|subcontract|plm|maintenance/i);
   });
 
-  it('MANUFACTURING_DEPTH sits between O2C and PRODUCTION (after INVENTORY, before PRODUCTION)', () => {
+  it('MANUFACTURING sits between Sales (O2C) and Returns', () => {
     const ids = odooAdaptor.schema.flows.map((f) => f.id);
-    const invIdx = ids.indexOf('INVENTORY');
-    const mfgIdx = ids.indexOf('MANUFACTURING_DEPTH');
-    const prodIdx = ids.indexOf('PRODUCTION');
-    expect(mfgIdx).toBeGreaterThan(invIdx);
-    expect(mfgIdx).toBeLessThan(prodIdx);
-    expect(prodIdx).toBe(mfgIdx + 1);
+    const o2cIdx = ids.indexOf('O2C');
+    const mfgIdx = ids.indexOf('MANUFACTURING');
+    const retIdx = ids.indexOf('RETURNS');
+    expect(mfgIdx).toBe(o2cIdx + 1);
+    expect(retIdx).toBe(mfgIdx + 1);
   });
 
   it('renders four sections in the documented order', () => {

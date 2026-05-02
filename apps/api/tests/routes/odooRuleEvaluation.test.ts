@@ -115,7 +115,11 @@ describe('Odoo engagement — PUT /license triggers adaptor rule evaluation', ()
 });
 
 describe('Odoo engagement — PATCH /profile fires answer-driven rules', () => {
-  it('enabling MRP without the MRP module fires a BLOCK conflict', async () => {
+  // Pack R repointed odoo.mrp.requires-mrp-module from the deleted
+  // odoo.mrp.enabled question to the canonical Pack 6 manufacturing-
+  // scope flags (mfg.routingRequired / qualityPlansRequired /
+  // subcontractingInScope).
+  it('Manufacturing in scope without the MRP module fires a BLOCK conflict', async () => {
     const { firmId, token } = await seedFirmAndToken();
     const engId = await createOdooEngagement(firmId, 'MRP Gap Co');
 
@@ -127,12 +131,12 @@ describe('Odoo engagement — PATCH /profile fires answer-driven rules', () => {
       payload: { edition: 'ENTERPRISE', modules: [] },
     });
 
-    // Turn on MRP in the answers
+    // Manufacturing scope flag set in answers
     const res = await app.inject({
       method: 'PATCH',
       url: `/api/v1/engagements/${engId}/profile`,
       headers: authHeaders(token),
-      payload: { answers: { 'odoo.mrp.enabled': true, 'odoo.company.fiscalYearStart': '01-01' } },
+      payload: { answers: { 'odoo.mfg.routingRequired': true, 'odoo.foundation.fiscalYearStart': '01-01' } },
     });
     expect(res.statusCode).toBe(200);
     const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
@@ -145,7 +149,7 @@ describe('Odoo engagement — PATCH /profile fires answer-driven rules', () => {
     const { firmId, token } = await seedFirmAndToken();
     const engId = await createOdooEngagement(firmId, 'Fix-Me Co');
 
-    // Initial state: MRP enabled but no module → conflict
+    // Initial state: MRP scope flag set but no module → conflict
     await app.inject({
       method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
       headers: authHeaders(token), payload: { edition: 'ENTERPRISE', modules: [] },
@@ -153,7 +157,7 @@ describe('Odoo engagement — PATCH /profile fires answer-driven rules', () => {
     await app.inject({
       method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
       headers: authHeaders(token),
-      payload: { answers: { 'odoo.mrp.enabled': true, 'odoo.company.fiscalYearStart': '01-01' } },
+      payload: { answers: { 'odoo.mfg.routingRequired': true, 'odoo.foundation.fiscalYearStart': '01-01' } },
     });
 
     // Fix it: provision the MRP module
@@ -166,27 +170,10 @@ describe('Odoo engagement — PATCH /profile fires answer-driven rules', () => {
     expect(ids).not.toContain('odoo.mrp.requires-mrp-module');
   });
 
-  it('MRP sub-setting without parent emits a WARN', async () => {
-    const { firmId, token } = await seedFirmAndToken();
-    const engId = await createOdooEngagement(firmId, 'Parentless MRP Co');
-    await app.inject({
-      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
-      headers: authHeaders(token), payload: { edition: 'ENTERPRISE', modules: ['MRP'] },
-    });
-    const res = await app.inject({
-      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
-      headers: authHeaders(token),
-      payload: { answers: {
-        'odoo.mrp.enabled': false,
-        'odoo.mrp.workCenters': true,
-        'odoo.company.fiscalYearStart': '01-01',
-      } },
-    });
-    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
-    const hit = body.data.conflicts.find((c) => c.id === 'odoo.mrp.sub-settings-without-parent');
-    expect(hit).toBeDefined();
-    expect(hit?.severity).toBe('WARN');
-  });
+  // Pack R deleted odoo.mrp.sub-settings-without-parent — Pack 6 R1
+  // (odoo.mfg.routing-needs-work-centers) covers the same case with
+  // cleaner semantics on the new mfg.* schema. The route-level
+  // regression for that case is in the Pack 6 describe block below.
 });
 
 // ─── Pack 1 — Foundation rules through the route ─────────────────────────────

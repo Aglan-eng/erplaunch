@@ -111,51 +111,22 @@ const KNOWN_EINVOICING_SYSTEM_COUNTRIES: string[] = Object.entries(L10N_MODULES_
 const schema: QuestionnaireSchema = {
   version: '1.0.0',
   flows: [
-    // Pack 1 — Foundation gates everything downstream (deployment, edition,
-    // geography, multi-entity / multi-currency). Renders first in the
-    // wizard so the consultant locks in these decisions before
-    // R2R/P2P/O2C/Production/Returns.
+    // Pack R — Restructure to Odoo App shape (not NetSuite-shape
+    // R2R/P2P/O2C). Real Odoo consultants organize implementations
+    // by App. Order: Foundation → Accounting → Tax → Localization
+    // → Inventory → Purchase → Sales → Manufacturing → Returns →
+    // Migration. The legacy R2R + PRODUCTION flows were deleted
+    // because their questions are 100% covered by Pack 1 / Pack 4 /
+    // Pack 6.
     buildFoundationFlow(),
-    // Pack 2 — Tax engine. Sits between Foundation and R2R because tax
-    // behavior + fiscal positions drive every accounting transaction.
-    // The #1 thing implementations get wrong post-go-live, per the
-    // research that shaped this pack.
-    buildTaxFlow(),
-    // Pack 3 — Localization & Compliance. Country → COA / e-invoicing /
-    // payroll / data-residency. Sits AFTER Tax (so einvoicingRequired
-    // is captured first) and BEFORE R2R (so the COA template feeds
-    // into ledger setup).
-    buildLocalizationFlow(),
-    // Pack 4 — Accounting & Multi-Company depth. Reporting standards,
-    // analytic axes / budgets, bank feeds & reconciliation, and
-    // intercompany mechanics. Sits AFTER Localization (so the country
-    // COA / e-invoicing decisions are captured first) and BEFORE R2R
-    // (so the consultant has standards + analytic axes nailed down
-    // before the legacy R2R section's lighter Company/CoA prompts).
     buildAccountingFlow(),
-    buildR2RFlow(),
-    // Pack 5 — Inventory & Valuation depth. Warehouse structure,
-    // valuation method, lot/serial/expiration tracking, replenishment.
-    // Sits AFTER R2R (so the GL/CoA decisions feed inventory accounting
-    // accounts) and BEFORE P2P (so PO/receiving rules can see the
-    // warehouse layout + tracking requirements that drive them).
+    buildTaxFlow(),
+    buildLocalizationFlow(),
     buildInventoryFlow(),
-    buildP2PFlow(),
-    buildO2CFlow(),
-    // Pack 6 — Manufacturing depth (flow id MANUFACTURING_DEPTH; the
-    // existing PRODUCTION flow keeps its three legacy mrp.* questions
-    // for now). Sits AFTER O2C (sales-side BoM visibility captured
-    // first) and DIRECTLY BEFORE the existing PRODUCTION flow whose
-    // shop-floor execution is shaped by these depth answers.
-    buildManufacturingDepthFlow(),
-    buildProductionFlow(),
+    buildPurchaseFlow(),
+    buildSalesFlow(),
+    buildManufacturingFlow(),
     buildReturnsFlow(),
-    // Pack 7 — Data Migration sizing. Volumes, source systems,
-    // cutover style, validation. LAST flow in the array — runs after
-    // every other flow has captured its scope so the consultant can
-    // size the migration with the full engagement context (warehouse
-    // count from INVENTORY, multi-company from FOUNDATION, BoM
-    // depth from MANUFACTURING_DEPTH, etc.).
     buildMigrationFlow(),
   ],
 };
@@ -866,67 +837,12 @@ function buildAccountingFlow(): FlowDefinition {
   };
 }
 
-function buildR2RFlow(): FlowDefinition {
-  return {
-    id: 'R2R',
-    label: 'Record-to-Report',
-    description: 'Company setup, chart of accounts, fiscal periods, reporting.',
-    sections: [
-      {
-        id: 'company',
-        label: 'Company & Entities',
-        order: 1,
-        questions: [
-          {
-            id: 'odoo.company.multiCompany',
-            inputType: 'BOOLEAN',
-            required: true,
-            label: 'Multiple legal entities / companies on the same Odoo database?',
-            help: {
-              title: 'Multi-company in Odoo',
-              body: 'Odoo supports multi-company out of the box; enabling it changes permissions, intercompany rules, and chart-of-accounts setup.',
-            },
-          },
-          {
-            id: 'odoo.company.currency',
-            inputType: 'TEXT',
-            required: true,
-            label: 'Main operating currency (ISO 4217, e.g. "USD", "EUR", "AED")',
-          },
-          {
-            id: 'odoo.company.fiscalYearStart',
-            inputType: 'TEXT',
-            required: true,
-            label: 'Fiscal year start (MM-DD, e.g. "01-01" or "07-01")',
-          },
-        ],
-      },
-      {
-        id: 'coa',
-        label: 'Chart of Accounts',
-        order: 2,
-        questions: [
-          {
-            id: 'odoo.coa.template',
-            inputType: 'SINGLE_SELECT',
-            required: true,
-            label: 'Chart of accounts template',
-            options: [
-              { value: 'LOCALIZATION', label: 'Use the localization package for this country' },
-              { value: 'CUSTOM', label: 'Custom — we will upload a CoA' },
-            ],
-          },
-          {
-            id: 'odoo.coa.analyticAccounting',
-            inputType: 'BOOLEAN',
-            required: true,
-            label: 'Do you need analytic accounting (cost centers, projects)?',
-          },
-        ],
-      },
-    ],
-  };
-}
+// Pack R — buildR2RFlow() removed. Its 5 questions are 100% covered by
+// Pack 1 FOUNDATION (foundation.multiCompany / multiCurrency etc.),
+// Pack 3 LOCALIZATION (localization.coaTemplate), and Pack 4
+// ACCOUNTING (analytic axes). Answers stored against the deprecated
+// odoo.company.* / odoo.coa.* keys are surfaced as orphans in the
+// BRD's Migration Notes section.
 
 // ─── Pack 5 — Inventory & Valuation depth ────────────────────────────────────
 //
@@ -1130,10 +1046,13 @@ function buildInventoryFlow(): FlowDefinition {
   };
 }
 
-function buildP2PFlow(): FlowDefinition {
+// Pack R — Renamed P2P → Purchase, label changed from
+// "Procure-to-Pay" to "Purchase". Flow id stays P2P for backward-compat
+// (route handlers + answer keys reference it).
+function buildPurchaseFlow(): FlowDefinition {
   return {
     id: 'P2P',
-    label: 'Procure-to-Pay',
+    label: 'Purchase',
     description: 'Purchase orders, vendor bills, 3-way match, payments.',
     sections: [
       {
@@ -1164,11 +1083,16 @@ function buildP2PFlow(): FlowDefinition {
   };
 }
 
-function buildO2CFlow(): FlowDefinition {
+// Pack R — Renamed O2C → Sales, label changed from "Order-to-Cash" to
+// "Sales". Flow id stays O2C for backward-compat. Invoicing section
+// merged into the unified Sales App flow per the Odoo App-shaped
+// reorganisation (Odoo's Sales app handles quotes + pricelists +
+// invoicing policy as one integrated configuration).
+function buildSalesFlow(): FlowDefinition {
   return {
     id: 'O2C',
-    label: 'Order-to-Cash',
-    description: 'Sales orders, deliveries, invoices, customer payments.',
+    label: 'Sales',
+    description: 'Quotations, pricelists, invoicing policy, deliveries, customer payments.',
     sections: [
       {
         id: 'sales',
@@ -1192,13 +1116,6 @@ function buildO2CFlow(): FlowDefinition {
               { value: 'CURRENCY', label: 'Per-currency pricelists' },
             ],
           },
-        ],
-      },
-      {
-        id: 'invoicing',
-        label: 'Invoicing',
-        order: 2,
-        questions: [
           {
             id: 'odoo.invoicing.policy',
             inputType: 'SINGLE_SELECT',
@@ -1215,7 +1132,7 @@ function buildO2CFlow(): FlowDefinition {
   };
 }
 
-// ─── Pack 6 — Manufacturing depth ────────────────────────────────────────────
+// ─── Pack 6 — Manufacturing depth (renamed in Pack R) ────────────────────────
 //
 // 16 questions across 4 sections:
 //   - bom         (4): BoM types, multi-level BoMs, PLM, BoM cost method.
@@ -1225,19 +1142,18 @@ function buildO2CFlow(): FlowDefinition {
 //   - operations  (5): subcontracting, subcontracting component tracking,
 //                      maintenance, maintenance type, backflushing.
 //
-// Naming note: flow id is MANUFACTURING_DEPTH (not MANUFACTURING) to
-// coexist with the existing PRODUCTION flow's three legacy mrp.*
-// questions. A later refactor pack will collapse the two; this pack
-// intentionally keeps both alive to stay non-breaking.
+// Naming note (Pack R): flow id changed from MANUFACTURING_DEPTH to
+// MANUFACTURING and label from "Manufacturing — Depth" to
+// "Manufacturing" once the legacy PRODUCTION flow was deleted.
 //
 // Sources: Odoo 19 MRP docs (BoM types — Manufacture / Phantom /
 // Subcontracting / Kit), Quality module, Subcontracting feature,
 // PLM (Enterprise — ECO workflows + BoM revisions), Maintenance
 // module, backflushing in MO completion flow.
-function buildManufacturingDepthFlow(): FlowDefinition {
+function buildManufacturingFlow(): FlowDefinition {
   return {
-    id: 'MANUFACTURING_DEPTH',
-    label: 'Manufacturing — Depth',
+    id: 'MANUFACTURING',
+    label: 'Manufacturing',
     description:
       "BoM architecture, routing & work centers, quality control plans, subcontracting, PLM, and maintenance integration. The configuration that determines whether the manufacturing layer actually models the client's shop floor.",
     sections: [
@@ -1407,42 +1323,12 @@ function buildManufacturingDepthFlow(): FlowDefinition {
   };
 }
 
-function buildProductionFlow(): FlowDefinition {
-  return {
-    id: 'PRODUCTION',
-    label: 'Manufacturing',
-    description: 'BOMs, routings, manufacturing orders, quality control.',
-    sections: [
-      {
-        id: 'mrp',
-        label: 'Manufacturing Apps',
-        order: 1,
-        questions: [
-          {
-            id: 'odoo.mrp.enabled',
-            inputType: 'BOOLEAN',
-            required: true,
-            label: 'Will this Odoo install handle production / manufacturing orders?',
-          },
-          {
-            id: 'odoo.mrp.workCenters',
-            inputType: 'BOOLEAN',
-            required: false,
-            label: 'Use work centers and routings (enables MRP II)?',
-            dependsOn: { questionId: 'odoo.mrp.enabled', value: true },
-          },
-          {
-            id: 'odoo.mrp.quality',
-            inputType: 'BOOLEAN',
-            required: false,
-            label: 'Enable Quality Control checks on manufacturing operations?',
-            dependsOn: { questionId: 'odoo.mrp.enabled', value: true },
-          },
-        ],
-      },
-    ],
-  };
-}
+// Pack R — buildProductionFlow() removed. Its 3 questions
+// (odoo.mrp.enabled / workCenters / quality) are 100% covered by
+// Pack 6 MANUFACTURING (mfg.routingRequired, mfg.workCenterCount,
+// mfg.qualityPlansRequired). Answers stored against the deprecated
+// odoo.mrp.* keys are surfaced as orphans in the BRD's Migration
+// Notes section.
 
 function buildReturnsFlow(): FlowDefinition {
   return {
@@ -1730,16 +1616,34 @@ const rules: RulePack = {
   version: '1.0.0',
   rules: [
     // ── License gaps — required modules for enabled features ──────────────
+    //
+    // Pack R repointed these rules from the deleted odoo.mrp.* questions
+    // to the equivalent Pack 6 mfg.* questions:
+    //   - odoo.mrp.enabled       → any of mfg.routingRequired,
+    //                              mfg.qualityPlansRequired,
+    //                              mfg.subcontractingInScope (the three
+    //                              real signals that manufacturing is
+    //                              in scope).
+    //   - odoo.mrp.workCenters   → mfg.workCenterCount > 0.
+    //   - odoo.mrp.quality       → mfg.qualityPlansRequired.
     {
       id: 'odoo.mrp.requires-mrp-module',
       type: 'LICENSE_GAP',
       severity: 'BLOCK',
-      questionIds: ['odoo.mrp.enabled'],
-      message: 'Manufacturing is enabled but the MRP module is not provisioned.',
-      resolution: 'Add "MRP" to the Licensed Modules list or set Manufacturing to No.',
+      questionIds: [
+        'odoo.mfg.routingRequired',
+        'odoo.mfg.qualityPlansRequired',
+        'odoo.mfg.subcontractingInScope',
+      ],
+      message: 'Manufacturing is in scope but the MRP module is not provisioned.',
+      resolution: 'Add "MRP" to the Licensed Modules list or set the manufacturing-scope flags (routing, quality, subcontracting) to No.',
       when: {
         all: [
-          { answerTruthy: { questionId: 'odoo.mrp.enabled' } },
+          { any: [
+            { answerTruthy: { questionId: 'odoo.mfg.routingRequired' } },
+            { answerTruthy: { questionId: 'odoo.mfg.qualityPlansRequired' } },
+            { answerTruthy: { questionId: 'odoo.mfg.subcontractingInScope' } },
+          ] },
           { licenseMissingModule: 'MRP' },
         ],
       },
@@ -1748,12 +1652,12 @@ const rules: RulePack = {
       id: 'odoo.mrp.work-centers-require-mrp-module',
       type: 'LICENSE_GAP',
       severity: 'BLOCK',
-      questionIds: ['odoo.mrp.workCenters', 'odoo.mrp.enabled'],
+      questionIds: ['odoo.mfg.workCenterCount'],
       message: 'Work centers / routings require the MRP module.',
-      resolution: 'Provision the MRP module, or disable the Work Centers question.',
+      resolution: 'Provision the MRP module, or set the work-center count to zero.',
       when: {
         all: [
-          { answerTruthy: { questionId: 'odoo.mrp.workCenters' } },
+          { answerNumberGreaterThan: { questionId: 'odoo.mfg.workCenterCount', value: 0 } },
           { licenseMissingModule: 'MRP' },
         ],
       },
@@ -1762,12 +1666,12 @@ const rules: RulePack = {
       id: 'odoo.mrp.quality-requires-mrp-and-quality',
       type: 'LICENSE_GAP',
       severity: 'BLOCK',
-      questionIds: ['odoo.mrp.quality', 'odoo.mrp.enabled'],
+      questionIds: ['odoo.mfg.qualityPlansRequired'],
       message: 'Quality Control on manufacturing requires both the MRP and Quality modules.',
-      resolution: 'Provision the MRP and Quality modules, or disable the Quality Control question.',
+      resolution: 'Provision the MRP and Quality modules, or set qualityPlansRequired to No.',
       when: {
         all: [
-          { answerTruthy: { questionId: 'odoo.mrp.quality' } },
+          { answerTruthy: { questionId: 'odoo.mfg.qualityPlansRequired' } },
           { any: [
             { licenseMissingModule: 'MRP' },
             { licenseMissingModule: 'QUALITY' },
@@ -1820,37 +1724,30 @@ const rules: RulePack = {
       },
     },
 
-    // ── Config conflicts — sub-settings without parent toggle ─────────────
-    {
-      id: 'odoo.mrp.sub-settings-without-parent',
-      type: 'CONFIG_CONFLICT',
-      severity: 'WARN',
-      questionIds: ['odoo.mrp.enabled', 'odoo.mrp.workCenters', 'odoo.mrp.quality'],
-      message: 'Work centers or Quality are enabled while Manufacturing itself is set to No.',
-      resolution: 'Either enable Manufacturing or disable the sub-settings — the sub-questions are only meaningful when MRP is on.',
-      when: {
-        all: [
-          { answerFalsy: { questionId: 'odoo.mrp.enabled' } },
-          { any: [
-            { answerTruthy: { questionId: 'odoo.mrp.workCenters' } },
-            { answerTruthy: { questionId: 'odoo.mrp.quality' } },
-          ] },
-        ],
-      },
-    },
+    // Pack R deleted odoo.mrp.sub-settings-without-parent — Pack 6 R1
+    // (odoo.mfg.routing-needs-work-centers) covers the same case with
+    // cleaner semantics on the new mfg.* schema.
 
     // ── Data warnings — cross-question sanity checks ──────────────────────
+    //
+    // Pack R repointed these from deleted odoo.company.* / odoo.coa.*
+    // keys to the canonical Pack 1 / Pack 4 equivalents:
+    //   - odoo.company.multiCompany       → odoo.foundation.multiCompany
+    //   - odoo.coa.analyticAccounting     → odoo.accounting.analyticAxes
+    //                                       (TEXTAREA — empty = falsy,
+    //                                       any axis listed = truthy)
+    //   - odoo.company.fiscalYearStart    → odoo.foundation.fiscalYearStart
     {
       id: 'odoo.company.multi-company-needs-analytic',
       type: 'DATA_WARNING',
       severity: 'WARN',
-      questionIds: ['odoo.company.multiCompany', 'odoo.coa.analyticAccounting'],
+      questionIds: ['odoo.foundation.multiCompany', 'odoo.accounting.analyticAxes'],
       message: 'Multi-company installs almost always need analytic accounting for inter-company reporting.',
-      resolution: 'Set "Do you need analytic accounting?" to Yes, or document the exception in the Risk Register.',
+      resolution: 'Capture analytic axes (cost centers, projects, departments) on the Accounting & Multi-Company section, or document the exception in the Risk Register.',
       when: {
         all: [
-          { answerTruthy: { questionId: 'odoo.company.multiCompany' } },
-          { answerFalsy: { questionId: 'odoo.coa.analyticAccounting' } },
+          { answerTruthy: { questionId: 'odoo.foundation.multiCompany' } },
+          { answerFalsy: { questionId: 'odoo.accounting.analyticAxes' } },
         ],
       },
     },
@@ -1858,10 +1755,10 @@ const rules: RulePack = {
       id: 'odoo.company.fiscal-year-start-required',
       type: 'DATA_WARNING',
       severity: 'WARN',
-      questionIds: ['odoo.company.fiscalYearStart'],
+      questionIds: ['odoo.foundation.fiscalYearStart'],
       message: 'Fiscal year start (MM-DD) is required before configuration can begin.',
-      resolution: 'Confirm the fiscal calendar with the client and record it on the Company & Entities section.',
-      when: { answerFalsy: { questionId: 'odoo.company.fiscalYearStart' } },
+      resolution: 'Confirm the fiscal calendar with the client and record it on the Project Foundation section.',
+      when: { answerFalsy: { questionId: 'odoo.foundation.fiscalYearStart' } },
     },
 
     // ── Info — best practice nudges ───────────────────────────────────────
@@ -2070,12 +1967,14 @@ const rules: RulePack = {
     // checked, regardless of COA template, because both LOCALIZATION
     // and CUSTOM templates need to be verified.
     {
+      // Pack R repointed: odoo.coa.template (deleted) →
+      // odoo.localization.coaTemplate (Pack 3 LOCALIZATION).
       id: 'odoo.tax.withholding-needs-coa-accounts',
       type: 'DATA_WARNING',
       severity: 'WARN',
-      questionIds: ['odoo.tax.withholding', 'odoo.coa.template'],
+      questionIds: ['odoo.tax.withholding', 'odoo.localization.coaTemplate'],
       message: "Withholding tax requires dedicated chart-of-accounts entries (typically a 'Withholding Tax Payable' liability and a 'Withholding Tax Receivable' asset).",
-      resolution: 'Confirm the COA template includes withholding accounts, or add them during Configuration phase before first transaction.',
+      resolution: 'Confirm the localization COA template includes withholding accounts, or add them during Configuration phase before first transaction.',
       when: { answerTruthy: { questionId: 'odoo.tax.withholding' } },
     },
 
