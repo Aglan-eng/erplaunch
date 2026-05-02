@@ -73,7 +73,7 @@ const answers: Record<string, unknown> = {
   'kickoff.mandate.businessCase':
     'Replace 3 disconnected QuickBooks instances + spreadsheet inventory with a unified ' +
     'Odoo Enterprise tenant. Drives the 2026 group consolidation plan for the new freight-forwarding ' +
-    'subsidiary; required for IFRS audit readiness ahead of the planned Series B raise in Q3 2026.',
+    'entity; required for IFRS audit readiness ahead of the planned Series B raise in Q3 2026.',
   'kickoff.mandate.successCriteria':
     'Close month-end in 5 business days vs current 14 (target: month 6 post-go-live)\n' +
     'Single source of truth for inventory across all 4 warehouses (target: month 1)\n' +
