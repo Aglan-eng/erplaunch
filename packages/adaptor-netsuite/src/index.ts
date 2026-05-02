@@ -107,13 +107,23 @@ function buildSchema(): QuestionnaireSchema {
     // architecture. Closes the lifecycle harness Phase 3 gap (4/10 →
     // 9+) by feeding deeper content into the schema-walking
     // solutionDocGenerator.
+    // NS Pack W — APPROVALS flow sits AFTER P2P and BEFORE O2C.
+    // Captures multi-workflow approval scope (PO / JE / VB / Expense /
+    // SO + custom record state machines + notification cadence).
+    // Drives the SuiteFlow workflow XML generator + Workflow Action
+    // script generator. Enables ~125 hours/engagement of consultant
+    // time saved on workflow authoring.
     flows: [
       buildKickoffFlow(),
       buildFoundationFlow(),
       buildTaxFlow(),
       buildLocalizationFlow(),
       buildSolutionDesignFlow(),
-      ...['R2R', 'P2P', 'O2C', 'PRODUCTION', 'RETURNS']
+      ...['R2R', 'P2P']
+        .map((id) => flows[id])
+        .filter((f): f is FlowDefinition => !!f),
+      buildApprovalsFlow(),
+      ...['O2C', 'PRODUCTION', 'RETURNS']
         .map((id) => flows[id])
         .filter((f): f is FlowDefinition => !!f),
     ],
@@ -1050,6 +1060,167 @@ function buildSolutionDesignFlow(): FlowDefinition {
             required: false,
             label:
               "API governance approach (one per line — rate limits, monitoring, error handling — e.g., 'Rate limit: 600 req/min per integration role', 'Monitoring: Datadog + email alerts on >5% error rate', 'Retry: exponential backoff up to 3 attempts then dead-letter queue')",
+          },
+        ],
+      },
+    ],
+  };
+}
+
+// ─── NS Pack W — APPROVALS flow ──────────────────────────────────────────────
+//
+// Multi-workflow approval scope. Each in-scope workflow drives:
+//   - One customworkflow_*.xml emitted by sdfWorkflowGenerator
+//   - One NSIX_WFA_*.js emitted by sdfWorkflowActionScriptGenerator
+//
+// Reuses the amount-tier wire format that was first established by
+// p2p.purchasing.poApprovalTiers in Pack 3 (SuiteScript UE — PO
+// Approval). Pack W generalises the pattern across PO/JE/VB so all
+// four amount-tiered approvals share the same parser. Expense + SO
+// use simpler shapes (role chain + condition list).
+//
+// The PO UE script from Pack 3 is repositioned as a fallback /
+// legacy implementation pattern — modern engagements get the
+// SuiteFlow workflow + WFA script combo (admin-editable post-deploy
+// without code changes). Both artefacts emit when the PO approval
+// scope flag is true; the consultant picks at deploy time.
+//
+// Sources:
+//   - NetSuite SDF workflow XML reference (workflow / workflowstate /
+//     workflowtransition / workflowactions schemas).
+//   - NetSuite SuiteFlow Workflow Manager documentation.
+//   - NetSuite SuiteScript 2.1 Workflow Action Script type.
+//   - Standard NetSuite approval routing best practices (Oracle Help).
+function buildApprovalsFlow(): FlowDefinition {
+  return {
+    id: 'APPROVALS',
+    label: 'Approval Workflows',
+    description:
+      'Multi-tier approval routing for transactions and records. Each in-scope workflow generates a SuiteFlow XML + companion Workflow Action script.',
+    sections: [
+      {
+        id: 'transactional',
+        label: 'Transaction Approvals',
+        order: 1,
+        questions: [
+          {
+            id: 'ns.approvals.poApprovalInScope',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'Purchase Order approval workflow in scope?',
+          },
+          {
+            id: 'ns.approvals.poApprovalTiers',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "PO approval tiers (one per line — '<range>: <approver>'; e.g., '<$5,000: auto-approve', '$5,000-$50,000: Department Manager', '>$250,000: CFO')",
+            dependsOn: { questionId: 'ns.approvals.poApprovalInScope', value: true },
+          },
+          {
+            id: 'ns.approvals.jeApprovalInScope',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'Journal Entry approval workflow in scope?',
+          },
+          {
+            id: 'ns.approvals.jeApprovalTiers',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "JE approval tiers (one per line — same '<range>: <approver>' format; e.g., '<$10,000: auto-approve', '>$10,000: Controller', '>$100,000: CFO')",
+            dependsOn: { questionId: 'ns.approvals.jeApprovalInScope', value: true },
+          },
+          {
+            id: 'ns.approvals.vbApprovalInScope',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'Vendor Bill approval workflow in scope?',
+          },
+          {
+            id: 'ns.approvals.vbApprovalTiers',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Vendor Bill approval tiers (one per line — same '<range>: <approver>' format; typically tighter thresholds than POs since invoices are post-receipt)",
+            dependsOn: { questionId: 'ns.approvals.vbApprovalInScope', value: true },
+          },
+          {
+            id: 'ns.approvals.expenseApprovalInScope',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'Expense Report approval workflow in scope?',
+          },
+          {
+            id: 'ns.approvals.expenseApprovalTiers',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Expense approval tiers — typically a role chain (one per line — e.g., 'Standard: Manager → Director', 'Over $5,000: Manager → Director → CFO')",
+            dependsOn: { questionId: 'ns.approvals.expenseApprovalInScope', value: true },
+          },
+          {
+            id: 'ns.approvals.soApprovalInScope',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'Sales Order approval (credit hold, special pricing, deep discounts)?',
+          },
+          {
+            id: 'ns.approvals.soApprovalTrigger',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "If yes — approval trigger conditions (one per line — e.g., 'Customer over credit limit', 'Discount > 15%', 'Order > $250,000')",
+            dependsOn: { questionId: 'ns.approvals.soApprovalInScope', value: true },
+          },
+        ],
+      },
+      {
+        id: 'recordstate',
+        label: 'Custom Record State Workflows',
+        order: 2,
+        questions: [
+          {
+            id: 'ns.approvals.recordStateWorkflowsInScope',
+            inputType: 'BOOLEAN',
+            required: true,
+            label:
+              'Custom records with state machine workflows? (e.g., Approval Tracker: New → In Review → Approved/Rejected)',
+          },
+          {
+            id: 'ns.approvals.recordStateWorkflows',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "If yes — list each custom record + states (one per line — '<record>: <comma-separated state list>')",
+            dependsOn: {
+              questionId: 'ns.approvals.recordStateWorkflowsInScope',
+              value: true,
+            },
+          },
+        ],
+      },
+      {
+        id: 'notifications',
+        label: 'Approval Notifications',
+        order: 3,
+        questions: [
+          {
+            id: 'ns.approvals.notificationCadence',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'Approval notification cadence',
+            options: [
+              { value: 'IMMEDIATE', label: 'Immediate (email per approval action)' },
+              { value: 'DAILY_DIGEST', label: 'Daily digest (one email per day, all pending)' },
+              { value: 'BOTH', label: 'Both — immediate for high-value, digest for routine' },
+            ],
+          },
+          {
+            id: 'ns.approvals.escalationDays',
+            inputType: 'NUMBER',
+            required: false,
+            label: 'Auto-escalate after N days unresolved (0 = no auto-escalation)',
           },
         ],
       },

@@ -1,0 +1,204 @@
+/**
+ * SDF Workflow Action Script generator (Pack W — Workflow Coverage).
+ *
+ * Companion to sdfWorkflowGenerator. Each amount-tiered approval
+ * workflow (PO / JE / VB) needs a SuiteScript 2.1 Workflow Action
+ * Script that computes the NEXT_APPROVER role at runtime based on
+ * the transaction amount. The script is referenced by the workflow's
+ * <recipientfield>NEXT_APPROVER</recipientfield> action: SuiteFlow
+ * resolves the field at runtime by invoking this script's onAction.
+ *
+ * Why a separate generator vs. inlining the logic in the workflow
+ * XML? SuiteFlow's Visual Builder can encode amount thresholds
+ * declaratively for ≤3 tiers; beyond that the workflow XML becomes
+ * unreadable and brittle. Pulling the routing logic into a Workflow
+ * Action Script keeps the workflow XML simple (one transition per
+ * button action) and the routing logic versionable as code.
+ *
+ * Expense + SO workflows DON'T get a WFA script — Expense uses the
+ * standard NetSuite supervisor chain; SO routing is handled inline
+ * via VISUAL_BUILDER conditions. Only the three amount-tiered
+ * approvals (PO/JE/VB) emit WFA scripts.
+ *
+ * Sources:
+ *   - NetSuite SuiteScript 2.1 Workflow Action Script type
+ *     (Oracle docs — WorkflowActionScript module, onAction contract).
+ *   - SuiteFlow Workflow Manager — recipient field resolution via
+ *     custom Workflow Action Script.
+ *   - audit Fix #7 closeout (5724756) — STARTER SCAFFOLDING banner
+ *     scope is placeholder scaffolds only, not real generated logic.
+ */
+
+import { parseApprovalTiers, type ParsedTier } from './approvalTierParser.js';
+import {
+  AMOUNT_TIERED_APPROVALS,
+  type AmountTieredApprovalMeta,
+} from './sdfWorkflowGenerator.js';
+
+export interface WorkflowActionScriptInput {
+  /** Whole answers map — same as the workflow generator. */
+  answers: Record<string, unknown>;
+  /** Implementing firm (drives the JSDoc credit line). */
+  firmName: string;
+  /** Client / engagement name. */
+  clientName: string;
+}
+
+export interface EmittedWorkflowActionScript {
+  /** Bundle-relative path. */
+  filename: string;
+  /** Workflow type — 'po' / 'je' / 'vb'. */
+  typeKey: 'po' | 'je' | 'vb';
+  /** Display name for logging. */
+  displayName: string;
+  /** True when the wizard tiers parsed cleanly (resolved mode); false
+   *  for fallback mode (TODO placeholder). Useful for the harness +
+   *  for ship-report logging. */
+  resolved: boolean;
+}
+
+export interface WorkflowActionScriptOutput {
+  files: Record<string, string>;
+  emitted: EmittedWorkflowActionScript[];
+}
+
+// ─── String helpers ──────────────────────────────────────────────────────────
+
+function jsSingleQuoteEscape(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+function answerToJsDocLines(answer: string): string {
+  const normalised = answer.replace(/\r\n/g, '\n');
+  const lines = normalised.split('\n').filter((l) => l.trim().length > 0);
+  if (lines.length === 0) return ' *   (no tiers provided)';
+  return lines.map((l) => ` *   ${l}`).join('\n');
+}
+
+function bool(answers: Record<string, unknown>, key: string): boolean {
+  return answers[key] === true;
+}
+
+function str(answers: Record<string, unknown>, key: string): string {
+  const v = answers[key];
+  return typeof v === 'string' ? v : '';
+}
+
+// ─── Tier-array emission (resolved + fallback) ───────────────────────────────
+
+function renderResolvedTiersArray(tiers: ParsedTier[]): string {
+  return tiers
+    .map((t) => {
+      const max = t.maxAmount === Infinity ? 'Infinity' : String(t.maxAmount);
+      return `        { label: '${jsSingleQuoteEscape(t.label)}', minAmount: ${t.minAmount}, maxAmount: ${max}, approver: '${jsSingleQuoteEscape(t.approver)}' },`;
+    })
+    .join('\n');
+}
+
+function renderFallbackTiersArray(rawAnswer: string): string {
+  const quoted = answerToJsDocLines(rawAnswer)
+    .split('\n')
+    .map((l) => `        // ${l.replace(/^ \* {3}/, '').replace(/^ \* /, '')}`)
+    .join('\n');
+  return [
+    '        // TODO: parse failed — fill in the actual tiers from the wizard answer below.',
+    '        // Wizard answer (verbatim):',
+    quoted,
+    "        { label: 'TBD', minAmount: 0, maxAmount: Infinity, approver: 'TBD' },",
+  ].join('\n');
+}
+
+// ─── Per-script emission ────────────────────────────────────────────────────
+
+function buildWorkflowActionScript(args: {
+  meta: AmountTieredApprovalMeta;
+  firmName: string;
+  clientName: string;
+  rawAnswer: string;
+  resolvedTiers: ParsedTier[] | null;
+}): string {
+  const tiersBlock = args.resolvedTiers
+    ? renderResolvedTiersArray(args.resolvedTiers)
+    : renderFallbackTiersArray(args.rawAnswer);
+  const headerAnswerBlock = answerToJsDocLines(args.rawAnswer);
+  return `/**
+ * @NApiVersion 2.1
+ * @NScriptType WorkflowActionScript
+ * @NModuleScope SameAccount
+ *
+ * Workflow Action — ${args.meta.displayName} Approval Routing
+ * Computes NEXT_APPROVER for the current record based on amount and tier rules.
+ * Generated by ERPLaunch from ${args.firmName}'s implementation wizard for ${args.clientName}.
+ *
+ * Tiers (from wizard):
+${headerAnswerBlock}
+ *
+ * Wire-up: attach to the customworkflow_nsix_${args.meta.typeKey}_approval workflow's Pending state
+ * as a SetFieldValue Workflow Action targeting the NEXT_APPROVER field. The workflow's
+ * sendemailaction reads NEXT_APPROVER and routes the approval email to that role.
+ */
+define(['N/runtime', 'N/search'], (runtime, search) => {
+
+    const APPROVAL_TIERS = [
+${tiersBlock}
+    ];
+
+    const onAction = (scriptContext) => {
+        const rec = scriptContext.newRecord;
+        const total = rec.getValue({ fieldId: 'total' }) || 0;
+
+        for (const tier of APPROVAL_TIERS) {
+            if (total <= tier.maxAmount) {
+                return tier.approver;
+            }
+        }
+        return APPROVAL_TIERS[APPROVAL_TIERS.length - 1].approver;
+    };
+
+    return { onAction };
+});
+`;
+}
+
+// ─── Public API ──────────────────────────────────────────────────────────────
+
+/**
+ * Emit one Workflow Action Script per in-scope amount-tiered
+ * approval workflow (PO / JE / VB). Output bundle path:
+ *   SDF/SuiteScripts/NSIX_WFA_<TYPE>_Approval.js
+ *
+ * Empty / unparseable wizard tiers fall back to a TODO placeholder
+ * APPROVAL_TIERS array — the script still emits with valid syntax so
+ * the workflow can reference it; the consultant fills in actual
+ * tiers post-deploy.
+ */
+export function generateWorkflowActionScripts(
+  input: WorkflowActionScriptInput,
+): WorkflowActionScriptOutput {
+  const files: Record<string, string> = {};
+  const emitted: EmittedWorkflowActionScript[] = [];
+
+  for (const meta of AMOUNT_TIERED_APPROVALS) {
+    if (!bool(input.answers, meta.scopeAnswerKey)) continue;
+    const rawAnswer = str(input.answers, meta.tiersAnswerKey);
+    const parsed = parseApprovalTiers(rawAnswer);
+    const resolvedTiers =
+      parsed.allOk && parsed.tiers.length > 0 ? parsed.tiers : null;
+    const filename = `SuiteScripts/NSIX_WFA_${meta.typeKey.toUpperCase()}_Approval.js`;
+    files[filename] = buildWorkflowActionScript({
+      meta,
+      firmName: input.firmName,
+      clientName: input.clientName,
+      rawAnswer,
+      resolvedTiers,
+    });
+    emitted.push({
+      filename,
+      typeKey: meta.typeKey,
+      displayName: meta.displayName,
+      resolved: resolvedTiers !== null,
+    });
+  }
+
+  return { files, emitted };
+}

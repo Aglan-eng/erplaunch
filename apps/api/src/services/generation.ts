@@ -19,6 +19,8 @@ import {
   extractCurrenciesFromSubsidiaries,
 } from './generators/sdfSubsidiaryGenerator.js';
 import { generateCurrencies } from './generators/sdfCurrencyGenerator.js';
+import { generateWorkflows } from './generators/sdfWorkflowGenerator.js';
+import { generateWorkflowActionScripts } from './generators/sdfWorkflowActionScriptGenerator.js';
 import { validateSDFBundle, isValidationEnabled } from './generators/sdfValidator.js';
 import { generateScripts } from './generators/scriptGenerator.js';
 import { generateRiskRegister } from './generators/riskGenerator.js';
@@ -342,6 +344,31 @@ export async function processJob(jobId: string, db: DbModule) {
       const currenciesResult = generateCurrencies({ currencies: currencyCodes });
       Object.assign(sdfFiles, currenciesResult.files);
 
+      // Pack W — SuiteFlow workflows + Workflow Action scripts.
+      // Reads the APPROVALS flow's wizard answers (PO/JE/VB/Expense/SO
+      // scope flags + tiers + record state machines + notification
+      // cadence + escalation days). For each in-scope approval, emits
+      // one customworkflow_*.xml. Amount-tiered approvals (PO/JE/VB)
+      // also get a companion NSIX_WFA_*_Approval.js that computes
+      // NEXT_APPROVER at runtime based on the parsed tiers.
+      //
+      // The PO UE script from Pack 3 is repositioned as a fallback /
+      // legacy implementation pattern (header comment in the emitted
+      // script flags this); both UE + workflow artefacts emit when
+      // poApprovalInScope is true so the consultant picks at deploy.
+      const workflowsResult = generateWorkflows({ answers });
+      Object.assign(sdfFiles, workflowsResult.files);
+
+      const wfaScriptsResult = generateWorkflowActionScripts({
+        answers,
+        firmName: 'NSIX',
+        clientName: eng.clientName as string,
+      });
+      // WFA scripts go under SDF/SuiteScripts/, same shelf as the PO UE
+      // script. Object.assign-merge into sdfFiles uses the script's
+      // already-prefixed filename ("SuiteScripts/NSIX_WFA_*.js").
+      Object.assign(sdfFiles, wfaScriptsResult.files);
+
       // Pack A — Manifest now derives features from wizard answers
       // (was hardcoded to {CUSTOMRECORDS, SERVERSIDESCRIPTING}). The
       // heavy generateSDFPackage upstream still emits its own
@@ -372,7 +399,7 @@ export async function processJob(jobId: string, db: DbModule) {
           taxEngine: answers['ns.tax.engine'] as string | undefined,
           hasCustomRecords: customRecordsResult.emitted.length > 0,
           hasSuiteScripts: hasSuiteScriptsForManifest,
-          hasWorkflows: false, // future Pack D
+          hasWorkflows: workflowsResult.emitted.length > 0,
           poApprovalInScope: willEmitPoScript,
           uiLanguages: uiLanguagesArray,
         });

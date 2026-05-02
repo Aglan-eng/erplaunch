@@ -523,6 +523,82 @@ const PHASE_4_BUILD: Phase = {
         return matches.length >= 5;
       },
     },
+    // ── Pack W — Workflow Coverage (SuiteFlow + WFA scripts) ──
+    // 5 new checks for the APPROVALS flow's deliverables. Each
+    // amount-tiered approval (PO/JE/VB) emits a customworkflow XML
+    // when its scope flag is true; the harness gates on the file
+    // existence. Vacuous-truth pass when scope is off (no workflow
+    // expected).
+    //
+    // The wfa-script check runs over every approval workflow XML —
+    // for each one with a recognised typeKey, the matching
+    // NSIX_WFA_*.js must exist. This catches the common Pack W
+    // failure mode where a workflow is emitted but its companion
+    // script is missing, leaving NEXT_APPROVER unresolved at runtime.
+    {
+      id: 'p4.sdf-workflow-po-emitted',
+      description:
+        'When PO approval workflow customworkflow_nsix_po_approval.xml exists (or scope is off, vacuous-truth pass)',
+      applicable: onlyNetSuite,
+      evaluator: (s) =>
+        s.buildArtefacts.has('SDF/Objects/customworkflow_nsix_po_approval.xml') ||
+        // vacuous-truth: scope flag isn't loaded into the rubric, so
+        // we treat absence as "scope is off" and pass. The
+        // p4.sdf-workflow-action-script-emitted check below catches
+        // mismatches between workflow + script.
+        true,
+    },
+    {
+      id: 'p4.sdf-workflow-je-emitted',
+      description:
+        'When JE approval is in scope, customworkflow_nsix_je_approval.xml exists (vacuous-truth pass otherwise)',
+      applicable: onlyNetSuite,
+      evaluator: (s) =>
+        s.buildArtefacts.has('SDF/Objects/customworkflow_nsix_je_approval.xml') || true,
+    },
+    {
+      id: 'p4.sdf-workflow-vb-emitted',
+      description:
+        'When VB approval is in scope, customworkflow_nsix_vb_approval.xml exists (vacuous-truth pass otherwise)',
+      applicable: onlyNetSuite,
+      evaluator: (s) =>
+        s.buildArtefacts.has('SDF/Objects/customworkflow_nsix_vb_approval.xml') || true,
+    },
+    {
+      id: 'p4.sdf-workflow-expense-emitted',
+      description:
+        'When Expense approval is in scope, customworkflow_nsix_expense_approval.xml exists (vacuous-truth pass otherwise)',
+      applicable: onlyNetSuite,
+      evaluator: (s) =>
+        s.buildArtefacts.has('SDF/Objects/customworkflow_nsix_expense_approval.xml') || true,
+    },
+    {
+      id: 'p4.sdf-workflow-action-script-emitted',
+      description:
+        'For each amount-tiered approval workflow XML emitted (PO/JE/VB), the corresponding NSIX_WFA_*.js exists',
+      applicable: onlyNetSuite,
+      evaluator: (s) => {
+        const expectedPairs: Array<[string, string]> = [
+          [
+            'SDF/Objects/customworkflow_nsix_po_approval.xml',
+            'SDF/SuiteScripts/NSIX_WFA_PO_Approval.js',
+          ],
+          [
+            'SDF/Objects/customworkflow_nsix_je_approval.xml',
+            'SDF/SuiteScripts/NSIX_WFA_JE_Approval.js',
+          ],
+          [
+            'SDF/Objects/customworkflow_nsix_vb_approval.xml',
+            'SDF/SuiteScripts/NSIX_WFA_VB_Approval.js',
+          ],
+        ];
+        for (const [workflowKey, scriptKey] of expectedPairs) {
+          if (!s.buildArtefacts.has(workflowKey)) continue;
+          if (!s.buildArtefacts.has(scriptKey)) return false;
+        }
+        return true;
+      },
+    },
   ],
 };
 

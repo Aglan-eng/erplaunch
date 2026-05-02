@@ -36,6 +36,8 @@ import {
   extractCurrenciesFromSubsidiaries,
 } from '../src/services/generators/sdfSubsidiaryGenerator.js';
 import { generateCurrencies } from '../src/services/generators/sdfCurrencyGenerator.js';
+import { generateWorkflows } from '../src/services/generators/sdfWorkflowGenerator.js';
+import { generateWorkflowActionScripts } from '../src/services/generators/sdfWorkflowActionScriptGenerator.js';
 import { validateSDFBundle } from '../src/services/generators/sdfValidator.js';
 import netsuiteAdaptor from '@ofoq/adaptor-netsuite';
 
@@ -290,6 +292,41 @@ const answers: Record<string, unknown> = {
     '$5,000-$50,000: Department Manager\n' +
     '$50,000-$250,000: VP Operations\n' +
     '>$250,000: CFO + Steering',
+
+  // Pack W — APPROVALS flow. Multi-workflow scope drives the SuiteFlow
+  // workflow XMLs + Workflow Action scripts. Atlas covers the full
+  // sweep: PO + JE + VB + Expense + SO + 2 record state workflows.
+  'ns.approvals.poApprovalInScope': true,
+  'ns.approvals.poApprovalTiers':
+    '<$5,000: auto-approve\n' +
+    '$5,000-$50,000: Department Manager\n' +
+    '$50,000-$250,000: VP Operations\n' +
+    '>$250,000: CFO + Steering',
+  'ns.approvals.jeApprovalInScope': true,
+  'ns.approvals.jeApprovalTiers':
+    '<$10,000: auto-approve\n' +
+    '$10,000-$100,000: Controller\n' +
+    '>$100,000: CFO',
+  'ns.approvals.vbApprovalInScope': true,
+  'ns.approvals.vbApprovalTiers':
+    '<$5,000: auto-approve\n' +
+    '$5,000-$50,000: AP Manager\n' +
+    '>$50,000: CFO',
+  'ns.approvals.expenseApprovalInScope': true,
+  'ns.approvals.expenseApprovalTiers':
+    'Standard: Manager → Director\n' +
+    'Over $5,000: Manager → Director → CFO',
+  'ns.approvals.soApprovalInScope': true,
+  'ns.approvals.soApprovalTrigger':
+    'Customer over credit limit\n' +
+    'Discount > 15%\n' +
+    'Order total > $250,000',
+  'ns.approvals.recordStateWorkflowsInScope': true,
+  'ns.approvals.recordStateWorkflows':
+    'Approval Tracker: New, In Review, Approved, Rejected\n' +
+    'Vendor Onboarding Request: Submitted, Under Review, Approved, Active, Suspended',
+  'ns.approvals.notificationCadence': 'IMMEDIATE',
+  'ns.approvals.escalationDays': 3,
 };
 
 const comments = [
@@ -380,6 +417,17 @@ const subsidiariesResult = generateSubsidiaries({
 const currencyCodes = extractCurrenciesFromSubsidiaries(subsidiariesResult.emitted);
 const currenciesResult = generateCurrencies({ currencies: currencyCodes });
 
+// Pack W — workflow generators run early so manifest derivation can
+// see hasWorkflows. The companion WFA scripts go to SDF/SuiteScripts/
+// and don't affect manifest features beyond hasSuiteScripts (already
+// driven by the PO UE script).
+const workflowsResult = generateWorkflows({ answers });
+const wfaScriptsResult = generateWorkflowActionScripts({
+  answers,
+  firmName: 'NSIX',
+  clientName,
+});
+
 // Pack A — Manifest derives feature dependencies from the wizard
 // answers (was hardcoded to {CUSTOMRECORDS, SERVERSIDESCRIPTING}).
 // Drives SUBSIDIARIES / INTERCOMPANY / MULTICURRENCY / etc. on
@@ -407,7 +455,7 @@ const manifestXml = generateSdfManifest({
   taxEngine: answers['ns.tax.engine'] as string | undefined,
   hasCustomRecords: hasCustomRecordsForManifest,
   hasSuiteScripts: willEmitPoScriptManifest,
-  hasWorkflows: false, // future Pack D
+  hasWorkflows: workflowsResult.emitted.length > 0,
   poApprovalInScope: willEmitPoScriptManifest,
   uiLanguages: uiLanguagesArray,
 });
@@ -460,7 +508,7 @@ const entryFormsResult = generateEntryForms({
 
 // Single validator pass over the WHOLE SDF bundle so manifest / deploy /
 // customrecord / custom-field / customlist / form / subsidiary /
-// currency errors all surface together.
+// currency / workflow errors all surface together.
 const allSdfFiles: Record<string, string> = {
   'manifest.xml': manifestXml,
   'deploy.xml': deployXml,
@@ -471,6 +519,7 @@ const allSdfFiles: Record<string, string> = {
   ...selectFieldsCustomLists,
   ...txnFormsResult.files,
   ...entryFormsResult.files,
+  ...workflowsResult.files,
 };
 const validation = validateSDFBundle(allSdfFiles);
 if (!validation.ok) {
@@ -538,6 +587,20 @@ for (const [relPath, content] of Object.entries(entryFormsResult.files)) {
   process.stdout.write(`  ✓ SDF/${relPath}\n`);
 }
 
+for (const [relPath, content] of Object.entries(workflowsResult.files)) {
+  const fullPath = path.join(sdfRoot, relPath);
+  await fs.mkdir(path.dirname(fullPath), { recursive: true });
+  await fs.writeFile(fullPath, content, 'utf8');
+  process.stdout.write(`  ✓ SDF/${relPath}\n`);
+}
+
+for (const [relPath, content] of Object.entries(wfaScriptsResult.files)) {
+  const fullPath = path.join(sdfRoot, relPath);
+  await fs.mkdir(path.dirname(fullPath), { recursive: true });
+  await fs.writeFile(fullPath, content, 'utf8');
+  process.stdout.write(`  ✓ SDF/${relPath}\n`);
+}
+
 // ── Real-logic SuiteScript: PO approval User Event ──────────────────────────
 // First real-LOGIC SuiteScript file. Reads the wizard's free-text
 // p2p.purchasing.poApprovalTiers answer and emits a deployable User Event
@@ -587,7 +650,9 @@ console.log(
     `${customFieldsResult.emitted.length} custom field(s) + ` +
     `${Object.keys(selectFieldsCustomLists).length} SELECT companion customlist(s) + ` +
     `${Object.keys(txnFormsResult.files).length} transaction form(s) + ` +
-    `${Object.keys(entryFormsResult.files).length} entry form(s)`,
+    `${Object.keys(entryFormsResult.files).length} entry form(s) + ` +
+    `${workflowsResult.emitted.length} workflow(s) + ` +
+    `${wfaScriptsResult.emitted.length} WFA script(s)`,
 );
 if (missingTerms === 0) {
   // eslint-disable-next-line no-console

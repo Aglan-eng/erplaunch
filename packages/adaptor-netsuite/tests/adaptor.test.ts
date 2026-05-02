@@ -28,10 +28,12 @@ describe('netsuiteAdaptor: schema', () => {
     // NS Pack 3 inserted LOCALIZATION.
     // NS SD Depth Pack inserts SOLUTION_DESIGN after LOCALIZATION,
     // before R2R — closes the Phase 3 lifecycle-harness gap (4/10 → 9+).
+    // NS Pack W inserts APPROVALS between P2P and O2C — drives the
+    // SuiteFlow workflow + WFA script generators.
     expect(ids).toEqual([
       'KICKOFF',
       'FOUNDATION', 'TAX', 'LOCALIZATION', 'SOLUTION_DESIGN',
-      'R2R', 'P2P', 'O2C', 'PRODUCTION', 'RETURNS',
+      'R2R', 'P2P', 'APPROVALS', 'O2C', 'PRODUCTION', 'RETURNS',
     ]);
   });
 
@@ -1677,5 +1679,117 @@ describe('netsuiteAdaptor: NS SD Depth — rule evaluation', () => {
       license: { edition: 'MID_MARKET', modules: [] },
     });
     expect(conflicts.map((c) => c.id)).not.toContain('ns.design.field-level-security-needs-custom-roles');
+  });
+});
+
+// ─── NS Pack W — APPROVALS flow shape ───────────────────────────────────────
+
+describe('netsuiteAdaptor: NS Pack W — APPROVALS flow shape', () => {
+  const approvals = netsuiteAdaptor.schema.flows.find((f) => f.id === 'APPROVALS');
+
+  it('APPROVALS flow exists with the expected label', () => {
+    expect(approvals).toBeDefined();
+    expect(approvals!.label).toBe('Approval Workflows');
+  });
+
+  it('APPROVALS sits AFTER P2P, BEFORE O2C', () => {
+    const ids = netsuiteAdaptor.schema.flows.map((f) => f.id);
+    expect(ids.indexOf('APPROVALS')).toBeGreaterThan(ids.indexOf('P2P'));
+    expect(ids.indexOf('APPROVALS')).toBeLessThan(ids.indexOf('O2C'));
+  });
+
+  it('has 3 sections: transactional / recordstate / notifications', () => {
+    expect(approvals!.sections).toHaveLength(3);
+    const sectionIds = approvals!.sections.map((s) => s.id);
+    expect(sectionIds).toContain('transactional');
+    expect(sectionIds).toContain('recordstate');
+    expect(sectionIds).toContain('notifications');
+  });
+
+  it('transactional section has the 10 expected questions (5 scope + 5 detail)', () => {
+    const txn = approvals!.sections.find((s) => s.id === 'transactional')!;
+    const ids = txn.questions.map((q) => q.id);
+    expect(ids).toContain('ns.approvals.poApprovalInScope');
+    expect(ids).toContain('ns.approvals.poApprovalTiers');
+    expect(ids).toContain('ns.approvals.jeApprovalInScope');
+    expect(ids).toContain('ns.approvals.jeApprovalTiers');
+    expect(ids).toContain('ns.approvals.vbApprovalInScope');
+    expect(ids).toContain('ns.approvals.vbApprovalTiers');
+    expect(ids).toContain('ns.approvals.expenseApprovalInScope');
+    expect(ids).toContain('ns.approvals.expenseApprovalTiers');
+    expect(ids).toContain('ns.approvals.soApprovalInScope');
+    expect(ids).toContain('ns.approvals.soApprovalTrigger');
+  });
+
+  it('recordstate section has the 2 expected questions', () => {
+    const rs = approvals!.sections.find((s) => s.id === 'recordstate')!;
+    const ids = rs.questions.map((q) => q.id);
+    expect(ids).toContain('ns.approvals.recordStateWorkflowsInScope');
+    expect(ids).toContain('ns.approvals.recordStateWorkflows');
+  });
+
+  it('notifications section has cadence + escalationDays', () => {
+    const notif = approvals!.sections.find((s) => s.id === 'notifications')!;
+    const ids = notif.questions.map((q) => q.id);
+    expect(ids).toContain('ns.approvals.notificationCadence');
+    expect(ids).toContain('ns.approvals.escalationDays');
+  });
+
+  it('notificationCadence is a SINGLE_SELECT with IMMEDIATE / DAILY_DIGEST / BOTH', () => {
+    const notif = approvals!.sections.find((s) => s.id === 'notifications')!;
+    const q = notif.questions.find((q) => q.id === 'ns.approvals.notificationCadence')!;
+    expect(q.inputType).toBe('SINGLE_SELECT');
+    const optionValues = (q.options ?? []).map((o) => o.value);
+    expect(optionValues).toEqual(['IMMEDIATE', 'DAILY_DIGEST', 'BOTH']);
+  });
+
+  it('escalationDays is a NUMBER input', () => {
+    const notif = approvals!.sections.find((s) => s.id === 'notifications')!;
+    const q = notif.questions.find((q) => q.id === 'ns.approvals.escalationDays')!;
+    expect(q.inputType).toBe('NUMBER');
+  });
+
+  it('every approval-tiers TEXTAREA dependsOn its scope flag', () => {
+    const txn = approvals!.sections.find((s) => s.id === 'transactional')!;
+    const pairs: Array<[string, string]> = [
+      ['ns.approvals.poApprovalTiers', 'ns.approvals.poApprovalInScope'],
+      ['ns.approvals.jeApprovalTiers', 'ns.approvals.jeApprovalInScope'],
+      ['ns.approvals.vbApprovalTiers', 'ns.approvals.vbApprovalInScope'],
+      ['ns.approvals.expenseApprovalTiers', 'ns.approvals.expenseApprovalInScope'],
+      ['ns.approvals.soApprovalTrigger', 'ns.approvals.soApprovalInScope'],
+    ];
+    for (const [tiersId, scopeId] of pairs) {
+      const q = txn.questions.find((q) => q.id === tiersId);
+      expect(q, `question ${tiersId} should exist`).toBeDefined();
+      expect(q!.dependsOn?.questionId, `${tiersId} should dependsOn ${scopeId}`).toBe(scopeId);
+      expect(q!.dependsOn?.value).toBe(true);
+    }
+  });
+
+  it('all in-scope flags are BOOLEAN inputType', () => {
+    const txn = approvals!.sections.find((s) => s.id === 'transactional')!;
+    const rs = approvals!.sections.find((s) => s.id === 'recordstate')!;
+    const allScopeFlags = [...txn.questions, ...rs.questions].filter((q) =>
+      q.id.endsWith('InScope'),
+    );
+    expect(allScopeFlags.length).toBeGreaterThanOrEqual(6);
+    for (const q of allScopeFlags) {
+      expect(q.inputType, `${q.id} should be BOOLEAN`).toBe('BOOLEAN');
+    }
+  });
+
+  it('all approval-tiers detail questions are TEXTAREA inputType', () => {
+    const txn = approvals!.sections.find((s) => s.id === 'transactional')!;
+    const detailIds = [
+      'ns.approvals.poApprovalTiers',
+      'ns.approvals.jeApprovalTiers',
+      'ns.approvals.vbApprovalTiers',
+      'ns.approvals.expenseApprovalTiers',
+      'ns.approvals.soApprovalTrigger',
+    ];
+    for (const id of detailIds) {
+      const q = txn.questions.find((q) => q.id === id)!;
+      expect(q.inputType, `${id} should be TEXTAREA`).toBe('TEXTAREA');
+    }
   });
 });
