@@ -232,7 +232,7 @@ describe('generateSdfCustomRecords — passes the structural SDF validator', () 
     expect(result.ok, JSON.stringify(result.errors, null, 2)).toBe(true);
   });
 
-  it('multi-record output validates clean — 5 records → 10 files (5 customrecords + 5 customlists)', () => {
+  it('multi-record output validates clean — Pack K: 5 records → 12 files (5 customrecord + 5 baseline status customlist + 2 Pack K SELECT companions for Vendor Onboarding kyc/risk)', () => {
     const out = generateSdfCustomRecords({
       customRecordsAnswer: [
         'Approval Tracker (custom record — captures full chain per transaction)',
@@ -242,8 +242,16 @@ describe('generateSdfCustomRecords — passes the structural SDF validator', () 
         'Tax Filing Calendar (per nexus, per period; tracks filed/due dates)',
       ].join('\n'),
     });
-    // Pack B: each record now produces 2 files (customrecord + status customlist)
-    expect(Object.keys(out.files)).toHaveLength(10);
+    // Pack K decomposition for the Atlas seed:
+    //   5 customrecord_*.xml
+    //   5 customlist_*_status.xml (Pack B baseline status)
+    //   2 customlist_*.xml (Pack K SELECT companions: Vendor Onboarding's
+    //     kyc_status + risk_rating — those are SELECT starters without
+    //     hardcoded selectrecordtype, so they get auto-emitted lists).
+    //   Approval Tracker, Project Milestone, Intercompany Transfer Request,
+    //   Tax Filing Calendar all use hardcoded selectrecordtypes (-4 / -30 /
+    //   -117) so no Pack K companion lists for them.
+    expect(Object.keys(out.files)).toHaveLength(12);
     expect(Object.keys(customrecordFiles(out.files))).toHaveLength(5);
     const result = validateSDFBundle(out.files);
     expect(result.ok, JSON.stringify(result.errors, null, 2)).toBe(true);

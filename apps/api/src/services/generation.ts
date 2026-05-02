@@ -272,8 +272,14 @@ export async function processJob(jobId: string, db: DbModule) {
       // gates these too. Empty / missing input yields zero files —
       // pre-NS-SD-pack engagements don't have this answer and are
       // unaffected.
+      // Pack K — customrecord generator now takes both the records
+      // answer (one record per line) and the extras answer (per-record
+      // business fields beyond the smart starter set). Empty extras
+      // answer → generator behaves as Pack B did (baseline + smart
+      // starters only).
       const customRecordsResult = generateSdfCustomRecords({
         customRecordsAnswer: answers['ns.design.customRecords'] as string | undefined,
+        customRecordExtraFieldsAnswer: answers['ns.design.customRecordExtraFields'] as string | undefined,
       });
       Object.assign(sdfFiles, customRecordsResult.files);
 

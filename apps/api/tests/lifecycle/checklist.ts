@@ -342,23 +342,65 @@ const PHASE_4_BUILD: Phase = {
       },
     },
     {
-      id: 'p4.customrecord-fields-populated',
+      id: 'p4.customrecord-baseline-fields-populated',
       description:
-        'Every emitted customrecord_*.xml has a non-empty <customrecordcustomfields> block (Pack B baseline fields, no shells)',
+        'Every emitted customrecord_*.xml has the 4 baseline audit fields (status / owner / notes / external_ref) — Pack B contract',
       applicable: onlyNetSuite,
       evaluator: (s) => {
         let count = 0;
         for (const [key, content] of s.buildArtefacts.entries()) {
           if (!/^SDF\/Objects\/customrecord_[a-z0-9_]+\.xml$/.test(key)) continue;
           count++;
-          // Look for at least one nested customrecordcustomfield element —
-          // pre-Pack-B shells had `<customrecordcustomfields>` followed
-          // immediately by its closing tag, so a single
-          // `<customrecordcustomfield ` substring is sufficient signal.
-          if (!/<customrecordcustomfield\s/.test(content)) return false;
+          // Match the four baseline scriptid suffixes. The recordSlug
+          // is in between custrecord_ and the suffix, so use a partial
+          // regex per suffix.
+          const baseline = ['_status', '_owner', '_notes', '_external_ref'];
+          for (const suffix of baseline) {
+            const re = new RegExp(`<customrecordcustomfield scriptid="custrecord_[a-z0-9_]+${suffix}"`);
+            if (!re.test(content)) return false;
+          }
         }
-        // Vacuous-truth pass when no customrecord files exist.
         return count > 0 || true;
+      },
+    },
+    {
+      id: 'p4.customrecord-business-fields-populated',
+      description:
+        'At least one customrecord_*.xml has MORE than 4 fields (Pack K starter / overlay business fields beyond baseline)',
+      applicable: onlyNetSuite,
+      evaluator: (s) => {
+        let recordCount = 0;
+        for (const [key, content] of s.buildArtefacts.entries()) {
+          if (!/^SDF\/Objects\/customrecord_[a-z0-9_]+\.xml$/.test(key)) continue;
+          recordCount++;
+          const fields = content.match(/<customrecordcustomfield\s/g) ?? [];
+          if (fields.length > 4) return true;
+        }
+        // Vacuous-truth pass when no customrecord files exist (still
+        // a green check on engagements with no records declared).
+        return recordCount === 0;
+      },
+    },
+    {
+      id: 'p4.customrecord-starter-fields-emitted',
+      description:
+        'Records whose name matches the "Approval" keyword family carry the approval-chain-history starter field (signal that the keyword classifier is wired through)',
+      applicable: onlyNetSuite,
+      evaluator: (s) => {
+        let approvalRecordCount = 0;
+        for (const [key, content] of s.buildArtefacts.entries()) {
+          // Approval/tracker records get the approval-chain-history
+          // starter per the Pack K classifier. We check the field is
+          // present in any matching customrecord file.
+          if (!/^SDF\/Objects\/customrecord_[a-z0-9_]*(?:approval|tracker)[a-z0-9_]*\.xml$/.test(key)) continue;
+          approvalRecordCount++;
+          if (/<customrecordcustomfield scriptid="custrecord_[a-z0-9_]+_approval_chain_history"/.test(content)) {
+            return true;
+          }
+        }
+        // Vacuous-truth: no approval/tracker records → starter
+        // expectation doesn't apply.
+        return approvalRecordCount === 0;
       },
     },
     // ── Pack H — Custom Forms (Transaction + Entry) ──

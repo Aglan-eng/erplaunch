@@ -229,6 +229,20 @@ const answers: Record<string, unknown> = {
     'Project Milestone (links Project + Sales Order + Revenue Element)\n' +
     'Intercompany Transfer Request (drives auto-mirror on counterpart entity)\n' +
     'Tax Filing Calendar (per nexus, per period; tracks filed/due dates)',
+
+  // Pack K — overlay layer for business fields the smart starter
+  // detector doesn't infer. Format: "<record>: <label>: <type>".
+  // Type tokens: TEXT / TEXTAREA / CHECKBOX / DATE / CURRENCY / NUMBER /
+  // SELECT / EMPLOYEE / TRANSACTION / SUBSIDIARY.
+  'ns.design.customRecordExtraFields':
+    'Approval Tracker: Approval Tier: SELECT\n' +
+    'Approval Tracker: Routed To: EMPLOYEE\n' +
+    'Vendor Onboarding Request: Risk Rating: SELECT\n' +
+    'Vendor Onboarding Request: Compliance Sign-off: EMPLOYEE\n' +
+    'Project Milestone: Deliverable Owner: EMPLOYEE\n' +
+    'Project Milestone: Estimated Cost: CURRENCY\n' +
+    'Intercompany Transfer Request: Tax Treatment: SELECT\n' +
+    'Tax Filing Calendar: Reviewer: EMPLOYEE',
   'ns.design.customFieldsScope':
     'Customer record: 6 custom fields (Tier, Industry, KAM, Renewal Date, Payment Terms Override, Tax Exemption Status)\n' +
     'Sales Order: 8 custom fields (Project Reference, Renewal Type, Margin Override, ARM Trigger, Shipping Priority, EU Reverse-Charge Flag, Subsidiary Source, External Order ID)\n' +
@@ -462,6 +476,7 @@ const manifestXml = generateSdfManifest({
 const deployXml = generateSdfDeploy();
 const customRecordsResult = generateSdfCustomRecords({
   customRecordsAnswer: answers['ns.design.customRecords'] as string | undefined,
+  customRecordExtraFieldsAnswer: answers['ns.design.customRecordExtraFields'] as string | undefined,
 });
 
 // Pack B — BRD custom-field generator. Parses ns.design.customFieldsScope

@@ -956,6 +956,18 @@ function buildSolutionDesignFlow(): FlowDefinition {
               "Custom record types in scope (one per line — e.g., 'Approval Tracker (custom record)', 'Vendor Onboarding Request', 'Project Milestone')",
           },
           {
+            id: 'ns.design.customRecordExtraFields',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Additional business fields per custom record (one per line — '<record_name>: <field_label>: <type>'; e.g., 'Approval Tracker: Approval Tier: SELECT', 'Vendor Onboarding Request: Risk Rating: SELECT', 'Project Milestone: Deliverable Owner: EMPLOYEE'). Auto-generated starter fields are added separately based on the record's name; this question captures additions beyond the smart defaults.",
+            help: {
+              title: 'Field types accepted',
+              body:
+                'TEXT, TEXTAREA, CHECKBOX, DATE, CURRENCY, NUMBER, SELECT, EMPLOYEE (links to employee record), TRANSACTION (links to transaction record), SUBSIDIARY (links to subsidiary). Fields default to non-mandatory.',
+            },
+          },
+          {
             id: 'ns.design.customFieldsScope',
             inputType: 'TEXTAREA',
             required: false,
