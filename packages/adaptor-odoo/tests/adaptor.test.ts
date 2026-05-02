@@ -39,9 +39,14 @@ describe('odooAdaptor: schema', () => {
     // subcontracting, PLM, maintenance. Sits AFTER O2C (sales-side
     // visibility into BoMs is captured first) and BEFORE the
     // existing PRODUCTION flow (whose mrp.* answers it deepens).
+    // Pack 7 — Data Migration sizing (MIGRATION): volumes,
+    // source systems, cutover style, validation. Last flow in the
+    // array — runs after every other flow has captured its scope so
+    // the consultant can size the migration with full context.
     expect(ids).toEqual([
       'FOUNDATION', 'TAX', 'LOCALIZATION', 'ACCOUNTING',
       'R2R', 'INVENTORY', 'P2P', 'O2C', 'MANUFACTURING_DEPTH', 'PRODUCTION', 'RETURNS',
+      'MIGRATION',
     ]);
   });
 
@@ -2461,5 +2466,415 @@ describe('odooAdaptor: Pack 6 — Manufacturing rule evaluation', () => {
       license: { edition: 'ENTERPRISE', modules: ['MRP'] },
     });
     expect(conflicts.map((c) => c.id)).not.toContain('odoo.mfg.subcontracting-needs-component-tracking');
+  });
+});
+
+// ─── Pack 7 — Data Migration sizing ──────────────────────────────────────────
+
+describe('odooAdaptor: Pack 7 — MIGRATION flow shape', () => {
+  const mig = odooAdaptor.schema.flows.find((f) => f.id === 'MIGRATION');
+
+  it('MIGRATION flow exists with the expected label + description', () => {
+    expect(mig).toBeDefined();
+    expect(mig!.label).toBe('Data Migration');
+    expect(mig!.description).toMatch(/volume|source|history|cutover|reconciliation/i);
+  });
+
+  it('MIGRATION is the LAST flow in the array (after RETURNS)', () => {
+    const ids = odooAdaptor.schema.flows.map((f) => f.id);
+    expect(ids[ids.length - 1]).toBe('MIGRATION');
+    expect(ids.indexOf('MIGRATION')).toBe(ids.indexOf('RETURNS') + 1);
+  });
+
+  it('renders four sections in the documented order', () => {
+    const ids = (mig!.sections as Array<{ id: string; order: number }>)
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .map((s) => s.id);
+    expect(ids).toEqual(['volumes', 'sources', 'cutover', 'validation']);
+  });
+
+  it('Migration Volumes — 8 NUMBER questions with the right ids', () => {
+    const sec = mig!.sections.find((s) => s.id === 'volumes')!;
+    expect(sec.label).toBe('Migration Volumes');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    for (const id of [
+      'odoo.migration.customerCount',
+      'odoo.migration.vendorCount',
+      'odoo.migration.productSkuCount',
+      'odoo.migration.openSoCount',
+      'odoo.migration.openPoCount',
+      'odoo.migration.openArInvoiceCount',
+      'odoo.migration.openApBillCount',
+      'odoo.migration.inventoryLineCount',
+    ]) {
+      expect(byId.get(id)?.inputType, `${id} should be NUMBER`).toBe('NUMBER');
+    }
+  });
+
+  it('Source Systems & History — 3 questions with the right ids + types', () => {
+    const sec = mig!.sections.find((s) => s.id === 'sources')!;
+    expect(sec.label).toBe('Source Systems & History');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('odoo.migration.sourceSystems')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('odoo.migration.historicalDepthYears')?.inputType).toBe('NUMBER');
+    expect(byId.get('odoo.migration.masterDataOwnership')?.inputType).toBe('TEXTAREA');
+  });
+
+  it('Cutover Strategy — 4 questions with the right ids + types + options', () => {
+    const sec = mig!.sections.find((s) => s.id === 'cutover')!;
+    expect(sec.label).toBe('Cutover Strategy');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('odoo.migration.cutoverStyle')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('odoo.migration.cutoverStyle')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['BIG_BANG', 'PARALLEL_RUN', 'PHASED_ENTITY', 'PHASED_MODULE']);
+    expect(byId.get('odoo.migration.parallelRunDays')?.inputType).toBe('NUMBER');
+    expect(byId.get('odoo.migration.preFreezeDays')?.inputType).toBe('NUMBER');
+    expect(byId.get('odoo.migration.cutoverWindowHours')?.inputType).toBe('NUMBER');
+  });
+
+  it('Validation & Reconciliation — 4 questions with the right ids + types + options', () => {
+    const sec = mig!.sections.find((s) => s.id === 'validation')!;
+    expect(sec.label).toBe('Validation & Reconciliation');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('odoo.migration.cleansingScope')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('odoo.migration.postValidationApproach')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('odoo.migration.postValidationApproach')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['BUSINESS_RULE', 'FULL_CHECK', 'SAMPLE', 'STRATIFIED_SAMPLE']);
+    expect(byId.get('odoo.migration.reconciliationStrategy')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('odoo.migration.signoffOwner')?.inputType).toBe('TEXT');
+  });
+});
+
+describe('odooAdaptor: Pack 7 — Migration rules registered in odoo-rules', () => {
+  const ids = odooAdaptor.rules.rules.map((r) => r.id);
+
+  it('R1 large customer count with big bang', () => {
+    expect(ids).toContain('odoo.migration.large-customer-count-with-big-bang');
+  });
+  it('R2 parallel run needs duration', () => {
+    expect(ids).toContain('odoo.migration.parallel-run-needs-duration');
+  });
+  it('R3 customer migration needs source system', () => {
+    expect(ids).toContain('odoo.migration.no-source-system');
+  });
+  it('R4 large inventory needs cleansing', () => {
+    expect(ids).toContain('odoo.migration.large-inventory-needs-cleansing');
+  });
+  it('R5 deep history needs source detail', () => {
+    expect(ids).toContain('odoo.migration.deep-history-needs-source-detail');
+  });
+  it('R6 big bang multi-entity risk', () => {
+    expect(ids).toContain('odoo.migration.big-bang-multi-entity-risk');
+  });
+  it('R7 short freeze with open transactions', () => {
+    expect(ids).toContain('odoo.migration.short-freeze-with-open-transactions');
+  });
+  it('R8 multi-warehouse needs inventory snapshot', () => {
+    expect(ids).toContain('odoo.migration.snapshot-required-for-multi-warehouse');
+  });
+  it('R9 full check not feasible at scale', () => {
+    expect(ids).toContain('odoo.migration.full-check-not-feasible-at-scale');
+  });
+});
+
+describe('odooAdaptor: Pack 7 — Migration rule evaluation', () => {
+  it('R1 fires (WARN) when customerCount>50000 AND cutoverStyle=BIG_BANG', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.migration.customerCount': 75000,
+        'odoo.migration.cutoverStyle': 'BIG_BANG',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.migration.large-customer-count-with-big-bang');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R1 does NOT fire when cutoverStyle=PHASED_ENTITY', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.migration.customerCount': 75000,
+        'odoo.migration.cutoverStyle': 'PHASED_ENTITY',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.migration.large-customer-count-with-big-bang');
+  });
+
+  it('R1 does NOT fire when customerCount=50000 (boundary — strictly greater)', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.migration.customerCount': 50000,
+        'odoo.migration.cutoverStyle': 'BIG_BANG',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.migration.large-customer-count-with-big-bang');
+  });
+
+  it('R2 fires (BLOCK) when cutoverStyle=PARALLEL_RUN AND parallelRunDays unset', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'odoo.migration.cutoverStyle': 'PARALLEL_RUN' },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.migration.parallel-run-needs-duration');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R2 fires (BLOCK) when cutoverStyle=PARALLEL_RUN AND parallelRunDays=0', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.migration.cutoverStyle': 'PARALLEL_RUN',
+        'odoo.migration.parallelRunDays': 0,
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).toContain('odoo.migration.parallel-run-needs-duration');
+  });
+
+  it('R2 does NOT fire when parallelRunDays=14', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.migration.cutoverStyle': 'PARALLEL_RUN',
+        'odoo.migration.parallelRunDays': 14,
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.migration.parallel-run-needs-duration');
+  });
+
+  it('R3 fires (BLOCK) when customerCount>0 AND sourceSystems empty', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.migration.customerCount': 1500,
+        'odoo.migration.sourceSystems': '',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.migration.no-source-system');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R3 does NOT fire when sourceSystems is populated', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.migration.customerCount': 1500,
+        'odoo.migration.sourceSystems': 'QuickBooks Online — accounting since 2018',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.migration.no-source-system');
+  });
+
+  it('R4 fires (WARN) when inventoryLineCount>50000 AND cleansingScope empty', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.migration.inventoryLineCount': 75000,
+        'odoo.migration.cleansingScope': '',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.migration.large-inventory-needs-cleansing');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R4 does NOT fire when cleansingScope is populated', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.migration.inventoryLineCount': 75000,
+        'odoo.migration.cleansingScope': 'Drop zero-qty lines older than 6 months',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.migration.large-inventory-needs-cleansing');
+  });
+
+  it('R5 fires (WARN) when historicalDepthYears>5 AND sourceSystems empty', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.migration.historicalDepthYears': 7,
+        'odoo.migration.sourceSystems': '',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.migration.deep-history-needs-source-detail');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R5 does NOT fire at historicalDepthYears=5 (boundary — strictly greater)', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.migration.historicalDepthYears': 5,
+        'odoo.migration.sourceSystems': '',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.migration.deep-history-needs-source-detail');
+  });
+
+  it('R6 fires (WARN) when cutoverStyle=BIG_BANG AND multiCompany=true AND entities populated', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.migration.cutoverStyle': 'BIG_BANG',
+        'odoo.foundation.multiCompany': true,
+        'odoo.foundation.entityList': 'Holdco AE\nSubco EG\nSubco SA',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.migration.big-bang-multi-entity-risk');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R6 does NOT fire when multiCompany=false', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.migration.cutoverStyle': 'BIG_BANG',
+        'odoo.foundation.multiCompany': false,
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.migration.big-bang-multi-entity-risk');
+  });
+
+  it('R6 does NOT fire when cutoverStyle is phased', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.migration.cutoverStyle': 'PHASED_ENTITY',
+        'odoo.foundation.multiCompany': true,
+        'odoo.foundation.entityList': 'Holdco AE\nSubco EG',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.migration.big-bang-multi-entity-risk');
+  });
+
+  it('R7 fires (WARN) when preFreezeDays<2 AND openSoCount>0', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.migration.preFreezeDays': 1,
+        'odoo.migration.openSoCount': 50,
+        'odoo.migration.openPoCount': 0,
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.migration.short-freeze-with-open-transactions');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R7 fires (WARN) when preFreezeDays=0 AND openPoCount>0', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.migration.preFreezeDays': 0,
+        'odoo.migration.openSoCount': 0,
+        'odoo.migration.openPoCount': 12,
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).toContain('odoo.migration.short-freeze-with-open-transactions');
+  });
+
+  it('R7 does NOT fire when preFreezeDays>=2', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.migration.preFreezeDays': 3,
+        'odoo.migration.openSoCount': 50,
+        'odoo.migration.openPoCount': 12,
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.migration.short-freeze-with-open-transactions');
+  });
+
+  it('R7 does NOT fire when no open transactions', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.migration.preFreezeDays': 0,
+        'odoo.migration.openSoCount': 0,
+        'odoo.migration.openPoCount': 0,
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.migration.short-freeze-with-open-transactions');
+  });
+
+  it('R8 fires (WARN) when productSkuCount>1000 AND warehouseCount>1 AND inventoryLineCount unset', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.migration.productSkuCount': 5000,
+        'odoo.inventory.warehouseCount': 3,
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.migration.snapshot-required-for-multi-warehouse');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R8 does NOT fire when inventoryLineCount is populated', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.migration.productSkuCount': 5000,
+        'odoo.inventory.warehouseCount': 3,
+        'odoo.migration.inventoryLineCount': 12000,
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.migration.snapshot-required-for-multi-warehouse');
+  });
+
+  it('R8 does NOT fire on single warehouse', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.migration.productSkuCount': 5000,
+        'odoo.inventory.warehouseCount': 1,
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.migration.snapshot-required-for-multi-warehouse');
+  });
+
+  it('R9 fires (INFO) when postValidationApproach=FULL_CHECK AND customerCount>5000', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.migration.postValidationApproach': 'FULL_CHECK',
+        'odoo.migration.customerCount': 12000,
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.migration.full-check-not-feasible-at-scale');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('INFO');
+  });
+
+  it('R9 does NOT fire when postValidationApproach=STRATIFIED_SAMPLE', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.migration.postValidationApproach': 'STRATIFIED_SAMPLE',
+        'odoo.migration.customerCount': 12000,
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.migration.full-check-not-feasible-at-scale');
+  });
+
+  it('R9 does NOT fire when customerCount<=5000', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.migration.postValidationApproach': 'FULL_CHECK',
+        'odoo.migration.customerCount': 1500,
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.migration.full-check-not-feasible-at-scale');
   });
 });

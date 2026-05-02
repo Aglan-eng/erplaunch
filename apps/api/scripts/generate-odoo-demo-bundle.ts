@@ -173,6 +173,26 @@ const answers: Record<string, unknown> = {
   'odoo.mfg.maintenanceType': 'BOTH',
   'odoo.mfg.backflushing': false,
 
+  // Pack 7 — Data Migration sizing
+  'odoo.migration.customerCount': 8500,
+  'odoo.migration.vendorCount': 1200,
+  'odoo.migration.productSkuCount': 14500,
+  'odoo.migration.openSoCount': 320,
+  'odoo.migration.openPoCount': 180,
+  'odoo.migration.openArInvoiceCount': 950,
+  'odoo.migration.openApBillCount': 410,
+  'odoo.migration.inventoryLineCount': 38000,
+  'odoo.migration.sourceSystems': 'SAP Business One — accounting + sales since 2019\nExcel spreadsheets — pricing matrices, vendor terms\nCustom Access DB — historical SOs (read-only archive)',
+  'odoo.migration.historicalDepthYears': 3,
+  'odoo.migration.masterDataOwnership': 'Customers: Sales Director\nVendors: Procurement Manager\nProducts: Inventory Manager\nCOA: CFO',
+  'odoo.migration.cutoverStyle': 'PHASED_ENTITY',
+  'odoo.migration.preFreezeDays': 3,
+  'odoo.migration.cutoverWindowHours': 36,
+  'odoo.migration.cleansingScope': 'Deduplicate customers by VAT number\nNormalize product UoM to single base (kg / each)\nDrop orphan SOs older than 18 months\nRetire warehouse locations not used in past 12 months',
+  'odoo.migration.postValidationApproach': 'STRATIFIED_SAMPLE',
+  'odoo.migration.reconciliationStrategy': 'Trial balance: legacy = Odoo to the cent (per entity)\nAR aging: 30/60/90 buckets match within 0.5%\nInventory: variance < AED 5,000 per SKU at Main DC\nCustomer master: 100% spot-check on top-100 by revenue',
+  'odoo.migration.signoffOwner': 'CFO + Project Sponsor (joint sign-off on cutover day)',
+
   // Legacy R2R / P2P / O2C / MRP / Returns answers (preserved)
   'odoo.company.multiCompany': true,
   'odoo.company.currency': 'AED',

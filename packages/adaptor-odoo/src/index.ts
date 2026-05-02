@@ -150,6 +150,13 @@ const schema: QuestionnaireSchema = {
     buildManufacturingDepthFlow(),
     buildProductionFlow(),
     buildReturnsFlow(),
+    // Pack 7 — Data Migration sizing. Volumes, source systems,
+    // cutover style, validation. LAST flow in the array — runs after
+    // every other flow has captured its scope so the consultant can
+    // size the migration with the full engagement context (warehouse
+    // count from INVENTORY, multi-company from FOUNDATION, BoM
+    // depth from MANUFACTURING_DEPTH, etc.).
+    buildMigrationFlow(),
   ],
 };
 
@@ -1465,6 +1472,197 @@ function buildReturnsFlow(): FlowDefinition {
   };
 }
 
+// ─── Pack 7 — Data Migration sizing ──────────────────────────────────────────
+//
+// 19 questions across 4 sections:
+//   - volumes      (8): customers, vendors, SKUs, open SOs / POs / AR / AP,
+//                       inventory line count.
+//   - sources      (3): source systems, historical depth, master-data ownership.
+//   - cutover      (4): cutover style, parallel-run days, pre-freeze, window.
+//   - validation   (4): cleansing scope, post-validation approach,
+//                       reconciliation strategy, sign-off owner.
+//
+// Drives the migration-phase scope, timeline, and risk register. The
+// consultant's #1 source of post-go-live regret per the research that
+// shaped this pack — without these questions the BRD cannot honestly
+// price the migration phase.
+//
+// Sources: Odoo Implementation Methodology (opening balances + migration
+// approach), ERP cutover style benchmarks (big bang vs phased vs
+// parallel — practitioner consensus), master-data ownership patterns
+// (industry best practice for ERP migrations).
+function buildMigrationFlow(): FlowDefinition {
+  return {
+    id: 'MIGRATION',
+    label: 'Data Migration',
+    description:
+      'Volume sizing, source systems, historical depth, cutover style, and reconciliation strategy. Drives the migration-phase scope, timeline, and risk register.',
+    sections: [
+      {
+        id: 'volumes',
+        label: 'Migration Volumes',
+        order: 1,
+        questions: [
+          {
+            id: 'odoo.migration.customerCount',
+            inputType: 'NUMBER',
+            required: true,
+            label: 'Customers to migrate (active records — exclude long-dormant)',
+          },
+          {
+            id: 'odoo.migration.vendorCount',
+            inputType: 'NUMBER',
+            required: true,
+            label: 'Vendors to migrate (active suppliers and service providers)',
+          },
+          {
+            id: 'odoo.migration.productSkuCount',
+            inputType: 'NUMBER',
+            required: true,
+            label: 'Products / SKUs to migrate',
+          },
+          {
+            id: 'odoo.migration.openSoCount',
+            inputType: 'NUMBER',
+            required: true,
+            label: 'Open sales orders at cutover (estimate — not invoiced yet)',
+          },
+          {
+            id: 'odoo.migration.openPoCount',
+            inputType: 'NUMBER',
+            required: true,
+            label: 'Open purchase orders at cutover (estimate — not received yet)',
+          },
+          {
+            id: 'odoo.migration.openArInvoiceCount',
+            inputType: 'NUMBER',
+            required: true,
+            label: 'Open AR invoices (issued, not yet paid)',
+          },
+          {
+            id: 'odoo.migration.openApBillCount',
+            inputType: 'NUMBER',
+            required: true,
+            label: 'Open AP bills (received from vendors, not yet paid)',
+          },
+          {
+            id: 'odoo.migration.inventoryLineCount',
+            inputType: 'NUMBER',
+            required: true,
+            label:
+              'Inventory snapshot — total stock lines across all warehouses (qty per SKU per location)',
+          },
+        ],
+      },
+      {
+        id: 'sources',
+        label: 'Source Systems & History',
+        order: 2,
+        questions: [
+          {
+            id: 'odoo.migration.sourceSystems',
+            inputType: 'TEXTAREA',
+            required: true,
+            label:
+              "Source system(s) — list each with brief description (e.g., 'QuickBooks Online — accounting since 2018', 'Excel spreadsheets — inventory + customer master', 'Custom MS Access — sales orders')",
+          },
+          {
+            id: 'odoo.migration.historicalDepthYears',
+            inputType: 'NUMBER',
+            required: true,
+            label:
+              'Historical transaction depth to migrate (years — 0 = opening balances only, 3 = trial balance + last 3 years of transactions)',
+          },
+          {
+            id: 'odoo.migration.masterDataOwnership',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Master data ownership — who validates each object (customers / vendors / products / COA). One per line, e.g., 'Customers: Sales Director', 'Products: Inventory Manager'",
+          },
+        ],
+      },
+      {
+        id: 'cutover',
+        label: 'Cutover Strategy',
+        order: 3,
+        questions: [
+          {
+            id: 'odoo.migration.cutoverStyle',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'Cutover style',
+            options: [
+              { value: 'BIG_BANG', label: 'Big bang (single weekend / week — all modules + entities go live together)' },
+              { value: 'PHASED_MODULE', label: 'Phased by module (Accounting first, then Inventory, then Sales, etc.)' },
+              { value: 'PHASED_ENTITY', label: 'Phased by entity (one company at a time — common in groups)' },
+              { value: 'PARALLEL_RUN', label: 'Parallel run (legacy + Odoo run together for N weeks before retiring legacy)' },
+            ],
+          },
+          {
+            id: 'odoo.migration.parallelRunDays',
+            inputType: 'NUMBER',
+            required: false,
+            label: 'If parallel run — duration in days',
+            dependsOn: { questionId: 'odoo.migration.cutoverStyle', value: 'PARALLEL_RUN' },
+          },
+          {
+            id: 'odoo.migration.preFreezeDays',
+            inputType: 'NUMBER',
+            required: true,
+            label: 'Pre-migration freeze period (days during which legacy is read-only before cutover snapshot)',
+          },
+          {
+            id: 'odoo.migration.cutoverWindowHours',
+            inputType: 'NUMBER',
+            required: true,
+            label: 'Cutover execution window (total hours from snapshot to go-live signoff)',
+          },
+        ],
+      },
+      {
+        id: 'validation',
+        label: 'Validation & Reconciliation',
+        order: 4,
+        questions: [
+          {
+            id: 'odoo.migration.cleansingScope',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Pre-migration data cleansing scope (one per line — e.g., 'Deduplicate customers by VAT number', 'Normalize product UoM to single base', 'Drop orphan SOs older than 2 years')",
+          },
+          {
+            id: 'odoo.migration.postValidationApproach',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'Post-migration validation approach',
+            options: [
+              { value: 'SAMPLE', label: 'Sample check (random subset across each object type)' },
+              { value: 'STRATIFIED_SAMPLE', label: 'Stratified sample (high-value records 100%, others sampled)' },
+              { value: 'FULL_CHECK', label: 'Full check (every record validated — only feasible for small datasets)' },
+              { value: 'BUSINESS_RULE', label: 'Business-rule validation (TB tie-out, AR/AP aging match, inventory variance threshold)' },
+            ],
+          },
+          {
+            id: 'odoo.migration.reconciliationStrategy',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Reconciliation strategy (one per line — e.g., 'Trial balance: legacy = Odoo to the cent', 'AR aging: 30/60/90 buckets match within 0.5%', 'Inventory: variance < $X per SKU')",
+          },
+          {
+            id: 'odoo.migration.signoffOwner',
+            inputType: 'TEXT',
+            required: true,
+            label: 'Migration sign-off owner (who approves go/no-go on cutover day)',
+          },
+        ],
+      },
+    ],
+  };
+}
+
 const license: LicenseModel = {
   defaultEditionId: 'ENTERPRISE',
   editions: [
@@ -2680,6 +2878,182 @@ const rules: RulePack = {
         all: [
           { answerTruthy: { questionId: 'odoo.mfg.subcontractingInScope' } },
           { answerFalsy:  { questionId: 'odoo.mfg.subcontractingComponentsTracking' } },
+        ],
+      },
+    },
+
+    // ── Pack 7 — Data Migration sizing rules ──────────────────────────────
+
+    // R1: Big-bang cutover with 50k+ customers is high risk —
+    // historical Odoo migrations at this scale typically choose
+    // phased or parallel.
+    {
+      id: 'odoo.migration.large-customer-count-with-big-bang',
+      type: 'DATA_WARNING',
+      severity: 'WARN',
+      questionIds: ['odoo.migration.customerCount', 'odoo.migration.cutoverStyle'],
+      message: 'Big-bang cutover with 50k+ customers is high risk — historical Odoo migrations at this scale typically choose phased or parallel.',
+      resolution: 'Consider PHASED_ENTITY (one company at a time) or PARALLEL_RUN (3–4 weeks). If big-bang stays, add explicit volume-load testing in pre-cutover plan and budget 2–3 dry runs.',
+      when: {
+        all: [
+          { answerNumberGreaterThan: { questionId: 'odoo.migration.customerCount', value: 50000 } },
+          { answerEquals: { questionId: 'odoo.migration.cutoverStyle', value: 'BIG_BANG' } },
+        ],
+      },
+    },
+
+    // R2: Parallel run cutover style needs a duration. Fires when
+    // PARALLEL_RUN is selected AND parallelRunDays is unset, 0, or
+    // negative. NOT(answerNumberGreaterThan>0) covers all three.
+    {
+      id: 'odoo.migration.parallel-run-needs-duration',
+      type: 'DATA_WARNING',
+      severity: 'BLOCK',
+      questionIds: ['odoo.migration.cutoverStyle', 'odoo.migration.parallelRunDays'],
+      message: 'Parallel run cutover style selected but no duration specified.',
+      resolution: 'Capture parallel-run duration in days. Typical durations: 14 days (small implementations), 28–60 days (mid/large), longer for risk-averse industries.',
+      when: {
+        all: [
+          { answerEquals: { questionId: 'odoo.migration.cutoverStyle', value: 'PARALLEL_RUN' } },
+          { not: { answerNumberGreaterThan: { questionId: 'odoo.migration.parallelRunDays', value: 0 } } },
+        ],
+      },
+    },
+
+    // R3: Customer migration in scope but no source system listed —
+    // cannot plan extraction without knowing where data comes from.
+    {
+      id: 'odoo.migration.no-source-system',
+      type: 'DATA_WARNING',
+      severity: 'BLOCK',
+      questionIds: ['odoo.migration.customerCount', 'odoo.migration.sourceSystems'],
+      message: 'Customer migration in scope but source system(s) not specified — cannot plan extraction without knowing where data comes from.',
+      resolution: 'List each source system with a brief description (legacy ERP name + version, spreadsheet locations, manual data, etc.).',
+      when: {
+        all: [
+          { answerNumberGreaterThan: { questionId: 'odoo.migration.customerCount', value: 0 } },
+          { answerFalsy: { questionId: 'odoo.migration.sourceSystems' } },
+        ],
+      },
+    },
+
+    // R4: Inventory snapshot of 50k+ lines without cleansing scope —
+    // orphan SKUs, zero-qty lines, and obsolete locations will pollute
+    // Odoo from day one.
+    {
+      id: 'odoo.migration.large-inventory-needs-cleansing',
+      type: 'DATA_WARNING',
+      severity: 'WARN',
+      questionIds: ['odoo.migration.inventoryLineCount', 'odoo.migration.cleansingScope'],
+      message: 'Inventory snapshot of 50k+ lines without cleansing scope — orphan SKUs, zero-qty lines, and obsolete locations will pollute Odoo from day one.',
+      resolution: 'Document cleansing rules: drop zero-qty lines older than X days, dedup SKU master by manufacturer code, retire warehouse locations not used in past N months. Cleansing typically reduces inventory line count by 20–40%.',
+      when: {
+        all: [
+          { answerNumberGreaterThan: { questionId: 'odoo.migration.inventoryLineCount', value: 50000 } },
+          { answerFalsy: { questionId: 'odoo.migration.cleansingScope' } },
+        ],
+      },
+    },
+
+    // R5: Migrating more than 5 years of history but source system not
+    // detailed — older data often lives in archived databases or
+    // backup tapes which adds weeks to migration prep.
+    {
+      id: 'odoo.migration.deep-history-needs-source-detail',
+      type: 'DATA_WARNING',
+      severity: 'WARN',
+      questionIds: ['odoo.migration.historicalDepthYears', 'odoo.migration.sourceSystems'],
+      message: 'Migrating more than 5 years of history but source system not detailed — older data often lives in archived databases or backup tapes.',
+      resolution: 'Specify per source: which years are in primary database, which are in archive, which are in cold backup. Cold backup data adds weeks to migration prep.',
+      when: {
+        all: [
+          { answerNumberGreaterThan: { questionId: 'odoo.migration.historicalDepthYears', value: 5 } },
+          { answerFalsy: { questionId: 'odoo.migration.sourceSystems' } },
+        ],
+      },
+    },
+
+    // R6: Big-bang cutover across multi-entity is high risk — coordinated
+    // freeze across entities, country-specific tax filing windows, and
+    // timezone differences make synchronization fragile.
+    //
+    // Implementation note: spec calls for "3 or more entries in
+    // entityList", but the rule DSL has no line-count operator.
+    // Pragmatic version: fires when big-bang + multi-company + entityList
+    // populated (not empty). The 3-entity threshold becomes a future
+    // refinement when the SDK gains a line-count condition.
+    {
+      id: 'odoo.migration.big-bang-multi-entity-risk',
+      type: 'CONFIG_CONFLICT',
+      severity: 'WARN',
+      questionIds: ['odoo.migration.cutoverStyle', 'odoo.foundation.multiCompany', 'odoo.foundation.entityList'],
+      message: 'Big-bang cutover across multiple legal entities is high risk — coordinated freeze across entities, country-specific tax filing windows, and timezone differences make synchronization fragile.',
+      resolution: 'Strongly consider PHASED_ENTITY. If big-bang stays, document per-entity rollback criteria and assign one cutover commander per entity.',
+      when: {
+        all: [
+          { answerEquals: { questionId: 'odoo.migration.cutoverStyle', value: 'BIG_BANG' } },
+          { answerTruthy: { questionId: 'odoo.foundation.multiCompany' } },
+          { answerTruthy: { questionId: 'odoo.foundation.entityList' } },
+        ],
+      },
+    },
+
+    // R7: Pre-migration freeze of less than 2 days while open
+    // transactions exist — high risk of in-flight orders/bills falling
+    // through cutover gaps. NOT(answerNumberGreaterThan>=2) ⇒
+    // NOT(answerNumberGreaterThan>1) covers 0, 1, and unset.
+    {
+      id: 'odoo.migration.short-freeze-with-open-transactions',
+      type: 'DATA_WARNING',
+      severity: 'WARN',
+      questionIds: ['odoo.migration.preFreezeDays', 'odoo.migration.openSoCount', 'odoo.migration.openPoCount'],
+      message: 'Pre-migration freeze of less than 2 days while open transactions exist — high risk of in-flight orders/bills falling through cutover gaps.',
+      resolution: 'Extend freeze to at least 2 business days. Use the freeze to: lock new transaction entry, clear pending approvals, reconcile open SOs/POs, and run a final extraction snapshot.',
+      when: {
+        all: [
+          { not: { answerNumberGreaterThan: { questionId: 'odoo.migration.preFreezeDays', value: 1 } } },
+          { any: [
+            { answerNumberGreaterThan: { questionId: 'odoo.migration.openSoCount', value: 0 } },
+            { answerNumberGreaterThan: { questionId: 'odoo.migration.openPoCount', value: 0 } },
+          ] },
+        ],
+      },
+    },
+
+    // R8: Multi-warehouse engagement with 1000+ SKUs requires a
+    // per-warehouse inventory snapshot, but inventoryLineCount is
+    // zero or unset — migration scripts need this number to provision
+    // Odoo stock.quant rows.
+    {
+      id: 'odoo.migration.snapshot-required-for-multi-warehouse',
+      type: 'DATA_WARNING',
+      severity: 'WARN',
+      questionIds: ['odoo.migration.productSkuCount', 'odoo.inventory.warehouseCount', 'odoo.migration.inventoryLineCount'],
+      message: 'Multi-warehouse engagement with 1000+ SKUs requires a per-warehouse inventory snapshot, but inventoryLineCount is zero / unset.',
+      resolution: 'Capture inventory line count = sum across (SKU × warehouse × location) at cutover snapshot. Migration scripts need this number to provision Odoo stock.quant rows.',
+      when: {
+        all: [
+          { answerNumberGreaterThan: { questionId: 'odoo.migration.productSkuCount', value: 1000 } },
+          { answerNumberGreaterThan: { questionId: 'odoo.inventory.warehouseCount', value: 1 } },
+          { not: { answerNumberGreaterThan: { questionId: 'odoo.migration.inventoryLineCount', value: 0 } } },
+        ],
+      },
+    },
+
+    // R9: 100% post-migration validation isn't realistic at 5k+
+    // customers — typical full-check rate is 200–400 records per
+    // validator-day.
+    {
+      id: 'odoo.migration.full-check-not-feasible-at-scale',
+      type: 'DATA_WARNING',
+      severity: 'INFO',
+      questionIds: ['odoo.migration.postValidationApproach', 'odoo.migration.customerCount'],
+      message: "100% post-migration validation isn't realistic at 5k+ customers — typical full-check rate is 200–400 records per validator-day.",
+      resolution: 'Switch to STRATIFIED_SAMPLE (high-value/regulated records 100%, remainder sampled) or BUSINESS_RULE (automated TB tie-out, aging match, inventory variance threshold). Reserve FULL_CHECK for migrations under 2k records.',
+      when: {
+        all: [
+          { answerEquals: { questionId: 'odoo.migration.postValidationApproach', value: 'FULL_CHECK' } },
+          { answerNumberGreaterThan: { questionId: 'odoo.migration.customerCount', value: 5000 } },
         ],
       },
     },
