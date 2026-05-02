@@ -313,6 +313,54 @@ const PHASE_4_BUILD: Phase = {
         return body.includes('@NApiVersion 2.1') && body.includes('@NScriptType UserEventScript');
       },
     },
+    // ── Pack B — Custom Field full coverage ──
+    // BRD-driven custom fields, custbody required-approver auto-add,
+    // and populated record shells. All NetSuite-only.
+    {
+      id: 'p4.sdf-custom-fields-emitted',
+      description:
+        'When ns.design.customFieldsScope is non-empty, ≥1 custbody/custentity/custitem field XML is emitted to SDF/Objects/',
+      applicable: onlyNetSuite,
+      evaluator: (s) => {
+        for (const key of s.buildArtefacts.keys()) {
+          if (/^SDF\/Objects\/(custbody|custentity|custitem)_[a-z0-9_]+\.xml$/.test(key)) {
+            return true;
+          }
+        }
+        return false;
+      },
+    },
+    {
+      id: 'p4.po-script-required-field-present',
+      description:
+        'IF NSIX_UE_PurchaseOrderApproval.js exists, THEN custbody_nsix_required_approver.xml MUST exist (script writes to that field at runtime)',
+      applicable: onlyNetSuite,
+      evaluator: (s) => {
+        const scriptExists = s.buildArtefacts.has('SDF/SuiteScripts/NSIX_UE_PurchaseOrderApproval.js');
+        if (!scriptExists) return true; // vacuous-truth contract: no script → no requirement
+        return s.buildArtefacts.has('SDF/Objects/custbody_nsix_required_approver.xml');
+      },
+    },
+    {
+      id: 'p4.customrecord-fields-populated',
+      description:
+        'Every emitted customrecord_*.xml has a non-empty <customrecordcustomfields> block (Pack B baseline fields, no shells)',
+      applicable: onlyNetSuite,
+      evaluator: (s) => {
+        let count = 0;
+        for (const [key, content] of s.buildArtefacts.entries()) {
+          if (!/^SDF\/Objects\/customrecord_[a-z0-9_]+\.xml$/.test(key)) continue;
+          count++;
+          // Look for at least one nested customrecordcustomfield element —
+          // pre-Pack-B shells had `<customrecordcustomfields>` followed
+          // immediately by its closing tag, so a single
+          // `<customrecordcustomfield ` substring is sufficient signal.
+          if (!/<customrecordcustomfield\s/.test(content)) return false;
+        }
+        // Vacuous-truth pass when no customrecord files exist.
+        return count > 0 || true;
+      },
+    },
   ],
 };
 

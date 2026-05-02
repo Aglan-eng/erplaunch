@@ -2,13 +2,24 @@
  * SDF Custom Records generator — first real-code generator for the
  * NetSuite track. Reads the wizard's free-text TEXTAREA answer
  * `ns.design.customRecords` (one custom record name per line) and
- * emits one valid Oracle SDF `customrecordtype` XML file per record.
+ * emits one valid Oracle SDF `customrecordtype` XML file per record,
+ * plus a companion `customlist_<slug>_status.xml` for each record's
+ * baseline status field (Pack B — Custom Field Full Coverage).
  *
  * Output is deployable as-is via SuiteCloud CLI: each file passes the
  * structural validator in sdfValidator.ts (root <customrecordtype>,
  * required <recordname> + <customrecordcustomfields>, forbidden
  * <description> + <isordered>) which mirrors the audit-fix #1 contract
  * from OUTPUT_COMPAT_AUDIT.fixes.md.
+ *
+ * Pack B update — every emitted record now ships with 4 baseline
+ * audit/system fields populated (status, owner, notes, external_ref)
+ * and an auto-emitted customlist with placeholder Open/In Progress/
+ * Closed/On Hold values for the status SELECT. Replaces the previous
+ * empty <customrecordcustomfields/> shells. Pre-Pack-B bundles had
+ * empty record shells the consultant filled in manually; Pack B
+ * raises the floor so every record deploys with a usable lifecycle
+ * field set out of the box.
  *
  * Contract:
  *   - Empty / whitespace-only input → emits NO files (caller can no-op
@@ -124,23 +135,103 @@ function xmlEscape(s: string): string {
 }
 
 /**
- * Build the XML body for one customrecordtype. Mirrors the existing
- * mapping/index.ts shape (audit-fix #1 contract) — minimal valid
- * record with empty <customrecordcustomfields/> container. The
- * structural validator in sdfValidator.ts pins this exact shape.
+ * Build the XML body for one customrecordtype.
+ *
+ * Pack B update: <customrecordcustomfields> is no longer empty —
+ * every record now ships with 4 baseline fields:
+ *   - <slug>_status        SELECT → companion customlist_<slug>_status
+ *   - <slug>_owner         SELECT → selectrecordtype=-4 (Employee)
+ *   - <slug>_notes         TEXTAREA
+ *   - <slug>_external_ref  FREEFORMTEXT (label "External Reference ID")
+ *
+ * The structural validator in sdfValidator.ts pins the audit-fix #1
+ * contract (root, required children, forbidden children) regardless of
+ * what's inside the customrecordcustomfields container, so populating
+ * the container does not break the existing validator gate.
  *
  * Intentionally NOT included (audit-fix #1):
- *   - <description> child (forbidden — would fail validator)
- *   - <isordered> child (forbidden — would fail validator)
+ *   - <description> child on the customrecordtype root (forbidden — would
+ *     fail validator). The companion customlist DOES carry a description,
+ *     but that's a different element / different schema.
+ *   - <isordered> child on the customrecordtype (forbidden). The
+ *     customlist's <isordered> is a separate, valid element on a
+ *     different schema.
  */
 function buildCustomRecordTypeXml(scriptid: string, recordName: string): string {
   const escaped = xmlEscape(recordName);
+  const baseline = scriptid; // e.g. "customrecord_approval_tracker"
+  const statusListScriptid = `customlist_${baseline.replace(/^customrecord_/, '')}_status`;
   return `<?xml version="1.0" encoding="UTF-8"?>
 <customrecordtype scriptid="${scriptid}">
   <recordname>${escaped}</recordname>
   <customrecordcustomfields>
+    <customrecordcustomfield scriptid="custrecord_${baseline.replace(/^customrecord_/, '')}_status">
+      <displaytype>NORMAL</displaytype>
+      <fieldtype>SELECT</fieldtype>
+      <label>Status</label>
+      <ismandatory>F</ismandatory>
+      <selectrecordtype>${statusListScriptid}</selectrecordtype>
+    </customrecordcustomfield>
+    <customrecordcustomfield scriptid="custrecord_${baseline.replace(/^customrecord_/, '')}_owner">
+      <displaytype>NORMAL</displaytype>
+      <fieldtype>SELECT</fieldtype>
+      <label>Owner</label>
+      <ismandatory>F</ismandatory>
+      <selectrecordtype>-4</selectrecordtype>
+    </customrecordcustomfield>
+    <customrecordcustomfield scriptid="custrecord_${baseline.replace(/^customrecord_/, '')}_notes">
+      <displaytype>NORMAL</displaytype>
+      <fieldtype>TEXTAREA</fieldtype>
+      <label>Notes</label>
+      <ismandatory>F</ismandatory>
+    </customrecordcustomfield>
+    <customrecordcustomfield scriptid="custrecord_${baseline.replace(/^customrecord_/, '')}_external_ref">
+      <displaytype>NORMAL</displaytype>
+      <fieldtype>FREEFORMTEXT</fieldtype>
+      <label>External Reference ID</label>
+      <ismandatory>F</ismandatory>
+    </customrecordcustomfield>
   </customrecordcustomfields>
 </customrecordtype>
+`;
+}
+
+/**
+ * Build the XML body for one customrecord's companion status
+ * customlist. Same lifecycle slots every audit/operational record
+ * needs (Open / In Progress / Closed / On Hold). Values are emitted
+ * inactive so the deploy passes audit Fix #4 (every customlist must
+ * carry at least one customvalue) — the consultant un-inactivates
+ * after review.
+ *
+ * Schema follows audit Fix #4 (commit 307901c): <label> not <name>,
+ * non-empty <customvalues>, validated by sdfValidator.ts.
+ */
+function buildStatusCustomListXml(slug: string, recordName: string): string {
+  const escapedRecord = xmlEscape(recordName);
+  const listScriptid = `customlist_${slug}_status`;
+  const values = ['Open', 'In Progress', 'Closed', 'On Hold'];
+  const customvalues = values
+    .map((v, i) => `    <customvalue scriptid="val_${slug}_status_${i + 1}">
+      <value>${xmlEscape(v)}</value>
+      <isinactive>T</isinactive>
+    </customvalue>`)
+    .join('\n');
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Auto-emitted alongside customrecord_${slug} as the picklist for its baseline status field.
+  Placeholder values inactive — un-inactivate the relevant ones after review and add any
+  record-specific lifecycle states the consultant needs.
+-->
+<customlist scriptid="${listScriptid}">
+  <label>${escapedRecord} Status</label>
+  <description>Lifecycle status picklist for ${escapedRecord}.</description>
+  <ismatrixoption>F</ismatrixoption>
+  <isordered>T</isordered>
+  <customvalues>
+${customvalues}
+  </customvalues>
+</customlist>
 `;
 }
 
@@ -179,6 +270,15 @@ export function generateSdfCustomRecords(
     const filename = `Objects/${scriptid}.xml`;
     files[filename] = buildCustomRecordTypeXml(scriptid, recordName);
     emitted.push({ recordName, scriptid, filename });
+
+    // Pack B: companion status customlist for this record's baseline
+    // status field. Emitted into the same Objects/ namespace so SDF
+    // CLI picks it up alongside the customrecordtype. The list
+    // scriptid mirrors the record slug (no scriptid collision because
+    // the prefixes differ — customrecord_ vs customlist_).
+    const slug = scriptid.replace(/^customrecord_/, '');
+    const listFilename = `Objects/customlist_${slug}_status.xml`;
+    files[listFilename] = buildStatusCustomListXml(slug, recordName);
   }
 
   return { files, emitted };

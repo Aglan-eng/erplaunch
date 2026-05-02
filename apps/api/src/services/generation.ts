@@ -10,6 +10,8 @@ import { generateSdfCustomRecords } from './generators/sdfCustomRecordsGenerator
 import { generateSdfManifest } from './generators/sdfManifestGenerator.js';
 import { generateSdfDeploy } from './generators/sdfDeployGenerator.js';
 import { generatePoApprovalScript } from './generators/sdfPoApprovalScriptGenerator.js';
+import { generateSdfCustomFields } from './generators/sdfCustomFieldsGenerator.js';
+import { generateSdfCustomList } from './generators/sdfCustomListGenerator.js';
 import { validateSDFBundle, isValidationEnabled } from './generators/sdfValidator.js';
 import { generateScripts } from './generators/scriptGenerator.js';
 import { generateRiskRegister } from './generators/riskGenerator.js';
@@ -266,6 +268,37 @@ export async function processJob(jobId: string, db: DbModule) {
       });
       Object.assign(sdfFiles, customRecordsResult.files);
 
+      // Pack B — BRD custom-field generator. Parses
+      // ns.design.customFieldsScope into 1 XML per declared field
+      // (custbody / custentity / custitem) with fieldtype inferred via
+      // a keyword classifier. Auto-adds custbody_nsix_required_approver
+      // when the PO approval User Event script will also be emitted —
+      // without that field, the script's setValue() blows up at
+      // runtime. Object.assign-merging into sdfFiles puts these next
+      // to the heavy generator's output for a single validator pass.
+      const poApprovalAnswer = answers['p2p.purchasing.poApprovalTiers'];
+      const willEmitPoScript =
+        typeof poApprovalAnswer === 'string' && poApprovalAnswer.trim().length > 0;
+      const customFieldsResult = generateSdfCustomFields({
+        customFieldsScopeAnswer: answers['ns.design.customFieldsScope'] as string | undefined,
+        includePoApprovalRequiredField: willEmitPoScript,
+      });
+      Object.assign(sdfFiles, customFieldsResult.files);
+
+      // For each SELECT-classified field, emit a placeholder customlist
+      // so the SELECT field has a list to point at. Audit Fix #4
+      // contract — every customlist must carry at least one
+      // customvalue, satisfied here by an inactive placeholder the
+      // consultant un-inactivates after review.
+      for (const field of customFieldsResult.emitted) {
+        if (field.fieldtype !== 'SELECT' || !field.selectListScriptid) continue;
+        const listXml = generateSdfCustomList({
+          listScriptid: field.selectListScriptid,
+          label: field.originalLabel,
+        });
+        sdfFiles[`Objects/${field.selectListScriptid}.xml`] = listXml;
+      }
+
       // Manifest + deploy fallback: every ACP needs a manifest.xml and a
       // deploy.xml at the SDF root for SuiteCloud CLI to push the bundle.
       // generateSDFPackage above is feature-aware and emits its own
@@ -312,9 +345,10 @@ export async function processJob(jobId: string, db: DbModule) {
       // User Event with parsed thresholds hardcoded. Empty answer skips
       // emission; unparseable answer falls back to a TODO placeholder
       // (the script still emits so the bundle is consistent — consultant
-      // hand-fills the tiers).
-      const poApprovalAnswer = answers['p2p.purchasing.poApprovalTiers'];
-      if (typeof poApprovalAnswer === 'string' && poApprovalAnswer.trim().length > 0) {
+      // hand-fills the tiers). `willEmitPoScript` was computed above
+      // for the Pack B custom-fields auto-add branch — same predicate,
+      // reused here so both code paths agree.
+      if (willEmitPoScript && typeof poApprovalAnswer === 'string') {
         const scriptBody = generatePoApprovalScript({
           approvalTiers: poApprovalAnswer,
           firmName: 'NSIX',

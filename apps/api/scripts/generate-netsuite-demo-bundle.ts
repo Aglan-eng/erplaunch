@@ -27,6 +27,8 @@ import { generateSdfCustomRecords } from '../src/services/generators/sdfCustomRe
 import { generateSdfManifest } from '../src/services/generators/sdfManifestGenerator.js';
 import { generateSdfDeploy } from '../src/services/generators/sdfDeployGenerator.js';
 import { generatePoApprovalScript } from '../src/services/generators/sdfPoApprovalScriptGenerator.js';
+import { generateSdfCustomFields } from '../src/services/generators/sdfCustomFieldsGenerator.js';
+import { generateSdfCustomList } from '../src/services/generators/sdfCustomListGenerator.js';
 import { validateSDFBundle } from '../src/services/generators/sdfValidator.js';
 import netsuiteAdaptor from '@ofoq/adaptor-netsuite';
 
@@ -368,12 +370,40 @@ const customRecordsResult = generateSdfCustomRecords({
   customRecordsAnswer: answers['ns.design.customRecords'] as string | undefined,
 });
 
+// Pack B — BRD custom-field generator. Parses ns.design.customFieldsScope
+// into individual XMLs (custbody / custentity / custitem) with fieldtype
+// inferred from a keyword classifier, and auto-adds
+// custbody_nsix_required_approver when the PO User Event script is in
+// scope (the script writes to that field — without it, runtime blow-up
+// on the first non-auto PO).
+const poApprovalAnswerForFields = answers['p2p.purchasing.poApprovalTiers'] as string | undefined;
+const willEmitPoScript = !!(poApprovalAnswerForFields && poApprovalAnswerForFields.trim().length > 0);
+const customFieldsResult = generateSdfCustomFields({
+  customFieldsScopeAnswer: answers['ns.design.customFieldsScope'] as string | undefined,
+  includePoApprovalRequiredField: willEmitPoScript,
+});
+
+// Pack B — companion customlists for SELECT-classified fields. Each
+// SELECT field needs a list to reference (audit Fix #4 — every
+// customlist must carry at least one customvalue, satisfied by a
+// single inactive placeholder).
+const selectFieldsCustomLists: Record<string, string> = {};
+for (const field of customFieldsResult.emitted) {
+  if (field.fieldtype !== 'SELECT' || !field.selectListScriptid) continue;
+  selectFieldsCustomLists[`Objects/${field.selectListScriptid}.xml`] = generateSdfCustomList({
+    listScriptid: field.selectListScriptid,
+    label: field.originalLabel,
+  });
+}
+
 // Single validator pass over the WHOLE SDF bundle so manifest / deploy /
-// customrecord errors all surface together.
+// customrecord / custom-field / customlist errors all surface together.
 const allSdfFiles: Record<string, string> = {
   'manifest.xml': manifestXml,
   'deploy.xml': deployXml,
   ...customRecordsResult.files,
+  ...customFieldsResult.files,
+  ...selectFieldsCustomLists,
 };
 const validation = validateSDFBundle(allSdfFiles);
 if (!validation.ok) {
@@ -393,6 +423,20 @@ await fs.writeFile(path.join(sdfRoot, 'deploy.xml'), deployXml, 'utf8');
 process.stdout.write(`  ✓ SDF/deploy.xml\n`);
 
 for (const [relPath, content] of Object.entries(customRecordsResult.files)) {
+  const fullPath = path.join(sdfRoot, relPath);
+  await fs.mkdir(path.dirname(fullPath), { recursive: true });
+  await fs.writeFile(fullPath, content, 'utf8');
+  process.stdout.write(`  ✓ SDF/${relPath}\n`);
+}
+
+for (const [relPath, content] of Object.entries(customFieldsResult.files)) {
+  const fullPath = path.join(sdfRoot, relPath);
+  await fs.mkdir(path.dirname(fullPath), { recursive: true });
+  await fs.writeFile(fullPath, content, 'utf8');
+  process.stdout.write(`  ✓ SDF/${relPath}\n`);
+}
+
+for (const [relPath, content] of Object.entries(selectFieldsCustomLists)) {
   const fullPath = path.join(sdfRoot, relPath);
   await fs.mkdir(path.dirname(fullPath), { recursive: true });
   await fs.writeFile(fullPath, content, 'utf8');
@@ -439,7 +483,13 @@ console.log('');
 // eslint-disable-next-line no-console
 console.log(`  Bundle: ${outRoot}`);
 // eslint-disable-next-line no-console
-console.log(`  Files:  ${writes.length} doc + manifest.xml + deploy.xml + ${customRecordsResult.emitted.length} SDF custom records`);
+console.log(
+  `  Files:  ${writes.length} doc + manifest.xml + deploy.xml + ` +
+    `${customRecordsResult.emitted.length} customrecord(s) + ` +
+    `${customRecordsResult.emitted.length} status customlist(s) + ` +
+    `${customFieldsResult.emitted.length} custom field(s) + ` +
+    `${Object.keys(selectFieldsCustomLists).length} SELECT companion customlist(s)`,
+);
 if (missingTerms === 0) {
   // eslint-disable-next-line no-console
   console.log(`  Sanity: ✓ NetSuite terminology present in BRD`);

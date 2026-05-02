@@ -20,6 +20,21 @@ import { validateSDFBundle } from '../../../src/services/generators/sdfValidator
  *   - Atlas-shaped seed data (mirror of the demo bundle's SD answer)
  */
 
+/**
+ * Helper — return only the files that match `Objects/customrecord_*.xml`.
+ * Pack B: each emitted record now ALSO produces a companion
+ * `Objects/customlist_*_status.xml` for the baseline status field, so
+ * the bundle map carries 2 files per record entry. This helper isolates
+ * the customrecord half for shape assertions that pre-date Pack B.
+ */
+function customrecordFiles(files: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(files)) {
+    if (/^Objects\/customrecord_[a-z0-9_]+\.xml$/.test(k)) out[k] = v;
+  }
+  return out;
+}
+
 describe('generateSdfCustomRecords — input parsing edge cases', () => {
   it('returns zero files for undefined input', () => {
     const out = generateSdfCustomRecords({ customRecordsAnswer: undefined });
@@ -126,7 +141,7 @@ describe('generateSdfCustomRecords — input parsing edge cases', () => {
 describe('generateSdfCustomRecords — XML shape (audit-fix #1 contract)', () => {
   it('emits a valid XML document with declaration + root element', () => {
     const out = generateSdfCustomRecords({ customRecordsAnswer: 'Approval Tracker' });
-    const xml = Object.values(out.files)[0];
+    const xml = out.files['Objects/customrecord_approval_tracker.xml'];
     expect(xml).toContain('<?xml version="1.0" encoding="UTF-8"?>');
     expect(xml).toContain('<customrecordtype scriptid="customrecord_approval_tracker">');
     expect(xml).toContain('</customrecordtype>');
@@ -134,32 +149,69 @@ describe('generateSdfCustomRecords — XML shape (audit-fix #1 contract)', () =>
 
   it('contains required <recordname> child', () => {
     const out = generateSdfCustomRecords({ customRecordsAnswer: 'Project Milestone' });
-    const xml = Object.values(out.files)[0];
+    const xml = out.files['Objects/customrecord_project_milestone.xml'];
     expect(xml).toMatch(/<recordname>Project Milestone<\/recordname>/);
   });
 
-  it('contains required <customrecordcustomfields> container (empty is valid)', () => {
+  it('contains the required <customrecordcustomfields> container', () => {
     const out = generateSdfCustomRecords({ customRecordsAnswer: 'Approval Tracker' });
-    const xml = Object.values(out.files)[0];
+    const xml = out.files['Objects/customrecord_approval_tracker.xml'];
     expect(xml).toContain('<customrecordcustomfields>');
     expect(xml).toContain('</customrecordcustomfields>');
   });
 
-  it('does NOT contain forbidden <description> child (audit-fix #1)', () => {
+  it('Pack B: customrecordcustomfields is no longer empty — 4 baseline fields populated', () => {
     const out = generateSdfCustomRecords({ customRecordsAnswer: 'Approval Tracker' });
-    const xml = Object.values(out.files)[0];
+    const xml = out.files['Objects/customrecord_approval_tracker.xml'];
+    // Status (SELECT → companion list) + owner (SELECT to Employee) +
+    // notes (TEXTAREA) + external_ref (FREEFORMTEXT)
+    expect(xml).toContain('<customrecordcustomfield scriptid="custrecord_approval_tracker_status">');
+    expect(xml).toContain('<customrecordcustomfield scriptid="custrecord_approval_tracker_owner">');
+    expect(xml).toContain('<customrecordcustomfield scriptid="custrecord_approval_tracker_notes">');
+    expect(xml).toContain('<customrecordcustomfield scriptid="custrecord_approval_tracker_external_ref">');
+    // Status SELECT → customlist_<slug>_status
+    expect(xml).toContain('<selectrecordtype>customlist_approval_tracker_status</selectrecordtype>');
+    // Owner SELECT → -4 (Employee record-type ID)
+    expect(xml).toContain('<selectrecordtype>-4</selectrecordtype>');
+    // Notes TEXTAREA
+    expect(xml).toContain('<fieldtype>TEXTAREA</fieldtype>');
+    // External ref FREEFORMTEXT (not "TEXT" — not in NetSuite SDF enum)
+    expect(xml).toContain('<fieldtype>FREEFORMTEXT</fieldtype>');
+  });
+
+  it('Pack B: emits a companion customlist_<slug>_status alongside every record', () => {
+    const out = generateSdfCustomRecords({
+      customRecordsAnswer: 'Approval Tracker\nVendor Onboarding',
+    });
+    expect(Object.keys(out.files)).toContain('Objects/customlist_approval_tracker_status.xml');
+    expect(Object.keys(out.files)).toContain('Objects/customlist_vendor_onboarding_status.xml');
+    const listXml = out.files['Objects/customlist_approval_tracker_status.xml'];
+    expect(listXml).toContain('<customlist scriptid="customlist_approval_tracker_status">');
+    expect(listXml).toContain('<value>Open</value>');
+    expect(listXml).toContain('<value>In Progress</value>');
+    expect(listXml).toContain('<value>Closed</value>');
+    expect(listXml).toContain('<value>On Hold</value>');
+  });
+
+  it('does NOT contain forbidden <description> child on the customrecordtype root (audit-fix #1)', () => {
+    const out = generateSdfCustomRecords({ customRecordsAnswer: 'Approval Tracker' });
+    // Pack B: companion customlist legitimately uses <description>, so
+    // we scope the check to the customrecord file specifically.
+    const xml = out.files['Objects/customrecord_approval_tracker.xml'];
     expect(xml).not.toMatch(/<description>/);
   });
 
-  it('does NOT contain forbidden <isordered> child (audit-fix #1)', () => {
+  it('does NOT contain forbidden <isordered> child on the customrecordtype root (audit-fix #1)', () => {
     const out = generateSdfCustomRecords({ customRecordsAnswer: 'Approval Tracker' });
-    const xml = Object.values(out.files)[0];
+    // Pack B: companion customlist uses <isordered> as a valid element
+    // on a different schema; scope the check to the customrecord file.
+    const xml = out.files['Objects/customrecord_approval_tracker.xml'];
     expect(xml).not.toMatch(/<isordered>/);
   });
 
   it('does NOT use the legacy <customrecord> root (audit-fix #1)', () => {
     const out = generateSdfCustomRecords({ customRecordsAnswer: 'Approval Tracker' });
-    const xml = Object.values(out.files)[0];
+    const xml = out.files['Objects/customrecord_approval_tracker.xml'];
     expect(xml).not.toMatch(/^\s*<customrecord\s/m);
   });
 
@@ -167,20 +219,20 @@ describe('generateSdfCustomRecords — XML shape (audit-fix #1 contract)', () =>
     const out = generateSdfCustomRecords({
       customRecordsAnswer: 'Tom & Jerry <Test> "Quoted"',
     });
-    const xml = Object.values(out.files)[0];
+    const xml = Object.values(customrecordFiles(out.files))[0];
     // The slug strips specials, but the recordname text must be escaped.
     expect(xml).toContain('<recordname>Tom &amp; Jerry &lt;Test&gt; &quot;Quoted&quot;</recordname>');
   });
 });
 
 describe('generateSdfCustomRecords — passes the structural SDF validator', () => {
-  it('single-record output validates clean', () => {
+  it('single-record output validates clean (customrecord + companion customlist)', () => {
     const out = generateSdfCustomRecords({ customRecordsAnswer: 'Vendor Onboarding Request' });
     const result = validateSDFBundle(out.files);
     expect(result.ok, JSON.stringify(result.errors, null, 2)).toBe(true);
   });
 
-  it('multi-record output validates clean', () => {
+  it('multi-record output validates clean — 5 records → 10 files (5 customrecords + 5 customlists)', () => {
     const out = generateSdfCustomRecords({
       customRecordsAnswer: [
         'Approval Tracker (custom record — captures full chain per transaction)',
@@ -190,7 +242,9 @@ describe('generateSdfCustomRecords — passes the structural SDF validator', () 
         'Tax Filing Calendar (per nexus, per period; tracks filed/due dates)',
       ].join('\n'),
     });
-    expect(Object.keys(out.files)).toHaveLength(5);
+    // Pack B: each record now produces 2 files (customrecord + status customlist)
+    expect(Object.keys(out.files)).toHaveLength(10);
+    expect(Object.keys(customrecordFiles(out.files))).toHaveLength(5);
     const result = validateSDFBundle(out.files);
     expect(result.ok, JSON.stringify(result.errors, null, 2)).toBe(true);
   });
@@ -211,12 +265,12 @@ describe('generateSdfCustomRecords — passes the structural SDF validator', () 
     expect(out.emitted.map((e) => e.scriptid)).toContain('customrecord_intercompany_transfer_request');
   });
 
-  it('output filenames match the Objects/<scriptid>.xml convention', () => {
+  it('output filenames match the Objects/<scriptid>.xml convention (customrecord OR customlist)', () => {
     const out = generateSdfCustomRecords({
       customRecordsAnswer: 'Approval Tracker\nVendor Onboarding',
     });
     for (const filename of Object.keys(out.files)) {
-      expect(filename).toMatch(/^Objects\/customrecord_[a-z0-9_]+\.xml$/);
+      expect(filename).toMatch(/^Objects\/(customrecord|customlist)_[a-z0-9_]+\.xml$/);
     }
   });
 });
