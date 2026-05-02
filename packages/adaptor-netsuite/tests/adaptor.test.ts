@@ -20,13 +20,13 @@ describe('netsuiteAdaptor: manifest', () => {
 });
 
 describe('netsuiteAdaptor: schema', () => {
-  it('exposes 6 flows in the canonical order — FOUNDATION first, then the legacy 5 (NetSuite uses R2R/P2P/O2C — its native vocabulary)', () => {
+  it('exposes 7 flows in the canonical order — FOUNDATION + TAX, then the legacy 5', () => {
     const ids = netsuiteAdaptor.schema.flows.map((f) => f.id);
-    // NS Pack 1 adds FOUNDATION at the head; the legacy 5 NetSuite-shape
-    // flows stay because R2R/P2P/O2C/MFG/RTN are how NetSuite consultants
-    // actually think about implementations (unlike Odoo where they were
-    // a NetSuite-cargo-cult; see Pack R for the Odoo restructure).
-    expect(ids).toEqual(['FOUNDATION', 'R2R', 'P2P', 'O2C', 'PRODUCTION', 'RETURNS']);
+    // NS Pack 1 added FOUNDATION at the head; NS Pack 2 inserts TAX
+    // after FOUNDATION and before the legacy 5 (R2R / P2P / O2C /
+    // PRODUCTION / RETURNS). NetSuite keeps its native R2R/P2P/O2C
+    // terminology (unlike Odoo where they got restructured in Pack R).
+    expect(ids).toEqual(['FOUNDATION', 'TAX', 'R2R', 'P2P', 'O2C', 'PRODUCTION', 'RETURNS']);
   });
 
   it('every flow has at least one section with at least one question', () => {
@@ -201,10 +201,13 @@ describe('netsuiteAdaptor: NS Pack 1 — FOUNDATION flow shape', () => {
     expect(foundation!.description).toMatch(/edition|suitesuccess|user|country|subsidiary|fiscal/i);
   });
 
-  it('FOUNDATION renders as the first flow (before R2R)', () => {
+  it('FOUNDATION renders as the first flow (before TAX, before R2R)', () => {
     const ids = netsuiteAdaptor.schema.flows.map((f) => f.id);
     expect(ids[0]).toBe('FOUNDATION');
-    expect(ids.indexOf('R2R')).toBe(1);
+    // NS Pack 2 inserted TAX between FOUNDATION and R2R, so R2R now
+    // sits at index 2 instead of 1.
+    expect(ids.indexOf('TAX')).toBe(1);
+    expect(ids.indexOf('R2R')).toBe(2);
   });
 
   it('renders four sections in the documented order', () => {
@@ -532,5 +535,324 @@ describe('netsuiteAdaptor: NS Pack 1 — Foundation rule evaluation', () => {
         `R9 should NOT fire when edition=${edition}`,
       ).not.toContain('ns.foundation.advanced-revrec-recommends-mid-market-or-above');
     }
+  });
+});
+
+// ─── NS Pack 2 — Tax Engine (SuiteTax) ───────────────────────────────────────
+
+describe('netsuiteAdaptor: NS Pack 2 — TAX flow shape', () => {
+  const tax = netsuiteAdaptor.schema.flows.find((f) => f.id === 'TAX');
+
+  it('TAX flow exists with the expected label + description', () => {
+    expect(tax).toBeDefined();
+    expect(tax!.label).toBe('Tax Engine');
+    expect(tax!.description).toMatch(/suitetax|nexus|e-?invoicing|withholding|filing/i);
+  });
+
+  it('TAX sits between FOUNDATION and R2R', () => {
+    const ids = netsuiteAdaptor.schema.flows.map((f) => f.id);
+    const fIdx = ids.indexOf('FOUNDATION');
+    const tIdx = ids.indexOf('TAX');
+    const r2rIdx = ids.indexOf('R2R');
+    expect(tIdx).toBe(fIdx + 1);
+    expect(r2rIdx).toBe(tIdx + 1);
+  });
+
+  it('renders four sections in the documented order', () => {
+    const ids = (tax!.sections as Array<{ id: string; order: number }>)
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .map((s) => s.id);
+    expect(ids).toEqual(['engine', 'nexus', 'specials', 'filing']);
+  });
+
+  it('Tax Engine & Default Behavior — 4 questions with the right ids + types + options', () => {
+    const sec = tax!.sections.find((s) => s.id === 'engine')!;
+    expect(sec.label).toBe('Tax Engine & Default Behavior');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('ns.tax.engine')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('ns.tax.engine')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['LEGACY', 'SUITETAX']);
+    expect(byId.get('ns.tax.itemPriceMode')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('ns.tax.itemPriceMode')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['EXCLUSIVE', 'INCLUSIVE', 'MIXED']);
+    expect(byId.get('ns.tax.defaultSalesTaxCode')?.inputType).toBe('TEXT');
+    expect(byId.get('ns.tax.defaultPurchaseTaxCode')?.inputType).toBe('TEXT');
+  });
+
+  it('Nexus & Compliance — 4 questions with the right ids + types + options', () => {
+    const sec = tax!.sections.find((s) => s.id === 'nexus')!;
+    expect(sec.label).toBe('Nexus & Compliance');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('ns.tax.nexusList')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('ns.tax.taxReportingFramework')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('ns.tax.einvoicingMandatory')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('ns.tax.einvoicingMandatory')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['NO', 'UNSURE', 'YES']);
+    expect(byId.get('ns.tax.einvoicingSuiteApp')?.inputType).toBe('TEXTAREA');
+  });
+
+  it('Special Tax Mechanics — 4 questions with the right ids + types', () => {
+    const sec = tax!.sections.find((s) => s.id === 'specials')!;
+    expect(sec.label).toBe('Special Tax Mechanics');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('ns.tax.withholdingInScope')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('ns.tax.reverseChargeInScope')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('ns.tax.useTaxInScope')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('ns.tax.taxExemptCustomers')?.inputType).toBe('BOOLEAN');
+  });
+
+  it('Tax Filing & Automation — 4 questions with the right ids + types + options', () => {
+    const sec = tax!.sections.find((s) => s.id === 'filing')!;
+    expect(sec.label).toBe('Tax Filing & Automation');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('ns.tax.filingPeriodicity')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('ns.tax.filingPeriodicity')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['ANNUAL', 'MIXED', 'MONTHLY', 'QUARTERLY']);
+    expect(byId.get('ns.tax.multiJurisdictionReporting')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('ns.tax.salesTaxAutomation')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('ns.tax.salesTaxAutomationProvider')?.inputType).toBe('TEXT');
+  });
+});
+
+describe('netsuiteAdaptor: NS Pack 2 — Tax rules registered in netsuite-rules', () => {
+  const ids = netsuiteAdaptor.rules.rules.map((r) => r.id);
+
+  it('R1 legacy engine on new SuiteSuccess account', () => {
+    expect(ids).toContain('ns.tax.legacy-engine-on-new-account');
+  });
+  it('R2 OneWorld multi-sub needs nexus list', () => {
+    expect(ids).toContain('ns.tax.oneworld-multi-sub-needs-nexus-list');
+  });
+  it('R3 e-invoicing YES needs SuiteApp', () => {
+    expect(ids).toContain('ns.tax.einvoicing-yes-needs-suiteapp');
+  });
+  it('R4 withholding needs SuiteApp', () => {
+    expect(ids).toContain('ns.tax.withholding-needs-suiteapp');
+  });
+  it('R5 use tax only in US', () => {
+    expect(ids).toContain('ns.tax.use-tax-only-in-us');
+  });
+  it('R6 automation needs nexus list', () => {
+    expect(ids).toContain('ns.tax.automation-needs-nexus-list');
+  });
+  it('R7 multi-jurisdiction needs multiple nexuses', () => {
+    expect(ids).toContain('ns.tax.multi-jurisdiction-needs-multiple-nexuses');
+  });
+  it('R8 exempt customers need certificate management (INFO)', () => {
+    expect(ids).toContain('ns.tax.exempt-customers-need-certificate-management');
+  });
+  it('R9 reverse charge typical on OneWorld (INFO)', () => {
+    expect(ids).toContain('ns.tax.reverse-charge-typical-on-oneworld');
+  });
+});
+
+describe('netsuiteAdaptor: NS Pack 2 — Tax rule evaluation', () => {
+  it('R1 fires (WARN) when engine=LEGACY AND suiteSuccessBundle is populated', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.tax.engine': 'LEGACY',
+        'ns.foundation.suiteSuccessBundle': 'US',
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'ns.tax.legacy-engine-on-new-account');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R1 does NOT fire when engine=SUITETAX', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.tax.engine': 'SUITETAX',
+        'ns.foundation.suiteSuccessBundle': 'US',
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('ns.tax.legacy-engine-on-new-account');
+  });
+
+  it('R1 does NOT fire when suiteSuccessBundle is empty (legacy migration without a bundle)', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.tax.engine': 'LEGACY',
+        'ns.foundation.suiteSuccessBundle': '',
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('ns.tax.legacy-engine-on-new-account');
+  });
+
+  it('R2 fires (BLOCK) when subsidiaryCount>1 AND nexusList empty', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.foundation.subsidiaryCount': 3,
+        'ns.tax.nexusList': '',
+      },
+      license: { edition: 'ONEWORLD', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'ns.tax.oneworld-multi-sub-needs-nexus-list');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R2 does NOT fire when nexusList is populated', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.foundation.subsidiaryCount': 3,
+        'ns.tax.nexusList': 'Atlas US Inc. | US/CA\nAtlas UK Ltd. | GB',
+      },
+      license: { edition: 'ONEWORLD', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('ns.tax.oneworld-multi-sub-needs-nexus-list');
+  });
+
+  it('R3 fires (BLOCK) when einvoicingMandatory=YES AND einvoicingSuiteApp empty', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.tax.einvoicingMandatory': 'YES',
+        'ns.tax.einvoicingSuiteApp': '',
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'ns.tax.einvoicing-yes-needs-suiteapp');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R3 does NOT fire when einvoicingMandatory=NO', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.tax.einvoicingMandatory': 'NO',
+        'ns.tax.einvoicingSuiteApp': '',
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('ns.tax.einvoicing-yes-needs-suiteapp');
+  });
+
+  it('R4 fires (BLOCK) when withholdingInScope=true', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: { 'ns.tax.withholdingInScope': true },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'ns.tax.withholding-needs-suiteapp');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R4 does NOT fire when withholdingInScope=false', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: { 'ns.tax.withholdingInScope': false },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('ns.tax.withholding-needs-suiteapp');
+  });
+
+  it('R5 fires (WARN) when useTaxInScope=true AND primaryCountry!=US', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.tax.useTaxInScope': true,
+        'ns.foundation.primaryCountry': 'GB',
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'ns.tax.use-tax-only-in-us');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R5 does NOT fire when primaryCountry=US', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.tax.useTaxInScope': true,
+        'ns.foundation.primaryCountry': 'US',
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('ns.tax.use-tax-only-in-us');
+  });
+
+  it('R6 fires (WARN) when salesTaxAutomation=true AND nexusList empty', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.tax.salesTaxAutomation': true,
+        'ns.tax.nexusList': '',
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'ns.tax.automation-needs-nexus-list');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R7 fires (WARN) when multiJurisdictionReporting=true AND nexusList empty', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.tax.multiJurisdictionReporting': true,
+        'ns.tax.nexusList': '',
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'ns.tax.multi-jurisdiction-needs-multiple-nexuses');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R7 does NOT fire when nexusList is populated (DSL has no line-count operator; pragmatic empty-only fallback)', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.tax.multiJurisdictionReporting': true,
+        'ns.tax.nexusList': 'Atlas US Inc. | US/CA\nAtlas US Inc. | US/NY',
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('ns.tax.multi-jurisdiction-needs-multiple-nexuses');
+  });
+
+  it('R8 fires (INFO) when taxExemptCustomers=true', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: { 'ns.tax.taxExemptCustomers': true },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'ns.tax.exempt-customers-need-certificate-management');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('INFO');
+  });
+
+  it('R8 does NOT fire when taxExemptCustomers=false', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: { 'ns.tax.taxExemptCustomers': false },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('ns.tax.exempt-customers-need-certificate-management');
+  });
+
+  it('R9 fires (INFO) when reverseChargeInScope=true AND foundation.edition!=ONEWORLD', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.tax.reverseChargeInScope': true,
+        'ns.foundation.edition': 'MID_MARKET',
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'ns.tax.reverse-charge-typical-on-oneworld');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('INFO');
+  });
+
+  it('R9 does NOT fire on ONEWORLD edition', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.tax.reverseChargeInScope': true,
+        'ns.foundation.edition': 'ONEWORLD',
+      },
+      license: { edition: 'ONEWORLD', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('ns.tax.reverse-charge-typical-on-oneworld');
   });
 });

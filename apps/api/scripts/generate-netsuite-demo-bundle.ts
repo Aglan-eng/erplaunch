@@ -91,6 +91,33 @@ const answers: Record<string, unknown> = {
     'Atlas Services GmbH, DE, EUR, Atlas Industries Group Inc.',
   'ns.foundation.multiCurrencyInScope': true,
   'ns.foundation.eliminationEntity': 'Atlas Group Eliminations',
+
+  // NS Pack 2 — Tax Engine (SuiteTax)
+  'ns.tax.engine': 'SUITETAX',
+  'ns.tax.itemPriceMode': 'EXCLUSIVE',
+  'ns.tax.defaultSalesTaxCode': 'CA-Sales-Tax 7.25%',
+  'ns.tax.defaultPurchaseTaxCode': 'CA-Use-Tax 7.25%',
+  'ns.tax.nexusList':
+    'Atlas Industries Group Inc. | US/CA\n' +
+    'Atlas Industries Group Inc. | US/NY\n' +
+    'Atlas Industries Group Inc. | US/TX\n' +
+    'Atlas Manufacturing UK Ltd. | GB\n' +
+    'Atlas Trading Pty. | AU\n' +
+    'Atlas Services GmbH | DE',
+  'ns.tax.taxReportingFramework':
+    'US Tax Reports\nUK MTD VAT\nEU SAF-T (Germany)\nAU BAS Reports',
+  'ns.tax.einvoicingMandatory': 'YES',
+  'ns.tax.einvoicingSuiteApp':
+    'Germany: ZUGFeRD/XRechnung — partner SuiteApp\n' +
+    'Italy (future EU branch): SDI Localization SuiteApp',
+  'ns.tax.withholdingInScope': true,
+  'ns.tax.reverseChargeInScope': true,
+  'ns.tax.useTaxInScope': true,
+  'ns.tax.taxExemptCustomers': true,
+  'ns.tax.filingPeriodicity': 'MIXED',
+  'ns.tax.multiJurisdictionReporting': true,
+  'ns.tax.salesTaxAutomation': true,
+  'ns.tax.salesTaxAutomationProvider': 'Avalara AvaTax',
 };
 
 const comments = [

@@ -287,3 +287,199 @@ describe('NetSuite engagement — NS Pack 1 Foundation rules through the route',
     expect(hit?.severity).toBe('WARN');
   });
 });
+
+// ─── NS Pack 2 — Tax Engine through the route ────────────────────────────────
+
+describe('NetSuite engagement — NS Pack 2 Tax rules through the route', () => {
+  it('R1: engine=LEGACY + suiteSuccessBundle populated fires legacy-engine-on-new-account (WARN)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createNetSuiteEngagement(firmId, 'Legacy Engine New Account Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'MID_MARKET', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'ns.tax.engine': 'LEGACY',
+        'ns.foundation.suiteSuccessBundle': 'US',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'ns.tax.legacy-engine-on-new-account');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('WARN');
+  });
+
+  it('R2: subsidiaryCount>1 + nexusList empty fires oneworld-multi-sub-needs-nexus-list (BLOCK)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createNetSuiteEngagement(firmId, 'Multi-Sub No-Nexus Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ONEWORLD', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'ns.foundation.subsidiaryCount': 3,
+        'ns.tax.nexusList': '',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'ns.tax.oneworld-multi-sub-needs-nexus-list');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('BLOCK');
+  });
+
+  it('R3: einvoicingMandatory=YES + einvoicingSuiteApp empty fires einvoicing-yes-needs-suiteapp (BLOCK)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createNetSuiteEngagement(firmId, 'E-invoicing No-SuiteApp Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'MID_MARKET', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'ns.tax.einvoicingMandatory': 'YES',
+        'ns.tax.einvoicingSuiteApp': '',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'ns.tax.einvoicing-yes-needs-suiteapp');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('BLOCK');
+  });
+
+  it('R4: withholdingInScope=true fires withholding-needs-suiteapp (BLOCK)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createNetSuiteEngagement(firmId, 'Withholding Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'MID_MARKET', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: { 'ns.tax.withholdingInScope': true } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'ns.tax.withholding-needs-suiteapp');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('BLOCK');
+  });
+
+  it('R5: useTaxInScope=true + primaryCountry=GB fires use-tax-only-in-us (WARN)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createNetSuiteEngagement(firmId, 'UK Use-Tax Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'MID_MARKET', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'ns.tax.useTaxInScope': true,
+        'ns.foundation.primaryCountry': 'GB',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'ns.tax.use-tax-only-in-us');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('WARN');
+  });
+
+  it('R6: salesTaxAutomation=true + nexusList empty fires automation-needs-nexus-list (WARN)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createNetSuiteEngagement(firmId, 'Avalara No-Nexus Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'MID_MARKET', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'ns.tax.salesTaxAutomation': true,
+        'ns.tax.nexusList': '',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'ns.tax.automation-needs-nexus-list');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('WARN');
+  });
+
+  it('R7: multiJurisdictionReporting=true + nexusList empty fires multi-jurisdiction-needs-multiple-nexuses (WARN)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createNetSuiteEngagement(firmId, 'Multi-Juris No-Nexus Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'MID_MARKET', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'ns.tax.multiJurisdictionReporting': true,
+        'ns.tax.nexusList': '',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'ns.tax.multi-jurisdiction-needs-multiple-nexuses');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('WARN');
+  });
+
+  it('R8: taxExemptCustomers=true fires exempt-customers-need-certificate-management (INFO)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createNetSuiteEngagement(firmId, 'Exempt Customers Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'MID_MARKET', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: { 'ns.tax.taxExemptCustomers': true } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'ns.tax.exempt-customers-need-certificate-management');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('INFO');
+  });
+
+  it('R9: reverseChargeInScope=true + foundation.edition=MID_MARKET fires reverse-charge-typical-on-oneworld (INFO)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createNetSuiteEngagement(firmId, 'Single-Sub Reverse-Charge Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'MID_MARKET', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'ns.tax.reverseChargeInScope': true,
+        'ns.foundation.edition': 'MID_MARKET',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'ns.tax.reverse-charge-typical-on-oneworld');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('INFO');
+  });
+});

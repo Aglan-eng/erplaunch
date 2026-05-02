@@ -89,8 +89,12 @@ function buildSchema(): QuestionnaireSchema {
     // adaptor (where R2R/P2P/O2C were NetSuite-cargo-cult and got
     // restructured in Pack R), NetSuite's R2R/P2P/O2C terminology is
     // native — those flows stay.
+    // NS Pack 2 — TAX flow sits between FOUNDATION and R2R because
+    // SuiteTax engine, nexus list, and e-invoicing SuiteApps gate
+    // every accounting transaction downstream.
     flows: [
       buildFoundationFlow(),
+      buildTaxFlow(),
       ...['R2R', 'P2P', 'O2C', 'PRODUCTION', 'RETURNS']
         .map((id) => flows[id])
         .filter((f): f is FlowDefinition => !!f),
@@ -280,6 +284,206 @@ function buildFoundationFlow(): FlowDefinition {
             required: false,
             label:
               'Consolidation / elimination entity name (only if subsidiary count > 1; this is the dummy entity that holds intercompany eliminations)',
+          },
+        ],
+      },
+    ],
+  };
+}
+
+// ─── NS Pack 2 — Tax Engine (SuiteTax) ───────────────────────────────────────
+//
+// 16 questions across 4 sections:
+//   - engine     (4): tax engine (SuiteTax / Legacy), item price mode
+//                     (inclusive / exclusive / mixed), default sales /
+//                     purchase tax codes.
+//   - nexus      (4): nexus list per subsidiary, Tax Reporting Framework
+//                     country bundles, e-invoicing mandate flag,
+//                     e-invoicing SuiteApp(s) per country.
+//   - specials   (4): withholding tax, reverse-charge, US use tax,
+//                     tax-exempt customers.
+//   - filing     (4): filing periodicity, multi-jurisdiction reporting,
+//                     sales-tax automation (Avalara/Vertex/Sovos),
+//                     automation provider name.
+//
+// Sources: NetSuite SuiteTax docs (mandatory for new accounts since
+// 2020), NetSuite Nexus configuration, Tax Reporting Framework country
+// bundles, NetSuite Withholding Tax SuiteApp, NetSuite Avalara AvaTax
+// integration, country e-invoicing partner SuiteApps (Italy SDI, Mexico
+// CFDI, Spain SII / Veri*Factu, Saudi ZATCA, Egypt ETA).
+function buildTaxFlow(): FlowDefinition {
+  return {
+    id: 'TAX',
+    label: 'Tax Engine',
+    description:
+      'SuiteTax engine selection, nexus structure per subsidiary, default tax behavior, e-invoicing SuiteApps, withholding, and tax-filing/reporting framework.',
+    sections: [
+      {
+        id: 'engine',
+        label: 'Tax Engine & Default Behavior',
+        order: 1,
+        questions: [
+          {
+            id: 'ns.tax.engine',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'Tax engine',
+            options: [
+              { value: 'SUITETAX', label: 'SuiteTax (modern engine — required for new accounts since 2020; recommended for all new implementations)' },
+              { value: 'LEGACY', label: 'Legacy tax engine (only if migrating an existing legacy customer who has not switched yet)' },
+            ],
+          },
+          {
+            id: 'ns.tax.itemPriceMode',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'Default item pricing — tax-inclusive or tax-exclusive?',
+            options: [
+              { value: 'INCLUSIVE', label: 'Tax-inclusive (B2C — final price includes tax; common in EU/UK/AU retail)' },
+              { value: 'EXCLUSIVE', label: 'Tax-exclusive (B2B — tax added at invoicing; common in US, MENA B2B)' },
+              { value: 'MIXED', label: 'Mixed (different per item or per subsidiary)' },
+            ],
+          },
+          {
+            id: 'ns.tax.defaultSalesTaxCode',
+            inputType: 'TEXT',
+            required: true,
+            label:
+              "Default Sales Tax Code (rate name + percent — e.g., 'VAT 5% UAE', 'GST 10% AU', 'CA-Sales-Tax 7.25%', 'None')",
+          },
+          {
+            id: 'ns.tax.defaultPurchaseTaxCode',
+            inputType: 'TEXT',
+            required: true,
+            label: 'Default Purchase Tax Code',
+          },
+        ],
+      },
+      {
+        id: 'nexus',
+        label: 'Nexus & Compliance',
+        order: 2,
+        questions: [
+          {
+            id: 'ns.tax.nexusList',
+            inputType: 'TEXTAREA',
+            required: true,
+            label:
+              "Nexus list — one per line, format: '<subsidiary> | <country>/<state-or-region>' (e.g., 'Atlas US Inc. | US/CA', 'Atlas US Inc. | US/NY', 'Atlas UK Ltd. | GB', 'Atlas DE GmbH | DE')",
+            help: {
+              title: 'Nexus = a tax jurisdiction',
+              body: 'Each subsidiary in OneWorld can have multiple nexuses (e.g., a US subsidiary with sales tax obligations in CA, NY, and TX). Each nexus has its own tax codes and reports.',
+            },
+          },
+          {
+            id: 'ns.tax.taxReportingFramework',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Tax Reporting Framework country bundles needed (one per line — e.g., 'US Tax Reports', 'UK MTD VAT', 'EU SAF-T', 'Saudi ZATCA Reports', 'Custom — no SuiteApp')",
+            help: {
+              title: 'Tax Reporting Framework SuiteApps',
+              body: 'NetSuite ships country-specific Tax Reporting Framework SuiteApps that produce statutory reports per nexus (UK MTD, IT VAT return, etc.). Without one, tax reporting must be manually built.',
+            },
+          },
+          {
+            id: 'ns.tax.einvoicingMandatory',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'Is e-invoicing mandatory in any of the listed countries?',
+            options: [
+              { value: 'YES', label: 'Yes' },
+              { value: 'NO', label: 'No' },
+              { value: 'UNSURE', label: 'Unsure — research needed' },
+            ],
+          },
+          {
+            id: 'ns.tax.einvoicingSuiteApp',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "If yes — e-invoicing SuiteApp(s) per country (one per line — e.g., 'Italy: Electronic Invoicing for Italy SuiteApp', 'Mexico: Mexico Compliance SuiteApp', 'Spain: SII Localization', 'Saudi: ZATCA via partner SuiteApp', 'Egypt: Custom build — no SuiteApp')",
+            dependsOn: { questionId: 'ns.tax.einvoicingMandatory', value: 'YES' },
+          },
+        ],
+      },
+      {
+        id: 'specials',
+        label: 'Special Tax Mechanics',
+        order: 3,
+        questions: [
+          {
+            id: 'ns.tax.withholdingInScope',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'Withholding Tax in scope? (services, contractor payments, royalties, cross-border)',
+            help: {
+              title: 'Withholding Tax SuiteApp',
+              body: "Requires the 'Withholding Tax' SuiteApp from NetSuite. Configures WHT codes per nexus + customer/vendor.",
+            },
+          },
+          {
+            id: 'ns.tax.reverseChargeInScope',
+            inputType: 'BOOLEAN',
+            required: true,
+            label:
+              'Reverse-charge mechanism in scope? (cross-border services, EU intra-community, import VAT)',
+          },
+          {
+            id: 'ns.tax.useTaxInScope',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'Use Tax in scope? (US-specific — self-assessed tax on out-of-state purchases)',
+          },
+          {
+            id: 'ns.tax.taxExemptCustomers',
+            inputType: 'BOOLEAN',
+            required: true,
+            label:
+              'Will any customer be tax-exempt? (export, government, NGO, resale certificate holders)',
+          },
+        ],
+      },
+      {
+        id: 'filing',
+        label: 'Tax Filing & Automation',
+        order: 4,
+        questions: [
+          {
+            id: 'ns.tax.filingPeriodicity',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'Tax filing periodicity (most common — varies by nexus)',
+            options: [
+              { value: 'MONTHLY', label: 'Monthly' },
+              { value: 'QUARTERLY', label: 'Quarterly' },
+              { value: 'ANNUAL', label: 'Annual' },
+              { value: 'MIXED', label: 'Mixed by nexus' },
+            ],
+          },
+          {
+            id: 'ns.tax.multiJurisdictionReporting',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'Multi-jurisdiction reporting required? (file tax returns in 2+ states/countries)',
+          },
+          {
+            id: 'ns.tax.salesTaxAutomation',
+            inputType: 'BOOLEAN',
+            required: true,
+            label:
+              'Sales-tax automation provider in scope? (third-party engine that calculates and files automatically)',
+          },
+          {
+            id: 'ns.tax.salesTaxAutomationProvider',
+            inputType: 'TEXT',
+            required: false,
+            label: "If yes — provider name (e.g., 'Avalara AvaTax', 'Vertex O Series', 'Sovos GTD')",
+            dependsOn: { questionId: 'ns.tax.salesTaxAutomation', value: true },
+            help: {
+              title: 'NetSuite-shipped connectors',
+              body: 'Common for US engagements with multi-state nexus (10+ jurisdictions). NetSuite ships connectors for Avalara, Vertex, Sovos.',
+            },
           },
         ],
       },
@@ -718,6 +922,169 @@ const rules: RulePack = {
             questionId: 'ns.foundation.edition',
             values: ['STARTER', 'STANDARD', 'FINANCIALS_FIRST'],
           } },
+        ],
+      },
+    },
+
+    // ── NS Pack 2 — Tax Engine (SuiteTax) rules ───────────────────────────
+
+    // R1: Legacy tax engine selected on what looks like a new SuiteSuccess
+    // account. NetSuite has required SuiteTax for new accounts since 2020.
+    //
+    // Implementation note: spec calls for "suiteSuccessBundle does NOT
+    // contain 'Custom'". The DSL has no string-contains operator, so the
+    // pragmatic version fires whenever suiteSuccessBundle is truthy.
+    // False-positive case (consultant typed "Custom — no SuiteSuccess")
+    // is rare and the WARN-level prompt is dismissable.
+    {
+      id: 'ns.tax.legacy-engine-on-new-account',
+      type: 'CONFIG_CONFLICT',
+      severity: 'WARN',
+      questionIds: ['ns.tax.engine', 'ns.foundation.suiteSuccessBundle'],
+      message: 'Legacy tax engine selected on what looks like a new SuiteSuccess account. NetSuite has required SuiteTax for all new accounts since 2020 — Legacy is only for migrations of existing pre-2020 customers.',
+      resolution: 'Switch engine to SUITETAX unless this is a documented migration of an existing legacy customer. Legacy on a new account is unlikely to provision.',
+      when: {
+        all: [
+          { answerEquals: { questionId: 'ns.tax.engine', value: 'LEGACY' } },
+          { answerTruthy: { questionId: 'ns.foundation.suiteSuccessBundle' } },
+        ],
+      },
+    },
+
+    // R2: Multi-subsidiary OneWorld engagement but no nexus list — each
+    // subsidiary needs at least one nexus for the tax engine to function.
+    {
+      id: 'ns.tax.oneworld-multi-sub-needs-nexus-list',
+      type: 'CONFIG_CONFLICT',
+      severity: 'BLOCK',
+      questionIds: ['ns.foundation.subsidiaryCount', 'ns.tax.nexusList'],
+      message: 'Multi-subsidiary OneWorld engagement but no nexus list captured. Each subsidiary needs at least one nexus for tax engine to function.',
+      resolution: "Capture the nexus per subsidiary in the format '<subsidiary> | <country>/<state>'. Each subsidiary needs at least its country of registration; many need multiple.",
+      when: {
+        all: [
+          { answerNumberGreaterThan: { questionId: 'ns.foundation.subsidiaryCount', value: 1 } },
+          { answerFalsy: { questionId: 'ns.tax.nexusList' } },
+        ],
+      },
+    },
+
+    // R3: E-invoicing flagged mandatory but no SuiteApp specified per
+    // country. NetSuite e-invoicing requires a NetSuite-shipped SuiteApp
+    // (Italy SDI, Mexico CFDI, Spain SII), a partner SuiteApp, or a
+    // custom build.
+    {
+      id: 'ns.tax.einvoicing-yes-needs-suiteapp',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: ['ns.tax.einvoicingMandatory', 'ns.tax.einvoicingSuiteApp'],
+      message: 'E-invoicing flagged as mandatory but no SuiteApp specified per country. NetSuite e-invoicing requires either a NetSuite-shipped SuiteApp (Italy SDI, Mexico CFDI, Spain SII), a partner SuiteApp, or a custom build.',
+      resolution: "List the country and corresponding SuiteApp or 'Custom' approach. Custom builds require dedicated development budget — typically 6–12 weeks per country for first build.",
+      when: {
+        all: [
+          { answerEquals: { questionId: 'ns.tax.einvoicingMandatory', value: 'YES' } },
+          { answerFalsy: { questionId: 'ns.tax.einvoicingSuiteApp' } },
+        ],
+      },
+    },
+
+    // R4: Withholding Tax requires the 'Withholding Tax' SuiteApp from
+    // NetSuite — separate from standard SuiteTax. BLOCK because the
+    // SuiteApp must be in the contract.
+    {
+      id: 'ns.tax.withholding-needs-suiteapp',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: ['ns.tax.withholdingInScope'],
+      message: "Withholding Tax requires the 'Withholding Tax' SuiteApp from NetSuite. Standard SuiteTax does NOT include withholding — it's a separate paid SuiteApp.",
+      resolution: 'Confirm Withholding Tax SuiteApp is in the contract. Add the SuiteApp license cost to budget. Phase 4 builds nexus-by-nexus WHT code configuration.',
+      when: { answerTruthy: { questionId: 'ns.tax.withholdingInScope' } },
+    },
+
+    // R5: Use Tax is a US-specific concept (self-assessment on out-of-
+    // state purchases). Flagging it for a non-US engagement usually
+    // means a misclick.
+    {
+      id: 'ns.tax.use-tax-only-in-us',
+      type: 'CONFIG_CONFLICT',
+      severity: 'WARN',
+      questionIds: ['ns.tax.useTaxInScope', 'ns.foundation.primaryCountry'],
+      message: "Use Tax flagged in scope but primary country is not US. Use Tax is a US-specific concept (self-assessment on out-of-state purchases when seller didn't collect sales tax).",
+      resolution: 'Confirm Use Tax is genuinely needed (rare outside US). If primary country is US and the engagement is multi-state, Use Tax is correct. Otherwise, set to false.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'ns.tax.useTaxInScope' } },
+          { not: { answerEquals: { questionId: 'ns.foundation.primaryCountry', value: 'US' } } },
+        ],
+      },
+    },
+
+    // R6: Sales-tax automation provider needs the nexus list to map
+    // jurisdictions. Avalara AvaTax onboarding requires the full nexus
+    // map up front.
+    {
+      id: 'ns.tax.automation-needs-nexus-list',
+      type: 'DATA_WARNING',
+      severity: 'WARN',
+      questionIds: ['ns.tax.salesTaxAutomation', 'ns.tax.nexusList'],
+      message: 'Sales-tax automation provider (Avalara/Vertex/Sovos) is in scope but no nexus list captured. The provider needs the nexus list to map jurisdictions.',
+      resolution: 'Capture nexus list before connector configuration in Phase 4. Avalara AvaTax onboarding requires the full nexus map up front.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'ns.tax.salesTaxAutomation' } },
+          { answerFalsy: { questionId: 'ns.tax.nexusList' } },
+        ],
+      },
+    },
+
+    // R7: Multi-jurisdiction reporting needs at least 2 nexuses.
+    //
+    // Implementation note: spec calls for "fewer than 2 entries", but
+    // the DSL has no line-count operator. Pragmatic fallback: fire on
+    // empty nexusList only. The 1-nexus edge case is a future
+    // enhancement once the SDK gains a line-count condition.
+    {
+      id: 'ns.tax.multi-jurisdiction-needs-multiple-nexuses',
+      type: 'DATA_WARNING',
+      severity: 'WARN',
+      questionIds: ['ns.tax.multiJurisdictionReporting', 'ns.tax.nexusList'],
+      message: 'Multi-jurisdiction reporting flagged but no nexuses listed. Multi-jurisdiction by definition needs 2+ nexuses.',
+      resolution: 'Add nexuses to the list, or set multiJurisdictionReporting to false.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'ns.tax.multiJurisdictionReporting' } },
+          { answerFalsy: { questionId: 'ns.tax.nexusList' } },
+        ],
+      },
+    },
+
+    // R8: Tax-exempt customers require exemption certificate management.
+    // INFO-level reminder so the consultant captures the approach in
+    // the implementation plan (standard NetSuite fields vs Avalara
+    // CertCapture).
+    {
+      id: 'ns.tax.exempt-customers-need-certificate-management',
+      type: 'DATA_WARNING',
+      severity: 'INFO',
+      questionIds: ['ns.tax.taxExemptCustomers'],
+      message: 'Tax-exempt customers require exemption certificate management — uploading certificates per customer, expiry tracking, audit trail. Standard NetSuite has fields for this; Avalara has a more complete certificate manager.',
+      resolution: 'If using Avalara — Avalara CertCapture is a separate paid module. If standard NetSuite is sufficient, Phase 4 builds the customer-record fields and an expiry-tracking saved search. Allocate ~3 person-days for the Phase-4 setup.',
+      when: { answerTruthy: { questionId: 'ns.tax.taxExemptCustomers' } },
+    },
+
+    // R9: Reverse-charge typically applies to cross-border or intra-
+    // community transactions. Single-subsidiary editions don't usually
+    // need reverse-charge — confirm intent.
+    {
+      id: 'ns.tax.reverse-charge-typical-on-oneworld',
+      type: 'DATA_WARNING',
+      severity: 'INFO',
+      questionIds: ['ns.tax.reverseChargeInScope', 'ns.foundation.edition'],
+      message: "Reverse-charge typically applies to cross-border or intra-community transactions. Single-subsidiary editions don't usually need reverse-charge — confirm this is intentional.",
+      resolution: 'If reverse-charge is genuinely needed (e.g., a UK single-sub buying digital services from EU vendors), this is correct. Otherwise consider whether OneWorld and a separate VAT subsidiary makes more sense for the scale.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'ns.tax.reverseChargeInScope' } },
+          { not: { answerEquals: { questionId: 'ns.foundation.edition', value: 'ONEWORLD' } } },
         ],
       },
     },
