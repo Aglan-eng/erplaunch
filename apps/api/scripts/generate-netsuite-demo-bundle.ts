@@ -31,6 +31,11 @@ import { generateSdfCustomFields } from '../src/services/generators/sdfCustomFie
 import { generateSdfCustomList } from '../src/services/generators/sdfCustomListGenerator.js';
 import { generateTransactionForms } from '../src/services/generators/sdfTransactionFormGenerator.js';
 import { generateEntryForms } from '../src/services/generators/sdfEntryFormGenerator.js';
+import {
+  generateSubsidiaries,
+  extractCurrenciesFromSubsidiaries,
+} from '../src/services/generators/sdfSubsidiaryGenerator.js';
+import { generateCurrencies } from '../src/services/generators/sdfCurrencyGenerator.js';
 import { validateSDFBundle } from '../src/services/generators/sdfValidator.js';
 import netsuiteAdaptor from '@ofoq/adaptor-netsuite';
 
@@ -363,9 +368,48 @@ for (const [filename, content] of writes) {
 // demo bundle is always deployable.
 const sdfRoot = path.join(outRoot, 'SDF');
 
+// Pack A — Subsidiary + Currency XMLs are required for any OneWorld
+// engagement. Without them the bundle fails SDF deploy because every
+// customrecord / form / script downstream references subsidiary IDs
+// that don't exist on the tenant. Currencies are extracted from the
+// parsed subsidiary list so they match exactly what's referenced.
+const subsidiariesResult = generateSubsidiaries({
+  subsidiaryList: answers['ns.foundation.subsidiaryList'] as string | undefined,
+  eliminationEntity: answers['ns.foundation.eliminationEntity'] as string | undefined,
+});
+const currencyCodes = extractCurrenciesFromSubsidiaries(subsidiariesResult.emitted);
+const currenciesResult = generateCurrencies({ currencies: currencyCodes });
+
+// Pack A — Manifest derives feature dependencies from the wizard
+// answers (was hardcoded to {CUSTOMRECORDS, SERVERSIDESCRIPTING}).
+// Drives SUBSIDIARIES / INTERCOMPANY / MULTICURRENCY / etc. on
+// OneWorld engagements so SDF deploy has the right feature gates
+// declared.
+const poApprovalAnswerForManifest = answers['p2p.purchasing.poApprovalTiers'] as string | undefined;
+const willEmitPoScriptManifest = !!(poApprovalAnswerForManifest && poApprovalAnswerForManifest.trim().length > 0);
+const customRecordsAnswerForManifest = answers['ns.design.customRecords'] as string | undefined;
+const hasCustomRecordsForManifest = !!(customRecordsAnswerForManifest && customRecordsAnswerForManifest.trim().length > 0);
+const uiLanguagesRaw = answers['ns.localization.uiLanguages'] as string | undefined;
+const uiLanguagesArray =
+  typeof uiLanguagesRaw === 'string' && uiLanguagesRaw.trim().length > 0
+    ? uiLanguagesRaw.split(/\r?\n/).map((s) => s.trim()).filter((s) => s.length > 0)
+    : [];
+
 const manifestXml = generateSdfManifest({
   firmName: 'NSIX',
   clientName,
+  edition: answers['ns.foundation.edition'] as string | undefined,
+  multiCurrencyInScope: answers['ns.foundation.multiCurrencyInScope'] === true,
+  multiBookAccounting: answers['ns.foundation.multiBookAccounting'] === true,
+  advancedRevRecInScope: answers['ns.foundation.advancedRevRecInScope'] === true,
+  customRolesRequired: answers['ns.foundation.customRolesRequired'] === true,
+  ssoInScope: answers['ns.foundation.ssoInScope'] === true,
+  taxEngine: answers['ns.tax.engine'] as string | undefined,
+  hasCustomRecords: hasCustomRecordsForManifest,
+  hasSuiteScripts: willEmitPoScriptManifest,
+  hasWorkflows: false, // future Pack D
+  poApprovalInScope: willEmitPoScriptManifest,
+  uiLanguages: uiLanguagesArray,
 });
 const deployXml = generateSdfDeploy();
 const customRecordsResult = generateSdfCustomRecords({
@@ -415,10 +459,13 @@ const entryFormsResult = generateEntryForms({
 });
 
 // Single validator pass over the WHOLE SDF bundle so manifest / deploy /
-// customrecord / custom-field / customlist / form errors all surface together.
+// customrecord / custom-field / customlist / form / subsidiary /
+// currency errors all surface together.
 const allSdfFiles: Record<string, string> = {
   'manifest.xml': manifestXml,
   'deploy.xml': deployXml,
+  ...subsidiariesResult.files,
+  ...currenciesResult.files,
   ...customRecordsResult.files,
   ...customFieldsResult.files,
   ...selectFieldsCustomLists,
@@ -441,6 +488,20 @@ await fs.writeFile(path.join(sdfRoot, 'manifest.xml'), manifestXml, 'utf8');
 process.stdout.write(`  ✓ SDF/manifest.xml\n`);
 await fs.writeFile(path.join(sdfRoot, 'deploy.xml'), deployXml, 'utf8');
 process.stdout.write(`  ✓ SDF/deploy.xml\n`);
+
+for (const [relPath, content] of Object.entries(subsidiariesResult.files)) {
+  const fullPath = path.join(sdfRoot, relPath);
+  await fs.mkdir(path.dirname(fullPath), { recursive: true });
+  await fs.writeFile(fullPath, content, 'utf8');
+  process.stdout.write(`  ✓ SDF/${relPath}\n`);
+}
+
+for (const [relPath, content] of Object.entries(currenciesResult.files)) {
+  const fullPath = path.join(sdfRoot, relPath);
+  await fs.mkdir(path.dirname(fullPath), { recursive: true });
+  await fs.writeFile(fullPath, content, 'utf8');
+  process.stdout.write(`  ✓ SDF/${relPath}\n`);
+}
 
 for (const [relPath, content] of Object.entries(customRecordsResult.files)) {
   const fullPath = path.join(sdfRoot, relPath);
@@ -519,6 +580,8 @@ console.log(`  Bundle: ${outRoot}`);
 // eslint-disable-next-line no-console
 console.log(
   `  Files:  ${writes.length} doc + manifest.xml + deploy.xml + ` +
+    `${subsidiariesResult.emitted.length} subsidiary(ies) + ` +
+    `${currenciesResult.emitted.length} currency(ies) + ` +
     `${customRecordsResult.emitted.length} customrecord(s) + ` +
     `${customRecordsResult.emitted.length} status customlist(s) + ` +
     `${customFieldsResult.emitted.length} custom field(s) + ` +

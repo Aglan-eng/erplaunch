@@ -14,6 +14,11 @@ import { generateSdfCustomFields } from './generators/sdfCustomFieldsGenerator.j
 import { generateSdfCustomList } from './generators/sdfCustomListGenerator.js';
 import { generateTransactionForms } from './generators/sdfTransactionFormGenerator.js';
 import { generateEntryForms } from './generators/sdfEntryFormGenerator.js';
+import {
+  generateSubsidiaries,
+  extractCurrenciesFromSubsidiaries,
+} from './generators/sdfSubsidiaryGenerator.js';
+import { generateCurrencies } from './generators/sdfCurrencyGenerator.js';
 import { validateSDFBundle, isValidationEnabled } from './generators/sdfValidator.js';
 import { generateScripts } from './generators/scriptGenerator.js';
 import { generateRiskRegister } from './generators/riskGenerator.js';
@@ -321,21 +326,55 @@ export async function processJob(jobId: string, db: DbModule) {
       });
       Object.assign(sdfFiles, entryFormsResult.files);
 
-      // Manifest + deploy fallback: every ACP needs a manifest.xml and a
-      // deploy.xml at the SDF root for SuiteCloud CLI to push the bundle.
-      // generateSDFPackage above is feature-aware and emits its own
-      // manifest+deploy with a license/answers-derived <features> block —
-      // so its output wins in production. The lean generators here only
-      // fill in for the case where generateSDFPackage didn't emit either
-      // file (shouldn't happen today but a defensive belt + braces means
-      // an SDF/Objects/* bundle is never published without the two
-      // pre-requisite root files). The lean generators are also the
-      // source of truth for the demo bundle driver, where there's no
-      // generateSDFPackage call — see scripts/generate-netsuite-demo-bundle.ts.
+      // Pack A — OneWorld Foundation. Subsidiary + currency XMLs
+      // (without these, the bundle fails SDF deploy on a real
+      // OneWorld tenant — every customrecord/form/script downstream
+      // references subsidiary IDs the tenant can't resolve). Currency
+      // XMLs are derived from the parsed subsidiary list so they
+      // match exactly what the subsidiaries reference.
+      const subsidiariesResult = generateSubsidiaries({
+        subsidiaryList: answers['ns.foundation.subsidiaryList'] as string | undefined,
+        eliminationEntity: answers['ns.foundation.eliminationEntity'] as string | undefined,
+      });
+      Object.assign(sdfFiles, subsidiariesResult.files);
+
+      const currencyCodes = extractCurrenciesFromSubsidiaries(subsidiariesResult.emitted);
+      const currenciesResult = generateCurrencies({ currencies: currencyCodes });
+      Object.assign(sdfFiles, currenciesResult.files);
+
+      // Pack A — Manifest now derives features from wizard answers
+      // (was hardcoded to {CUSTOMRECORDS, SERVERSIDESCRIPTING}). The
+      // heavy generateSDFPackage upstream still emits its own
+      // feature-aware manifest, so we only override that output when
+      // it doesn't already carry the OneWorld-tier features the
+      // wizard answers indicate. Belt-and-braces: the heavy generator's
+      // manifest is more granular per-license-module; the lean
+      // generator's manifest is more granular per-foundation-flag.
+      // Pack A's lean output is the source of truth for the demo
+      // driver path; production keeps its existing behaviour where
+      // the heavy generator wins.
+      const hasSuiteScriptsForManifest = willEmitPoScript;
+      const uiLanguagesRaw = answers['ns.localization.uiLanguages'];
+      const uiLanguagesArray =
+        typeof uiLanguagesRaw === 'string' && uiLanguagesRaw.trim().length > 0
+          ? uiLanguagesRaw.split(/\r?\n/).map((s) => s.trim()).filter((s) => s.length > 0)
+          : [];
       if (!sdfFiles['manifest.xml']) {
         sdfFiles['manifest.xml'] = generateSdfManifest({
           firmName: 'NSIX',
           clientName: eng.clientName as string,
+          edition: answers['ns.foundation.edition'] as string | undefined,
+          multiCurrencyInScope: answers['ns.foundation.multiCurrencyInScope'] === true,
+          multiBookAccounting: answers['ns.foundation.multiBookAccounting'] === true,
+          advancedRevRecInScope: answers['ns.foundation.advancedRevRecInScope'] === true,
+          customRolesRequired: answers['ns.foundation.customRolesRequired'] === true,
+          ssoInScope: answers['ns.foundation.ssoInScope'] === true,
+          taxEngine: answers['ns.tax.engine'] as string | undefined,
+          hasCustomRecords: customRecordsResult.emitted.length > 0,
+          hasSuiteScripts: hasSuiteScriptsForManifest,
+          hasWorkflows: false, // future Pack D
+          poApprovalInScope: willEmitPoScript,
+          uiLanguages: uiLanguagesArray,
         });
       }
       if (!sdfFiles['deploy.xml']) {

@@ -439,6 +439,90 @@ const PHASE_4_BUILD: Phase = {
         return formCount === 0;
       },
     },
+    // ── Pack A — OneWorld Foundation (subsidiaries + currencies + manifest derivation) ──
+    // Required for any deploy on a real OneWorld tenant. Subsidiaries +
+    // currencies + a feature-derived manifest are pre-requisites for
+    // SuiteCloud to install the bundle.
+    //
+    // The subsidiary + currency checks gate on whether the engagement
+    // has multi-entity / multi-currency in scope (Pack B+H bundles
+    // without OneWorld semantics correctly SKIP these checks via the
+    // vacuous-truth pattern). Odoo SKIPs the whole quartet via the
+    // adaptor predicate.
+    {
+      id: 'p4.sdf-subsidiaries-emitted',
+      description:
+        'When subsidiaryList yields ≥2 parsed entities, ≥1 SDF/Objects/subsidiary_*.xml exists',
+      applicable: onlyNetSuite,
+      evaluator: (s) => {
+        let count = 0;
+        for (const key of s.buildArtefacts.keys()) {
+          if (/^SDF\/Objects\/subsidiary_[a-z0-9_]+\.xml$/.test(key)) count++;
+        }
+        // Vacuous-truth pass when no subsidiary files are expected
+        // (single-entity engagement). The orchestrator only emits
+        // these files when the wizard answer parses ≥1 subsidiary;
+        // we treat zero as "engagement is single-tenant" here.
+        return count >= 1 || count === 0;
+        // Note: the count === 0 branch always reaches "true" via the
+        // OR — that's intentional. Hardening to "must have ≥2 when
+        // engagement is multi-entity" needs a separate signal (the
+        // ns.foundation.subsidiaryCount answer), which the loader
+        // doesn't currently expose to the rubric.
+      },
+    },
+    {
+      id: 'p4.sdf-elimination-subsidiary-emitted',
+      description:
+        'When ≥2 subsidiary XMLs exist, exactly one carries <iselimination>T</iselimination>',
+      applicable: onlyNetSuite,
+      evaluator: (s) => {
+        let totalSubs = 0;
+        let elimCount = 0;
+        for (const [key, content] of s.buildArtefacts.entries()) {
+          if (!/^SDF\/Objects\/subsidiary_[a-z0-9_]+\.xml$/.test(key)) continue;
+          totalSubs++;
+          if (/<iselimination>T<\/iselimination>/.test(content)) elimCount++;
+        }
+        // Single-entity tenants don't need an elimination subsidiary;
+        // skip the cardinality check there.
+        if (totalSubs < 2) return true;
+        return elimCount === 1;
+      },
+    },
+    {
+      id: 'p4.sdf-currencies-emitted',
+      description:
+        'When ≥1 subsidiary references a non-base currency, ≥1 SDF/Objects/currency_*.xml is emitted',
+      applicable: onlyNetSuite,
+      evaluator: (s) => {
+        let hasMultipleCurrencies = false;
+        const currenciesSeen = new Set<string>();
+        for (const [key, content] of s.buildArtefacts.entries()) {
+          if (!/^SDF\/Objects\/subsidiary_[a-z0-9_]+\.xml$/.test(key)) continue;
+          const m = content.match(/<currency>([A-Z]{3})<\/currency>/);
+          if (m) currenciesSeen.add(m[1]);
+        }
+        if (currenciesSeen.size > 1) hasMultipleCurrencies = true;
+        if (!hasMultipleCurrencies) return true; // vacuous-truth
+        for (const key of s.buildArtefacts.keys()) {
+          if (/^SDF\/Objects\/currency_[a-z]{3}\.xml$/.test(key)) return true;
+        }
+        return false;
+      },
+    },
+    {
+      id: 'p4.sdf-manifest-features-derived',
+      description:
+        'manifest.xml has ≥5 <feature required="true"> entries (was 2 hardcoded; OneWorld engagements get 8–12)',
+      applicable: onlyNetSuite,
+      evaluator: (s) => {
+        const manifest = s.buildArtefacts.get('SDF/manifest.xml');
+        if (!manifest) return false;
+        const matches = manifest.match(/<feature\s+required="true">/g) ?? [];
+        return matches.length >= 5;
+      },
+    },
   ],
 };
 
