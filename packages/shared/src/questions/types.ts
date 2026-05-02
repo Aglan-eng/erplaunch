@@ -4,7 +4,8 @@ export type InputType =
   | 'BOOLEAN'       // Yes/No toggle
   | 'SINGLE_SELECT' // Radio / dropdown
   | 'MULTI_SELECT'  // Checkbox group
-  | 'TEXT'          // Free text
+  | 'TEXT'          // Free text (single line)
+  | 'TEXTAREA'      // Free text (multi-line — line-per-item lists, free-form prose)
   | 'NUMBER'        // Numeric input
   | 'TABLE'         // Dynamic row table
   | 'DATE';         // Date picker

@@ -287,6 +287,32 @@ const PHASE_4_BUILD: Phase = {
       applicable: onlyNetSuite,
       evaluator: (s) => s.buildArtefacts.has('SDF/deploy.xml'),
     },
+    // ── SuiteScript UE checks (NetSuite-only — SKIP on Odoo) ──
+    // First real-LOGIC SuiteScript file — PO approval User Event.
+    // The harness measures (a) the file exists when a wizard answer is
+    // present, and (b) the emitted JS carries the JSDoc annotations
+    // SuiteCloud requires to recognise the script type. Both checks
+    // SKIP on Odoo. Phase 4 NS ratchet stays at ≥ 9.0; these add
+    // headroom against future regression rather than gating.
+    {
+      id: 'p4.suitescript-po-approval-emitted',
+      description:
+        'When wizard answer for PO approval tiers is non-empty, SDF/SuiteScripts/NSIX_UE_PurchaseOrderApproval.js exists',
+      applicable: onlyNetSuite,
+      evaluator: (s) =>
+        s.buildArtefacts.has('SDF/SuiteScripts/NSIX_UE_PurchaseOrderApproval.js'),
+    },
+    {
+      id: 'p4.suitescript-po-approval-valid-jsdoc',
+      description:
+        'PO approval script has @NApiVersion 2.1 + @NScriptType UserEventScript JSDoc annotations',
+      applicable: onlyNetSuite,
+      evaluator: (s) => {
+        const body = s.buildArtefacts.get('SDF/SuiteScripts/NSIX_UE_PurchaseOrderApproval.js');
+        if (!body) return false;
+        return body.includes('@NApiVersion 2.1') && body.includes('@NScriptType UserEventScript');
+      },
+    },
   ],
 };
 

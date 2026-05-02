@@ -125,6 +125,29 @@ export const p2pQuestions: Question[] = [
     exampleText: 'Row 1: Up to 5,000 — Department Manager. Row 2: 5,001–50,000 — Finance Manager. Row 3: Over 50,000 — CFO.',
     dependsOn: { questionId: 'p2p.purchasing.poApprovalRequired', value: true },
   },
+  // Real-code companion to approvalThresholds (TABLE). Free-text form is
+  // what the SuiteScript User Event generator parses into a hardcoded
+  // APPROVAL_TIERS array — one line per tier, format
+  // "<range_label>: <approver>". The TABLE answer above remains the
+  // consultant-facing source of truth; this TEXTAREA is the
+  // generator-friendly projection. Empty / missing answer skips
+  // SuiteScript emission.
+  {
+    id: 'p2p.purchasing.poApprovalTiers',
+    flow: 'P2P',
+    section: 'purchasing',
+    order: 7,
+    inputType: 'TEXTAREA',
+    required: false,
+    label:
+      "Purchase Order approval tiers (one per line — '<range>: <approver>'; e.g., '<$5,000: auto-approve', '$5,000-$50,000: Department Manager', '$50,000-$250,000: VP Operations', '>$250,000: CFO + Steering')",
+    helpTitle: 'Why does this matter?',
+    helpBody:
+      'This is the generator-readable form of the approval thresholds. ERPLaunch parses each line into a tier in the auto-generated User Event script (NSIX_UE_PurchaseOrderApproval.js) so the deployed script already has the correct amount thresholds and approver roles wired before the consultant ever opens it.',
+    exampleText:
+      "<$5,000: auto-approve\n$5,000-$50,000: Department Manager\n$50,000-$250,000: VP Operations\n>$250,000: CFO + Steering",
+    dependsOn: { questionId: 'p2p.purchasing.poApprovalRequired', value: true },
+  },
   {
     id: 'p2p.purchasing.budgetCheck',
     flow: 'P2P',

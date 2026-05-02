@@ -26,6 +26,7 @@ import { generateImplementationPlanHtml } from '../src/services/generators/planG
 import { generateSdfCustomRecords } from '../src/services/generators/sdfCustomRecordsGenerator.js';
 import { generateSdfManifest } from '../src/services/generators/sdfManifestGenerator.js';
 import { generateSdfDeploy } from '../src/services/generators/sdfDeployGenerator.js';
+import { generatePoApprovalScript } from '../src/services/generators/sdfPoApprovalScriptGenerator.js';
 import { validateSDFBundle } from '../src/services/generators/sdfValidator.js';
 import netsuiteAdaptor from '@ofoq/adaptor-netsuite';
 
@@ -267,6 +268,19 @@ const answers: Record<string, unknown> = {
     'Retry: exponential backoff up to 3 attempts then dead-letter queue\n' +
     'Authentication: TBA (Token-Based Authentication) only — no user/password integration\n' +
     'Logging: all integration payloads logged to S3 with 30-day retention for debugging',
+
+  // P2P — PO approval routing. Drives the SuiteScript UE generator. The
+  // legacy approvalThresholds TABLE captures the same intent for the
+  // consultant-facing UI; this TEXTAREA is the generator-friendly form
+  // that lets ERPLaunch emit a deployable approval script with the
+  // actual thresholds wired from day one.
+  'p2p.purchasing.usePurchaseOrders': true,
+  'p2p.purchasing.poApprovalRequired': true,
+  'p2p.purchasing.poApprovalTiers':
+    '<$5,000: auto-approve\n' +
+    '$5,000-$50,000: Department Manager\n' +
+    '$50,000-$250,000: VP Operations\n' +
+    '>$250,000: CFO + Steering',
 };
 
 const comments = [
@@ -383,6 +397,25 @@ for (const [relPath, content] of Object.entries(customRecordsResult.files)) {
   await fs.mkdir(path.dirname(fullPath), { recursive: true });
   await fs.writeFile(fullPath, content, 'utf8');
   process.stdout.write(`  ✓ SDF/${relPath}\n`);
+}
+
+// ── Real-logic SuiteScript: PO approval User Event ──────────────────────────
+// First real-LOGIC SuiteScript file. Reads the wizard's free-text
+// p2p.purchasing.poApprovalTiers answer and emits a deployable User Event
+// with the parsed thresholds hardcoded into APPROVAL_TIERS. Empty answer
+// skips emission; unparseable answer falls back to a TODO placeholder.
+const poApprovalAnswer = answers['p2p.purchasing.poApprovalTiers'] as string | undefined;
+if (poApprovalAnswer && poApprovalAnswer.trim().length > 0) {
+  const scriptBody = generatePoApprovalScript({
+    approvalTiers: poApprovalAnswer,
+    firmName: 'NSIX',
+    clientName,
+  });
+  const scriptDir = path.join(sdfRoot, 'SuiteScripts');
+  await fs.mkdir(scriptDir, { recursive: true });
+  const scriptPath = path.join(scriptDir, 'NSIX_UE_PurchaseOrderApproval.js');
+  await fs.writeFile(scriptPath, scriptBody, 'utf8');
+  process.stdout.write(`  ✓ SDF/SuiteScripts/NSIX_UE_PurchaseOrderApproval.js\n`);
 }
 
 // ── Anti-bleed verification ─────────────────────────────────────────────────

@@ -9,6 +9,7 @@ import { generateSDFPackage } from './generators/sdfGenerator.js';
 import { generateSdfCustomRecords } from './generators/sdfCustomRecordsGenerator.js';
 import { generateSdfManifest } from './generators/sdfManifestGenerator.js';
 import { generateSdfDeploy } from './generators/sdfDeployGenerator.js';
+import { generatePoApprovalScript } from './generators/sdfPoApprovalScriptGenerator.js';
 import { validateSDFBundle, isValidationEnabled } from './generators/sdfValidator.js';
 import { generateScripts } from './generators/scriptGenerator.js';
 import { generateRiskRegister } from './generators/riskGenerator.js';
@@ -302,6 +303,29 @@ export async function processJob(jobId: string, db: DbModule) {
         const fullPath = path.join(sdfDir, relPath);
         await fs.mkdir(path.dirname(fullPath), { recursive: true });
         await fs.writeFile(fullPath, content);
+      }
+
+      // Real-logic SuiteScript — PO approval User Event. First .js file
+      // with actual business logic (vs. the legacy generateScripts() path
+      // which emits placeholder scaffolds). Reads the free-text wizard
+      // answer p2p.purchasing.poApprovalTiers and emits a deployable
+      // User Event with parsed thresholds hardcoded. Empty answer skips
+      // emission; unparseable answer falls back to a TODO placeholder
+      // (the script still emits so the bundle is consistent — consultant
+      // hand-fills the tiers).
+      const poApprovalAnswer = answers['p2p.purchasing.poApprovalTiers'];
+      if (typeof poApprovalAnswer === 'string' && poApprovalAnswer.trim().length > 0) {
+        const scriptBody = generatePoApprovalScript({
+          approvalTiers: poApprovalAnswer,
+          firmName: 'NSIX',
+          clientName: eng.clientName as string,
+        });
+        const sdfScriptDir = path.join(sdfDir, 'SuiteScripts');
+        await fs.mkdir(sdfScriptDir, { recursive: true });
+        await fs.writeFile(
+          path.join(sdfScriptDir, 'NSIX_UE_PurchaseOrderApproval.js'),
+          scriptBody,
+        );
       }
 
       const scriptFiles = generateScripts({
