@@ -23,6 +23,8 @@ import { generateUATPlan, generateUATPlanHtml } from '../src/services/generators
 import { generateSolutionDoc, generateSolutionDocHtml } from '../src/services/generators/solutionDocGenerator.js';
 import { generateTrainingManual, generateTrainingManualHtml } from '../src/services/generators/trainingManualGenerator.js';
 import { generateImplementationPlanHtml } from '../src/services/generators/planGenerator.js';
+import { generateSdfCustomRecords } from '../src/services/generators/sdfCustomRecordsGenerator.js';
+import { validateSDFBundle } from '../src/services/generators/sdfValidator.js';
 import netsuiteAdaptor from '@ofoq/adaptor-netsuite';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -326,6 +328,37 @@ for (const [filename, content] of writes) {
   process.stdout.write(`  ✓ ${filename}\n`);
 }
 
+// ── Real-code generation: SDF custom records ────────────────────────────────
+// First real-code artifact in the demo bundle. Reads the same
+// ns.design.customRecords answer the wizard captures and emits one
+// deployable Objects/customrecord_<slug>.xml per declared record.
+// Runs the structural validator before writing — fails the bundle
+// build if any emitted XML would be rejected by Oracle SDF.
+const sdfRoot = path.join(outRoot, 'SDF');
+const customRecordsResult = generateSdfCustomRecords({
+  customRecordsAnswer: answers['ns.design.customRecords'] as string | undefined,
+});
+
+if (customRecordsResult.emitted.length > 0) {
+  const validation = validateSDFBundle(customRecordsResult.files);
+  if (!validation.ok) {
+    // eslint-disable-next-line no-console
+    console.error(`  ✗ SDF VALIDATION FAILED:`);
+    for (const err of validation.errors) {
+      // eslint-disable-next-line no-console
+      console.error(`    ${err.file}: ${err.rule} — ${err.detail}`);
+    }
+    process.exit(1);
+  }
+
+  for (const [relPath, content] of Object.entries(customRecordsResult.files)) {
+    const fullPath = path.join(sdfRoot, relPath);
+    await fs.mkdir(path.dirname(fullPath), { recursive: true });
+    await fs.writeFile(fullPath, content, 'utf8');
+    process.stdout.write(`  ✓ SDF/${relPath}\n`);
+  }
+}
+
 // ── Anti-bleed verification ─────────────────────────────────────────────────
 // Confirm NetSuite-specific terminology IS present (this is the inverse of
 // the Odoo banlist — for NetSuite we expect to see it). Catches any future
@@ -347,7 +380,7 @@ console.log('');
 // eslint-disable-next-line no-console
 console.log(`  Bundle: ${outRoot}`);
 // eslint-disable-next-line no-console
-console.log(`  Files:  ${writes.length}`);
+console.log(`  Files:  ${writes.length} doc + ${customRecordsResult.emitted.length} SDF custom records`);
 if (missingTerms === 0) {
   // eslint-disable-next-line no-console
   console.log(`  Sanity: ✓ NetSuite terminology present in BRD`);

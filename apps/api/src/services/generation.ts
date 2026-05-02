@@ -6,6 +6,7 @@ import { generateBRD, generateBRDHtml, type AdaptorContext } from './generators/
 import { generateKickoff, generateKickoffHtml, type KickoffMember } from './generators/kickoffGenerator.js';
 import { getAdaptorRegistry } from '@ofoq/adaptor-registry';
 import { generateSDFPackage } from './generators/sdfGenerator.js';
+import { generateSdfCustomRecords } from './generators/sdfCustomRecordsGenerator.js';
 import { validateSDFBundle, isValidationEnabled } from './generators/sdfValidator.js';
 import { generateScripts } from './generators/scriptGenerator.js';
 import { generateRiskRegister } from './generators/riskGenerator.js';
@@ -249,6 +250,18 @@ export async function processJob(jobId: string, db: DbModule) {
         answers,
         clientName: eng.clientName as string,
       });
+
+      // Real Code Generation — wizard-driven custom records.
+      // Reads ns.design.customRecords (NS SD Depth Pack TEXTAREA) and
+      // emits one Objects/customrecord_<slug>.xml per declared record.
+      // Output goes into the same sdfFiles map so the validator below
+      // gates these too. Empty / missing input yields zero files —
+      // pre-NS-SD-pack engagements don't have this answer and are
+      // unaffected.
+      const customRecordsResult = generateSdfCustomRecords({
+        customRecordsAnswer: answers['ns.design.customRecords'] as string | undefined,
+      });
+      Object.assign(sdfFiles, customRecordsResult.files);
 
       // Phase 8: structural SDF validation gate. Fails the job loudly if any
       // generated XML file would be rejected by Oracle's schema — catches
