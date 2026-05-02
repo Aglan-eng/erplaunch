@@ -224,6 +224,26 @@ const answers: Record<string, unknown> = {
   'odoo.revenue.subscriptionAutoRenewal': 'AUTO',
   'odoo.revenue.subscriptionDunningPolicy': 'Retry day 1, day 3, day 7\nSuspend access after 14 days\nCancel after 30 days',
   'odoo.revenue.mrrArrReporting': true,
+
+  // Pack 9 — Operations Apps (HR + Project + CRM). Demo engagement
+  // exercises all three with MENA-realistic EOSB rules and a T&M
+  // billing setup.
+  'odoo.operations.hrInScope': true,
+  'odoo.operations.payrollInScope': true,
+  'odoo.operations.timeOffInScope': true,
+  'odoo.operations.attendanceInScope': true,
+  'odoo.operations.endOfServiceRules':
+    'UAE: 21 days/year first 5 yrs, 30 days/year after; capped at 2yr salary (Federal Decree-Law No. 33 of 2021)\nSaudi Arabia: 1/2 month/yr first 5 yrs, 1 month/yr after (KSA Labour Law Article 84)\nEgypt: per Article 122 of Egypt labour law',
+  'odoo.operations.recruitmentInScope': true,
+  'odoo.operations.projectInScope': true,
+  'odoo.operations.timesheetsInScope': true,
+  'odoo.operations.projectBillingMode': 'TM',
+  'odoo.operations.projectProfitability': true,
+  'odoo.operations.projectForecasting': true,
+  'odoo.operations.crmInScope': true,
+  'odoo.operations.crmPipelineStages': 'New\nQualified\nProposal\nNegotiation\nWon / Lost',
+  'odoo.operations.crmLeadEnrichmentInScope': true,
+  'odoo.operations.crmEmailIntegration': 'Outlook plug-in\nIMAP catch-all (sales@sahel.ae)\nMailchimp sync',
 };
 const comments = [
   { sectionKey: 'license', text: 'Enterprise edition confirmed; Studio + Documents required for approval matrix + contract storage. MRP + Quality modules for the two production lines.' },

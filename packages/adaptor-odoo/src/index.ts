@@ -129,6 +129,10 @@ const schema: QuestionnaireSchema = {
     // Optional revenue-facing apps; sections are conditional per
     // *.inScope flags so engagements that don't need them stay clean.
     buildRevenueAppsFlow(),
+    // Pack 9 — Operations Apps depth (HR + Project + CRM). Closes
+    // the original 9-pack Odoo content track. Same conditional-
+    // section pattern as Pack 8.
+    buildOperationsAppsFlow(),
     buildManufacturingFlow(),
     buildReturnsFlow(),
     buildMigrationFlow(),
@@ -1315,6 +1319,181 @@ function buildRevenueAppsFlow(): FlowDefinition {
             required: false,
             label: 'MRR / ARR reporting required? (Monthly / Annual Recurring Revenue dashboards)',
             dependsOn: { questionId: 'odoo.revenue.subscriptionsInScope', value: true },
+          },
+        ],
+      },
+    ],
+  };
+}
+
+// ─── Pack 9 — Operations Apps depth (HR + Project + CRM) ─────────────────────
+//
+// 15 questions across 3 sections:
+//   - hr        (6): in-scope, payroll, time-off, attendance, EOSB
+//                    rules, recruitment.
+//   - project   (5): in-scope, timesheets, billing mode, profitability,
+//                    forecasting.
+//   - crm       (4): in-scope, pipeline stages, lead enrichment, email
+//                    integration.
+//
+// Each section is conditional via dependsOn on the *.inScope flag so
+// engagements that don't need a given app keep the wizard clean.
+//
+// MENA emphasis: end-of-service / gratuity rules (Q1.5) get explicit
+// help text — EOSB liability is a non-trivial audit concern across
+// GCC + Egypt + Levant. Pack 9 R3 nudges the consultant when EOSB
+// rules are captured but the country is outside that region.
+//
+// Sources: Odoo HR docs (employees, contracts, payroll dependency),
+// Odoo Project + Timesheets (billing modes, profitability tracking,
+// Planning module is Enterprise-only), Odoo CRM (pipeline stages,
+// lead enrichment, email integration), MENA labour-law basis (UAE
+// Federal Decree-Law No. 33 of 2021, KSA Labour Law Article 84,
+// Egypt Labour Law).
+const MENA_EOSB_COUNTRIES = ['AE', 'SA', 'KW', 'QA', 'BH', 'OM', 'EG', 'JO', 'LB'];
+
+function buildOperationsAppsFlow(): FlowDefinition {
+  return {
+    id: 'OPERATIONS_APPS',
+    label: 'Operations Apps (HR, Project, CRM)',
+    description:
+      'Optional operational Odoo apps — Human Resources + Payroll, Project + Timesheets, and CRM. Each section is conditional on the corresponding "in scope" answer.',
+    sections: [
+      {
+        id: 'hr',
+        label: 'HR + Payroll',
+        order: 1,
+        questions: [
+          {
+            id: 'odoo.operations.hrInScope',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'HR module in scope? (employees, departments, contracts)',
+          },
+          {
+            id: 'odoo.operations.payrollInScope',
+            inputType: 'BOOLEAN',
+            required: false,
+            label: 'Country-specific payroll in scope?',
+            dependsOn: { questionId: 'odoo.operations.hrInScope', value: true },
+          },
+          {
+            id: 'odoo.operations.timeOffInScope',
+            inputType: 'BOOLEAN',
+            required: false,
+            label: 'Time-off / leave management in scope?',
+            dependsOn: { questionId: 'odoo.operations.hrInScope', value: true },
+          },
+          {
+            id: 'odoo.operations.attendanceInScope',
+            inputType: 'BOOLEAN',
+            required: false,
+            label: 'Attendance tracking (clock-in/out, biometric/badge integration)?',
+            dependsOn: { questionId: 'odoo.operations.hrInScope', value: true },
+          },
+          {
+            id: 'odoo.operations.endOfServiceRules',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "End-of-service / gratuity / severance rules — describe per country (e.g., 'UAE: 21 days/year first 5 yrs, 30 after; capped at 2yr salary', 'Saudi Arabia: 1/2 month/yr first 5 yrs, 1 month after', 'Egypt: per article 122 of labour law')",
+            dependsOn: { questionId: 'odoo.operations.payrollInScope', value: true },
+            help: {
+              title: 'EOSB / gratuity in MENA',
+              body: 'Critical for MENA: EOSB / gratuity is a non-trivial liability that auditors check. Odoo HR Payroll handles this via country-specific contracts in l10n_<country>_hr_payroll modules.',
+            },
+          },
+          {
+            id: 'odoo.operations.recruitmentInScope',
+            inputType: 'BOOLEAN',
+            required: false,
+            label: 'Recruitment module in scope? (job postings, candidate pipeline, interview scoring)',
+            dependsOn: { questionId: 'odoo.operations.hrInScope', value: true },
+          },
+        ],
+      },
+      {
+        id: 'project',
+        label: 'Project + Timesheets',
+        order: 2,
+        questions: [
+          {
+            id: 'odoo.operations.projectInScope',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'Project module in scope?',
+          },
+          {
+            id: 'odoo.operations.timesheetsInScope',
+            inputType: 'BOOLEAN',
+            required: false,
+            label: 'Timesheets in scope? (employee time logged against tasks/projects)',
+          },
+          {
+            id: 'odoo.operations.projectBillingMode',
+            inputType: 'SINGLE_SELECT',
+            required: false,
+            label: 'Project billing mode (only if Project + Sales both in scope)',
+            dependsOn: { questionId: 'odoo.operations.projectInScope', value: true },
+            options: [
+              { value: 'NONE', label: 'Not billed (internal projects only)' },
+              { value: 'TM', label: 'Time & Materials (invoice timesheets at sale price)' },
+              { value: 'FIXED_PRICE', label: 'Fixed price (milestone-based invoicing)' },
+              { value: 'MILESTONE', label: 'Milestone (deliverable-based invoicing)' },
+              { value: 'MIXED', label: 'Mixed — different billing per project' },
+            ],
+          },
+          {
+            id: 'odoo.operations.projectProfitability',
+            inputType: 'BOOLEAN',
+            required: false,
+            label:
+              'Project profitability tracking required? (timesheet cost vs invoiced revenue per project)',
+            dependsOn: { questionId: 'odoo.operations.projectInScope', value: true },
+          },
+          {
+            id: 'odoo.operations.projectForecasting',
+            inputType: 'BOOLEAN',
+            required: false,
+            label:
+              "Resource forecasting / capacity planning required? (who's booked on what for the next N weeks)",
+            dependsOn: { questionId: 'odoo.operations.projectInScope', value: true },
+          },
+        ],
+      },
+      {
+        id: 'crm',
+        label: 'CRM',
+        order: 3,
+        questions: [
+          {
+            id: 'odoo.operations.crmInScope',
+            inputType: 'BOOLEAN',
+            required: true,
+            label: 'CRM module in scope?',
+          },
+          {
+            id: 'odoo.operations.crmPipelineStages',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Sales pipeline stages (one per line — e.g., 'New → Qualified → Proposal → Negotiation → Won/Lost'). Default Odoo stages are fine for most engagements.",
+            dependsOn: { questionId: 'odoo.operations.crmInScope', value: true },
+          },
+          {
+            id: 'odoo.operations.crmLeadEnrichmentInScope',
+            inputType: 'BOOLEAN',
+            required: false,
+            label: 'Lead enrichment / lead-to-opportunity automation in scope?',
+            dependsOn: { questionId: 'odoo.operations.crmInScope', value: true },
+          },
+          {
+            id: 'odoo.operations.crmEmailIntegration',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Email integration (one per line — e.g., 'Outlook plug-in', 'Gmail plug-in', 'IMAP catch-all', 'Mailchimp sync')",
+            dependsOn: { questionId: 'odoo.operations.crmInScope', value: true },
           },
         ],
       },
@@ -3328,6 +3507,174 @@ const rules: RulePack = {
             questionId: 'odoo.revenue.posType',
             values: ['RESTAURANT', 'BOTH'],
           } },
+        ],
+      },
+    },
+
+    // ── Pack 9 — Operations Apps depth rules ──────────────────────────────
+
+    // R1: HR in scope but HR module not licensed.
+    {
+      id: 'odoo.operations.hr-needs-module',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: ['odoo.operations.hrInScope'],
+      message: "HR is in scope but the HR module isn't in the license.",
+      resolution: 'Add HR to license.modules. Required for employees, departments, contracts, and any other operations app that references employees.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.operations.hrInScope' } },
+          { licenseMissingModule: 'HR' },
+        ],
+      },
+    },
+
+    // R2: Payroll depends on the HR employee + contract model. If HR
+    // isn't in scope, payroll has nothing to attach contracts to.
+    {
+      id: 'odoo.operations.payroll-needs-hr-module',
+      type: 'CONFIG_CONFLICT',
+      severity: 'BLOCK',
+      questionIds: ['odoo.operations.payrollInScope', 'odoo.operations.hrInScope'],
+      message: "Payroll is in scope but HR isn't. Payroll depends on the HR employee + contract model.",
+      resolution: 'Set hrInScope to true and add HR to license.modules. Payroll modules (l10n_<country>_hr_payroll) auto-pull HR as a dependency.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.operations.payrollInScope' } },
+          { answerFalsy: { questionId: 'odoo.operations.hrInScope' } },
+        ],
+      },
+    },
+
+    // R3: EOSB rules captured but primary country is outside the
+    // typical MENA jurisdictions where end-of-service is the dominant
+    // payroll concern. Fires WARN so the consultant confirms the
+    // legal regime is correctly captured.
+    {
+      id: 'odoo.operations.eosb-needs-mena-payroll',
+      type: 'DATA_WARNING',
+      severity: 'WARN',
+      questionIds: ['odoo.operations.endOfServiceRules', 'odoo.foundation.primaryCountry'],
+      message: "End-of-service rules captured but primary country isn't in the typical EOSB jurisdictions (GCC + Egypt + Levant). Confirm this is intentional.",
+      resolution: 'If primary country is correct, document the local labour-law basis in endOfServiceRules so the consultant building Phase 4 contracts knows which legal regime to follow.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.operations.endOfServiceRules' } },
+          { not: { answerIn: {
+            questionId: 'odoo.foundation.primaryCountry',
+            values: MENA_EOSB_COUNTRIES,
+          } } },
+        ],
+      },
+    },
+
+    // R4: Timesheets without Project loses most of its value (no
+    // project profitability, no analytic by project).
+    {
+      id: 'odoo.operations.timesheets-without-project',
+      type: 'DATA_WARNING',
+      severity: 'WARN',
+      questionIds: ['odoo.operations.timesheetsInScope', 'odoo.operations.projectInScope'],
+      message: "Timesheets in scope but Project isn't. Timesheets without Project work, but lose most of their value (no project profitability, no analytic by project).",
+      resolution: 'Either enable Project (recommended) or document why timesheets are being captured without project tracking (e.g., for payroll cost attribution only).',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.operations.timesheetsInScope' } },
+          { answerFalsy: { questionId: 'odoo.operations.projectInScope' } },
+        ],
+      },
+    },
+
+    // R5: Project billing requires the Sales module — invoices are
+    // generated as sale orders for project services. NONE billing
+    // mode (internal projects only) doesn't need Sales.
+    {
+      id: 'odoo.operations.tm-billing-needs-sales',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: ['odoo.operations.projectBillingMode'],
+      message: 'Project billing requires the Sales module — invoices are generated as sale orders for project services.',
+      resolution: 'Add BASE_SALES to license.modules.',
+      when: {
+        all: [
+          { answerIn: {
+            questionId: 'odoo.operations.projectBillingMode',
+            values: ['TM', 'FIXED_PRICE', 'MILESTONE', 'MIXED'],
+          } },
+          { licenseMissingModule: 'BASE_SALES' },
+        ],
+      },
+    },
+
+    // R6: Project profitability requires analytic accounting to
+    // attribute costs and revenue per project. No analytic axes
+    // configured → profitability can't be tracked.
+    {
+      id: 'odoo.operations.profitability-needs-analytic-axes',
+      type: 'DATA_WARNING',
+      severity: 'WARN',
+      questionIds: ['odoo.operations.projectProfitability', 'odoo.accounting.analyticAxes'],
+      message: 'Project profitability requires analytic accounting to attribute costs and revenue per project. No analytic axes are configured.',
+      resolution: "Add 'Projects' as an analytic axis in Pack 4 ACCOUNTING. This is the standard pattern — every timesheet entry creates an analytic line tagged to the project.",
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.operations.projectProfitability' } },
+          { answerFalsy: { questionId: 'odoo.accounting.analyticAxes' } },
+        ],
+      },
+    },
+
+    // R7: Resource forecasting / Planning module is Odoo
+    // Enterprise-only. Community users have to manage capacity
+    // externally.
+    {
+      id: 'odoo.operations.forecasting-is-enterprise-only',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: ['odoo.operations.projectForecasting', 'odoo.foundation.edition'],
+      message: 'Resource forecasting / Planning module is Odoo Enterprise-only.',
+      resolution: 'Either upgrade edition to Enterprise, or disable projectForecasting and manage capacity via spreadsheets / external tools.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.operations.projectForecasting' } },
+          { answerEquals: { questionId: 'odoo.foundation.edition', value: 'COMMUNITY' } },
+        ],
+      },
+    },
+
+    // R8: CRM in scope but CRM module not licensed. CRM is included
+    // in Community edition, so the only failure mode is forgetting
+    // to add it.
+    {
+      id: 'odoo.operations.crm-needs-module',
+      type: 'LICENSE_GAP',
+      severity: 'BLOCK',
+      questionIds: ['odoo.operations.crmInScope'],
+      message: "CRM is in scope but the CRM module isn't in the license.",
+      resolution: 'Add CRM to license.modules. CRM is included in Community edition.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.operations.crmInScope' } },
+          { licenseMissingModule: 'CRM' },
+        ],
+      },
+    },
+
+    // R9: Attendance tracking with biometric/badge devices on
+    // Self-hosted typically requires an IoT Box for hardware
+    // connectivity. Online and Odoo.sh handle the IoT pairing
+    // service automatically.
+    {
+      id: 'odoo.operations.attendance-on-selfhosted-needs-iot',
+      type: 'DATA_WARNING',
+      severity: 'INFO',
+      questionIds: ['odoo.operations.attendanceInScope', 'odoo.foundation.deploymentMode'],
+      message: 'Attendance tracking with biometric/badge devices on Self-hosted typically requires an IoT Box for hardware connectivity.',
+      resolution: 'Plan an IoT Box per attendance station. Allocate ~half day per device for first-time pairing + test. Online and Odoo.sh handle the IoT pairing service automatically; Self-hosted needs network reachability between IoT Box and the Odoo server.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'odoo.operations.attendanceInScope' } },
+          { answerEquals: { questionId: 'odoo.foundation.deploymentMode', value: 'SELFHOSTED' } },
         ],
       },
     },

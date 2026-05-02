@@ -20,16 +20,17 @@ describe('odooAdaptor: manifest', () => {
 });
 
 describe('odooAdaptor: schema', () => {
-  it('exposes the canonical Odoo App-shaped flow order (Pack R + Pack 8)', () => {
+  it('exposes the canonical Odoo App-shaped flow order (Pack R + Pack 8 + Pack 9)', () => {
     const ids = odooAdaptor.schema.flows.map((f) => f.id);
     // Pack R — Restructure to Odoo App shape.
-    // Pack 8 — Revenue Apps (POS + eCommerce + Subscriptions) inserted
-    // between Sales (O2C) and Manufacturing. These are optional
-    // revenue-facing apps; the flow is conditional per-section on the
-    // *.inScope flags.
+    // Pack 8 — REVENUE_APPS (POS + eCommerce + Subscriptions) between
+    //          Sales and Manufacturing.
+    // Pack 9 — OPERATIONS_APPS (HR + Project + CRM) between Revenue
+    //          Apps and Manufacturing. Closes the Odoo content track.
     expect(ids).toEqual([
       'FOUNDATION', 'ACCOUNTING', 'TAX', 'LOCALIZATION', 'INVENTORY',
-      'P2P', 'O2C', 'REVENUE_APPS', 'MANUFACTURING', 'RETURNS', 'MIGRATION',
+      'P2P', 'O2C', 'REVENUE_APPS', 'OPERATIONS_APPS',
+      'MANUFACTURING', 'RETURNS', 'MIGRATION',
     ]);
   });
 
@@ -2164,12 +2165,12 @@ describe('odooAdaptor: Pack 6 — MANUFACTURING flow shape (renamed in Pack R)',
     expect(mfg!.description).toMatch(/bom|routing|quality|subcontract|plm|maintenance/i);
   });
 
-  it('MANUFACTURING sits between REVENUE_APPS and Returns (Pack 8 inserted REVENUE_APPS before MFG)', () => {
+  it('MANUFACTURING sits between OPERATIONS_APPS and Returns (Pack 9 inserted OPERATIONS_APPS before MFG)', () => {
     const ids = odooAdaptor.schema.flows.map((f) => f.id);
-    const revIdx = ids.indexOf('REVENUE_APPS');
+    const opsIdx = ids.indexOf('OPERATIONS_APPS');
     const mfgIdx = ids.indexOf('MANUFACTURING');
     const retIdx = ids.indexOf('RETURNS');
-    expect(mfgIdx).toBe(revIdx + 1);
+    expect(mfgIdx).toBe(opsIdx + 1);
     expect(retIdx).toBe(mfgIdx + 1);
   });
 
@@ -2903,13 +2904,13 @@ describe('odooAdaptor: Pack 8 — REVENUE_APPS flow shape', () => {
     expect(rev!.description).toMatch(/pos|point of sale|ecommerce|subscription/i);
   });
 
-  it('REVENUE_APPS sits between Sales (O2C) and Manufacturing', () => {
+  it('REVENUE_APPS sits between Sales (O2C) and Operations Apps (Pack 9 inserted OPERATIONS_APPS after)', () => {
     const ids = odooAdaptor.schema.flows.map((f) => f.id);
     const o2cIdx = ids.indexOf('O2C');
     const revIdx = ids.indexOf('REVENUE_APPS');
-    const mfgIdx = ids.indexOf('MANUFACTURING');
+    const opsIdx = ids.indexOf('OPERATIONS_APPS');
     expect(revIdx).toBe(o2cIdx + 1);
-    expect(mfgIdx).toBe(revIdx + 1);
+    expect(opsIdx).toBe(revIdx + 1);
   });
 
   it('renders three sections in the documented order', () => {
@@ -3236,5 +3237,333 @@ describe('odooAdaptor: Pack 8 — Revenue Apps rule evaluation', () => {
       license: { edition: 'ENTERPRISE', modules: ['POINT_OF_SALE'] },
     });
     expect(conflicts.map((c) => c.id)).not.toContain('odoo.revenue.restaurant-pos-with-no-mention-of-printer-routing');
+  });
+});
+
+// ─── Pack 9 — Operations Apps depth (HR + Project + CRM) ─────────────────────
+
+describe('odooAdaptor: Pack 9 — OPERATIONS_APPS flow shape', () => {
+  const ops = odooAdaptor.schema.flows.find((f) => f.id === 'OPERATIONS_APPS');
+
+  it('OPERATIONS_APPS flow exists with the expected label + description', () => {
+    expect(ops).toBeDefined();
+    expect(ops!.label).toBe('Operations Apps (HR, Project, CRM)');
+    expect(ops!.description).toMatch(/hr|payroll|project|timesheet|crm/i);
+  });
+
+  it('OPERATIONS_APPS sits between REVENUE_APPS and Manufacturing', () => {
+    const ids = odooAdaptor.schema.flows.map((f) => f.id);
+    const revIdx = ids.indexOf('REVENUE_APPS');
+    const opsIdx = ids.indexOf('OPERATIONS_APPS');
+    const mfgIdx = ids.indexOf('MANUFACTURING');
+    expect(opsIdx).toBe(revIdx + 1);
+    expect(mfgIdx).toBe(opsIdx + 1);
+  });
+
+  it('renders three sections in the documented order', () => {
+    const ids = (ops!.sections as Array<{ id: string; order: number }>)
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .map((s) => s.id);
+    expect(ids).toEqual(['hr', 'project', 'crm']);
+  });
+
+  it('HR + Payroll — 6 questions with the right ids + types', () => {
+    const sec = ops!.sections.find((s) => s.id === 'hr')!;
+    expect(sec.label).toBe('HR + Payroll');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('odoo.operations.hrInScope')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('odoo.operations.payrollInScope')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('odoo.operations.timeOffInScope')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('odoo.operations.attendanceInScope')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('odoo.operations.endOfServiceRules')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('odoo.operations.recruitmentInScope')?.inputType).toBe('BOOLEAN');
+  });
+
+  it('Project + Timesheets — 5 questions with the right ids + types + options', () => {
+    const sec = ops!.sections.find((s) => s.id === 'project')!;
+    expect(sec.label).toBe('Project + Timesheets');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('odoo.operations.projectInScope')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('odoo.operations.timesheetsInScope')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('odoo.operations.projectBillingMode')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('odoo.operations.projectBillingMode')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['FIXED_PRICE', 'MILESTONE', 'MIXED', 'NONE', 'TM']);
+    expect(byId.get('odoo.operations.projectProfitability')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('odoo.operations.projectForecasting')?.inputType).toBe('BOOLEAN');
+  });
+
+  it('CRM — 4 questions with the right ids + types', () => {
+    const sec = ops!.sections.find((s) => s.id === 'crm')!;
+    expect(sec.label).toBe('CRM');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('odoo.operations.crmInScope')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('odoo.operations.crmPipelineStages')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('odoo.operations.crmLeadEnrichmentInScope')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('odoo.operations.crmEmailIntegration')?.inputType).toBe('TEXTAREA');
+  });
+});
+
+describe('odooAdaptor: Pack 9 — Operations Apps rules registered in odoo-rules', () => {
+  const ids = odooAdaptor.rules.rules.map((r) => r.id);
+
+  it('R1 HR needs HR module', () => {
+    expect(ids).toContain('odoo.operations.hr-needs-module');
+  });
+  it('R2 payroll needs HR module', () => {
+    expect(ids).toContain('odoo.operations.payroll-needs-hr-module');
+  });
+  it('R3 EOSB rules for non-MENA country (WARN)', () => {
+    expect(ids).toContain('odoo.operations.eosb-needs-mena-payroll');
+  });
+  it('R4 timesheets without project (WARN)', () => {
+    expect(ids).toContain('odoo.operations.timesheets-without-project');
+  });
+  it('R5 project billing needs Sales module', () => {
+    expect(ids).toContain('odoo.operations.tm-billing-needs-sales');
+  });
+  it('R6 profitability needs analytic axes (WARN)', () => {
+    expect(ids).toContain('odoo.operations.profitability-needs-analytic-axes');
+  });
+  it('R7 forecasting is Enterprise-only', () => {
+    expect(ids).toContain('odoo.operations.forecasting-is-enterprise-only');
+  });
+  it('R8 CRM needs CRM module', () => {
+    expect(ids).toContain('odoo.operations.crm-needs-module');
+  });
+  it('R9 attendance on self-hosted (INFO)', () => {
+    expect(ids).toContain('odoo.operations.attendance-on-selfhosted-needs-iot');
+  });
+});
+
+describe('odooAdaptor: Pack 9 — Operations Apps rule evaluation', () => {
+  it('R1 fires (BLOCK) when hrInScope=true AND HR module missing', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'odoo.operations.hrInScope': true },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.operations.hr-needs-module');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R1 does NOT fire when HR module is licensed', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'odoo.operations.hrInScope': true },
+      license: { edition: 'ENTERPRISE', modules: ['HR'] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.operations.hr-needs-module');
+  });
+
+  it('R2 fires (BLOCK) when payrollInScope=true AND hrInScope=false', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.operations.payrollInScope': true,
+        'odoo.operations.hrInScope': false,
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.operations.payroll-needs-hr-module');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R2 does NOT fire when both payroll and HR are in scope', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.operations.payrollInScope': true,
+        'odoo.operations.hrInScope': true,
+      },
+      license: { edition: 'ENTERPRISE', modules: ['HR'] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.operations.payroll-needs-hr-module');
+  });
+
+  it('R3 fires (WARN) when EOSB rules captured AND primary country is non-MENA', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.operations.endOfServiceRules': 'Severance: 2 weeks per year of service',
+        'odoo.foundation.primaryCountry': 'US',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.operations.eosb-needs-mena-payroll');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R3 does NOT fire when primary country IS in the MENA list', () => {
+    for (const cc of ['AE', 'SA', 'KW', 'QA', 'BH', 'OM', 'EG', 'JO', 'LB']) {
+      const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+        answers: {
+          'odoo.operations.endOfServiceRules': 'EOSB per local labour law',
+          'odoo.foundation.primaryCountry': cc,
+        },
+        license: { edition: 'ENTERPRISE', modules: [] },
+      });
+      expect(
+        conflicts.map((c) => c.id),
+        `R3 should NOT fire when primaryCountry=${cc}`,
+      ).not.toContain('odoo.operations.eosb-needs-mena-payroll');
+    }
+  });
+
+  it('R3 does NOT fire when endOfServiceRules is empty', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.operations.endOfServiceRules': '',
+        'odoo.foundation.primaryCountry': 'US',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.operations.eosb-needs-mena-payroll');
+  });
+
+  it('R4 fires (WARN) when timesheetsInScope=true AND projectInScope=false', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.operations.timesheetsInScope': true,
+        'odoo.operations.projectInScope': false,
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.operations.timesheets-without-project');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R4 does NOT fire when both project and timesheets are in scope', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.operations.timesheetsInScope': true,
+        'odoo.operations.projectInScope': true,
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.operations.timesheets-without-project');
+  });
+
+  it('R5 fires (BLOCK) when projectBillingMode is a real billing mode AND BASE_SALES missing', () => {
+    for (const mode of ['TM', 'FIXED_PRICE', 'MILESTONE', 'MIXED']) {
+      const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+        answers: { 'odoo.operations.projectBillingMode': mode },
+        license: { edition: 'ENTERPRISE', modules: [] },
+      });
+      const r = conflicts.find((c) => c.id === 'odoo.operations.tm-billing-needs-sales');
+      expect(r, `R5 should fire when billingMode=${mode}`).toBeDefined();
+      expect(r?.severity).toBe('BLOCK');
+    }
+  });
+
+  it('R5 does NOT fire when billingMode=NONE', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'odoo.operations.projectBillingMode': 'NONE' },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.operations.tm-billing-needs-sales');
+  });
+
+  it('R5 does NOT fire when BASE_SALES is licensed', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'odoo.operations.projectBillingMode': 'TM' },
+      license: { edition: 'ENTERPRISE', modules: ['BASE_SALES'] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.operations.tm-billing-needs-sales');
+  });
+
+  it('R6 fires (WARN) when projectProfitability=true AND analyticAxes empty', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.operations.projectProfitability': true,
+        'odoo.accounting.analyticAxes': '',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.operations.profitability-needs-analytic-axes');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R6 does NOT fire when analyticAxes is populated', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.operations.projectProfitability': true,
+        'odoo.accounting.analyticAxes': 'Projects\nCost Centers',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.operations.profitability-needs-analytic-axes');
+  });
+
+  it('R7 fires (BLOCK) when projectForecasting=true AND foundation.edition=COMMUNITY', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.operations.projectForecasting': true,
+        'odoo.foundation.edition': 'COMMUNITY',
+      },
+      license: { edition: 'COMMUNITY', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.operations.forecasting-is-enterprise-only');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R7 does NOT fire on Enterprise edition', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.operations.projectForecasting': true,
+        'odoo.foundation.edition': 'ENTERPRISE',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.operations.forecasting-is-enterprise-only');
+  });
+
+  it('R8 fires (BLOCK) when crmInScope=true AND CRM module missing', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'odoo.operations.crmInScope': true },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.operations.crm-needs-module');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R8 does NOT fire when CRM is licensed', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'odoo.operations.crmInScope': true },
+      license: { edition: 'ENTERPRISE', modules: ['CRM'] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('odoo.operations.crm-needs-module');
+  });
+
+  it('R9 fires (INFO) when attendanceInScope=true AND deploymentMode=SELFHOSTED', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'odoo.operations.attendanceInScope': true,
+        'odoo.foundation.deploymentMode': 'SELFHOSTED',
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'odoo.operations.attendance-on-selfhosted-needs-iot');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('INFO');
+  });
+
+  it('R9 does NOT fire on Online or Odoo.sh deployment', () => {
+    for (const deployment of ['ONLINE', 'ODOOSH']) {
+      const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+        answers: {
+          'odoo.operations.attendanceInScope': true,
+          'odoo.foundation.deploymentMode': deployment,
+        },
+        license: { edition: 'ENTERPRISE', modules: [] },
+      });
+      expect(
+        conflicts.map((c) => c.id),
+        `R9 should NOT fire when deployment=${deployment}`,
+      ).not.toContain('odoo.operations.attendance-on-selfhosted-needs-iot');
+    }
   });
 });

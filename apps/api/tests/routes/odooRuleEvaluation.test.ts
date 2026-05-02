@@ -1824,3 +1824,211 @@ describe('Odoo engagement — Pack 8 Revenue Apps rules through the route', () =
     expect(hit?.severity).toBe('WARN');
   });
 });
+
+// ─── Pack 9 — Operations Apps depth through the route ────────────────────────
+
+describe('Odoo engagement — Pack 9 Operations Apps rules through the route', () => {
+  it('R1: hrInScope=true + no HR module fires hr-needs-module (BLOCK)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'HR No-Module Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.operations.hrInScope': true,
+        'odoo.foundation.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.operations.hr-needs-module');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('BLOCK');
+  });
+
+  it('R2: payrollInScope=true + hrInScope=false fires payroll-needs-hr-module (BLOCK)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'Payroll No-HR Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.operations.payrollInScope': true,
+        'odoo.operations.hrInScope': false,
+        'odoo.foundation.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.operations.payroll-needs-hr-module');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('BLOCK');
+  });
+
+  it('R3: endOfServiceRules captured + non-MENA country fires eosb-needs-mena-payroll (WARN)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'Non-MENA EOSB Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.operations.endOfServiceRules': 'Severance: 2 weeks per year of service',
+        'odoo.foundation.primaryCountry': 'US',
+        'odoo.foundation.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.operations.eosb-needs-mena-payroll');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('WARN');
+  });
+
+  it('R4: timesheetsInScope=true + projectInScope=false fires timesheets-without-project (WARN)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'Timesheets No-Project Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.operations.timesheetsInScope': true,
+        'odoo.operations.projectInScope': false,
+        'odoo.foundation.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.operations.timesheets-without-project');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('WARN');
+  });
+
+  it('R5: projectBillingMode=TM + no BASE_SALES fires tm-billing-needs-sales (BLOCK)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'TM Billing No-Sales Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.operations.projectBillingMode': 'TM',
+        'odoo.foundation.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.operations.tm-billing-needs-sales');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('BLOCK');
+  });
+
+  it('R6: projectProfitability=true + analyticAxes empty fires profitability-needs-analytic-axes (WARN)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'Profitability No-Axes Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.operations.projectProfitability': true,
+        'odoo.accounting.analyticAxes': '',
+        'odoo.foundation.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.operations.profitability-needs-analytic-axes');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('WARN');
+  });
+
+  it('R7: projectForecasting=true + COMMUNITY fires forecasting-is-enterprise-only (BLOCK)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'Community Forecasting Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'COMMUNITY', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.operations.projectForecasting': true,
+        'odoo.foundation.edition': 'COMMUNITY',
+        'odoo.foundation.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.operations.forecasting-is-enterprise-only');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('BLOCK');
+  });
+
+  it('R8: crmInScope=true + no CRM module fires crm-needs-module (BLOCK)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'CRM No-Module Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.operations.crmInScope': true,
+        'odoo.foundation.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.operations.crm-needs-module');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('BLOCK');
+  });
+
+  it('R9: attendanceInScope=true + deploymentMode=SELFHOSTED fires attendance-on-selfhosted-needs-iot (INFO)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'Self-Hosted Attendance Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: ['HR'] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'odoo.operations.attendanceInScope': true,
+        'odoo.foundation.deploymentMode': 'SELFHOSTED',
+        'odoo.foundation.fiscalYearStart': '01-01',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'odoo.operations.attendance-on-selfhosted-needs-iot');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('INFO');
+  });
+});
