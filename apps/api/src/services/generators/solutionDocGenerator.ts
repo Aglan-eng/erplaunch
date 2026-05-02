@@ -250,6 +250,57 @@ export function generateSolutionDoc(data: SolutionDocData): string {
       }
       doc += appendRichContent('rtn.');
     }
+
+    // ── Schema-driven appendix for non-legacy NetSuite flows ─────────────
+    // The hand-tuned tables above cover the legacy R2R/P2P/O2C/MFG/RTN
+    // flows. After NS Pack 1+ added FOUNDATION / TAX / LOCALIZATION /
+    // SOLUTION_DESIGN / KICKOFF, those flows were silently dropped here
+    // because the NetSuite branch didn't walk adaptor.flows. This block
+    // closes that gap: render any flow whose id is NOT in the legacy
+    // hardcoded set, using the same schema-driven format the non-NetSuite
+    // branch uses below. Lifecycle harness Phase 3 jumps from 4/10 to
+    // ~9/10 with this fix once the SOLUTION_DESIGN flow is populated.
+    const LEGACY_NS_FLOW_IDS = new Set(['R2R', 'P2P', 'O2C', 'PRODUCTION', 'MFG', 'RETURNS', 'RTN']);
+    let nsAppendixIndex = 6; // continues numbering after 3.1–3.5
+    for (const flow of adaptorFlows) {
+      if (LEGACY_NS_FLOW_IDS.has(flow.id)) continue;
+      const renderedSections = flow.sections
+        .map((s) => ({
+          section: s,
+          answered: s.questions.filter((q) => {
+            const v = answers[q.id];
+            return v !== undefined && v !== null && !(typeof v === 'string' && v.trim() === '');
+          }),
+        }))
+        .filter((x) => x.answered.length > 0);
+      if (renderedSections.length === 0) continue;
+
+      doc += `### 3.${nsAppendixIndex} ${flow.label}\n\n`;
+      if (flow.description) doc += `_${flow.description}_\n\n`;
+      nsAppendixIndex++;
+
+      for (const { section, answered } of renderedSections) {
+        doc += `#### ${section.label}\n\n`;
+        for (const q of answered) {
+          doc += `- **${q.label}** — ${fmt(q, answers[q.id])}\n`;
+        }
+        doc += `\n`;
+        const flowSectionKey = `${flow.id}.${section.id}`;
+        const adaptorSectionKey = `${adaptor.id}.${section.id}`;
+        const matchSec = (k: string): boolean =>
+          k === flowSectionKey || k === adaptorSectionKey || k === section.id;
+        const c = data.comments?.find((cm) => matchSec(cm.sectionKey));
+        if (c?.text) doc += `> **Consultant Notes:** ${c.text.replace(/\n/g, ' ')}\n\n`;
+        const ai = data.aiAdvice?.find((a) => matchSec(a.sectionKey))?.advice;
+        if (ai?.suggestions?.length) {
+          doc += `**Configuration & Best Practices:**\n`;
+          ai.suggestions.forEach((s: { title: string; description: string }) =>
+            doc += `- **${s.title}**: ${s.description}\n`,
+          );
+          doc += `\n`;
+        }
+      }
+    }
   } else {
     // Schema-driven walk for non-NetSuite adaptors. Renders each flow
     // that has at least one answered question as a numbered subsection,

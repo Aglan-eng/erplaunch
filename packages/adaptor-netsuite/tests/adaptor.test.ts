@@ -20,18 +20,17 @@ describe('netsuiteAdaptor: manifest', () => {
 });
 
 describe('netsuiteAdaptor: schema', () => {
-  it('exposes 9 flows in the canonical order — KICKOFF + FOUNDATION + TAX + LOCALIZATION + the legacy 5', () => {
+  it('exposes 10 flows in the canonical order — KICKOFF + FOUNDATION + TAX + LOCALIZATION + SOLUTION_DESIGN + the legacy 5', () => {
     const ids = netsuiteAdaptor.schema.flows.map((f) => f.id);
-    // Kickoff Pack — UNIVERSAL pack renders FIRST. Mirrored verbatim
-    //   from adaptor-odoo.
+    // Kickoff Pack — UNIVERSAL pack renders FIRST.
     // NS Pack 1 added FOUNDATION.
     // NS Pack 2 inserted TAX.
     // NS Pack 3 inserted LOCALIZATION.
-    // NetSuite keeps its native R2R/P2P/O2C terminology (unlike Odoo
-    // where they got restructured in Pack R).
+    // NS SD Depth Pack inserts SOLUTION_DESIGN after LOCALIZATION,
+    // before R2R — closes the Phase 3 lifecycle-harness gap (4/10 → 9+).
     expect(ids).toEqual([
       'KICKOFF',
-      'FOUNDATION', 'TAX', 'LOCALIZATION',
+      'FOUNDATION', 'TAX', 'LOCALIZATION', 'SOLUTION_DESIGN',
       'R2R', 'P2P', 'O2C', 'PRODUCTION', 'RETURNS',
     ]);
   });
@@ -217,14 +216,16 @@ describe('netsuiteAdaptor: NS Pack 1 — FOUNDATION flow shape', () => {
     expect(foundation!.description).toMatch(/edition|suitesuccess|user|country|subsidiary|fiscal/i);
   });
 
-  it('FOUNDATION renders second (after KICKOFF), before TAX / LOCALIZATION / R2R', () => {
+  it('FOUNDATION renders second (after KICKOFF), before TAX / LOCALIZATION / SOLUTION_DESIGN / R2R', () => {
     const ids = netsuiteAdaptor.schema.flows.map((f) => f.id);
-    // Kickoff Pack pushed FOUNDATION to index 1; TAX → 2; LOC → 3; R2R → 4.
     expect(ids[0]).toBe('KICKOFF');
     expect(ids[1]).toBe('FOUNDATION');
     expect(ids.indexOf('TAX')).toBe(2);
     expect(ids.indexOf('LOCALIZATION')).toBe(3);
-    expect(ids.indexOf('R2R')).toBe(4);
+    // NS SD Depth Pack inserted SOLUTION_DESIGN between LOCALIZATION
+    // and R2R, so R2R now sits at index 5.
+    expect(ids.indexOf('SOLUTION_DESIGN')).toBe(4);
+    expect(ids.indexOf('R2R')).toBe(5);
   });
 
   it('renders four sections in the documented order', () => {
@@ -885,13 +886,13 @@ describe('netsuiteAdaptor: NS Pack 3 — LOCALIZATION flow shape', () => {
     expect(loc!.description).toMatch(/suitesuccess|coa|statutory|residency|gdpr|language|localization/i);
   });
 
-  it('LOCALIZATION sits between TAX and R2R', () => {
+  it('LOCALIZATION sits between TAX and SOLUTION_DESIGN (NS SD Depth Pack inserted SD after)', () => {
     const ids = netsuiteAdaptor.schema.flows.map((f) => f.id);
     const tIdx = ids.indexOf('TAX');
     const lIdx = ids.indexOf('LOCALIZATION');
-    const r2rIdx = ids.indexOf('R2R');
+    const sdIdx = ids.indexOf('SOLUTION_DESIGN');
     expect(lIdx).toBe(tIdx + 1);
-    expect(r2rIdx).toBe(lIdx + 1);
+    expect(sdIdx).toBe(lIdx + 1);
   });
 
   it('renders four sections in the documented order', () => {
@@ -1370,5 +1371,311 @@ describe('netsuiteAdaptor: Kickoff Pack — rule evaluation', () => {
       license: { edition: 'MID_MARKET', modules: [] },
     });
     expect(conflicts.map((c) => c.id)).toContain('kickoff.communication.audience-empty');
+  });
+});
+
+// ─── NS Solution Design Depth Pack ───────────────────────────────────────────
+
+describe('netsuiteAdaptor: NS SD Depth — SOLUTION_DESIGN flow shape', () => {
+  const sd = netsuiteAdaptor.schema.flows.find((f) => f.id === 'SOLUTION_DESIGN');
+
+  it('SOLUTION_DESIGN flow exists with the expected label + description', () => {
+    expect(sd).toBeDefined();
+    expect(sd!.label).toBe('Solution Design — Architecture');
+    expect(sd!.description).toMatch(/architecture|customization|data model|security|integration|reporting/i);
+  });
+
+  it('SOLUTION_DESIGN sits between LOCALIZATION and R2R', () => {
+    const ids = netsuiteAdaptor.schema.flows.map((f) => f.id);
+    const locIdx = ids.indexOf('LOCALIZATION');
+    const sdIdx = ids.indexOf('SOLUTION_DESIGN');
+    const r2rIdx = ids.indexOf('R2R');
+    expect(sdIdx).toBe(locIdx + 1);
+    expect(r2rIdx).toBe(sdIdx + 1);
+  });
+
+  it('renders four sections in the documented order', () => {
+    const ids = (sd!.sections as Array<{ id: string; order: number }>)
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .map((s) => s.id);
+    expect(ids).toEqual(['approach', 'datamodel', 'security', 'integrations']);
+  });
+
+  it('Architecture Approach — 4 questions with the right ids + types + options', () => {
+    const sec = sd!.sections.find((s) => s.id === 'approach')!;
+    expect(sec.label).toBe('Architecture Approach');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('ns.design.architecturePattern')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('ns.design.architecturePattern')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['HYBRID_CUSTOM', 'MULTI_PLATFORM', 'SUITECLOUD_IPAAS', 'SUITECLOUD_ONLY']);
+    expect(byId.get('ns.design.customUiScope')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('ns.design.customUiScope')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['HEAVY', 'MINIMAL', 'MODERATE', 'NONE']);
+    expect(byId.get('ns.design.scriptingScope')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('ns.design.reportingPlatform')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('ns.design.reportingPlatform')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['CONNECT_TO_BI', 'MIXED', 'SAVED_SEARCHES', 'SUITEANALYTICS']);
+  });
+
+  it('Data Model & Master Data — 4 questions with the right ids + types', () => {
+    const sec = sd!.sections.find((s) => s.id === 'datamodel')!;
+    expect(sec.label).toBe('Data Model & Master Data');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('ns.design.customRecords')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('ns.design.customFieldsScope')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('ns.design.masterDataOwnership')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('ns.design.referenceDataSources')?.inputType).toBe('TEXTAREA');
+  });
+
+  it('Security & Roles — 4 questions with the right ids + types', () => {
+    const sec = sd!.sections.find((s) => s.id === 'security')!;
+    expect(sec.label).toBe('Security & Roles');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('ns.design.standardRoleCustomization')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('ns.design.sodMatrixRequired')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('ns.design.fieldLevelSecurity')?.inputType).toBe('BOOLEAN');
+    expect(byId.get('ns.design.auditLogRetentionMonths')?.inputType).toBe('NUMBER');
+  });
+
+  it('Integration Architecture — 4 questions with the right ids + types + options', () => {
+    const sec = sd!.sections.find((s) => s.id === 'integrations')!;
+    expect(sec.label).toBe('Integration Architecture');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('ns.design.inboundIntegrations')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('ns.design.outboundIntegrations')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('ns.design.ipaasInScope')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('ns.design.ipaasInScope')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['BOOMI', 'CELIGO', 'MULESOFT', 'NONE', 'OTHER', 'WORKATO']);
+    expect(byId.get('ns.design.apiGovernance')?.inputType).toBe('TEXTAREA');
+  });
+});
+
+describe('netsuiteAdaptor: NS SD Depth — rules registered in netsuite-rules', () => {
+  const ids = netsuiteAdaptor.rules.rules.map((r) => r.id);
+
+  it('R1 heavy custom UI needs SuiteCloud Plus', () => {
+    expect(ids).toContain('ns.design.heavy-customui-needs-suitecloud-plus');
+  });
+  it('R2 RESTlets need SuiteCloud Plus', () => {
+    expect(ids).toContain('ns.design.restlets-need-suitecloud-plus');
+  });
+  it('R3 SoD needs custom roles', () => {
+    expect(ids).toContain('ns.design.sod-needs-custom-roles');
+  });
+  it('R4 external BI needs SuiteAnalytics Connect', () => {
+    expect(ids).toContain('ns.design.external-bi-needs-suiteanalytics-connect');
+  });
+  it('R5 inbound integrations need method', () => {
+    expect(ids).toContain('ns.design.inbound-integrations-need-method');
+  });
+  it('R6 iPaaS name required when OTHER', () => {
+    expect(ids).toContain('ns.design.ipaas-name-required-when-other');
+  });
+  it('R7 long audit retention needs extract strategy', () => {
+    expect(ids).toContain('ns.design.long-audit-retention-needs-extract-strategy');
+  });
+  it('R8 heavy custom records on small edition', () => {
+    expect(ids).toContain('ns.design.heavy-custom-records-on-small-edition');
+  });
+  it('R9 field-level security needs custom roles', () => {
+    expect(ids).toContain('ns.design.field-level-security-needs-custom-roles');
+  });
+});
+
+describe('netsuiteAdaptor: NS SD Depth — rule evaluation', () => {
+  it('R1 fires (WARN) when customUiScope=HEAVY AND suiteCloudPlus=false', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.design.customUiScope': 'HEAVY',
+        'ns.foundation.suiteCloudPlus': false,
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'ns.design.heavy-customui-needs-suitecloud-plus');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R1 does NOT fire when SuiteCloud Plus is in scope', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.design.customUiScope': 'HEAVY',
+        'ns.foundation.suiteCloudPlus': true,
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('ns.design.heavy-customui-needs-suitecloud-plus');
+  });
+
+  it('R2 fires (WARN) when scriptingScope mentions RESTlet AND suiteCloudPlus=false (DSL has no contains operator; pragmatic fallback fires whenever scriptingScope is populated)', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.design.scriptingScope': 'RESTlet for external API ingestion\nUser Event scripts on Sales Order',
+        'ns.foundation.suiteCloudPlus': false,
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'ns.design.restlets-need-suitecloud-plus');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R3 fires (WARN) when sodMatrixRequired=true AND foundation.customRolesRequired=false', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.design.sodMatrixRequired': true,
+        'ns.foundation.customRolesRequired': false,
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'ns.design.sod-needs-custom-roles');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R3 does NOT fire when customRolesRequired=true', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.design.sodMatrixRequired': true,
+        'ns.foundation.customRolesRequired': true,
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('ns.design.sod-needs-custom-roles');
+  });
+
+  it('R4 fires (INFO) on CONNECT_TO_BI or MIXED reporting platform', () => {
+    for (const platform of ['CONNECT_TO_BI', 'MIXED']) {
+      const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+        answers: { 'ns.design.reportingPlatform': platform },
+        license: { edition: 'MID_MARKET', modules: [] },
+      });
+      const r = conflicts.find((c) => c.id === 'ns.design.external-bi-needs-suiteanalytics-connect');
+      expect(r, `R4 should fire when reportingPlatform=${platform}`).toBeDefined();
+      expect(r?.severity).toBe('INFO');
+    }
+  });
+
+  it('R4 does NOT fire on SAVED_SEARCHES', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: { 'ns.design.reportingPlatform': 'SAVED_SEARCHES' },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('ns.design.external-bi-needs-suiteanalytics-connect');
+  });
+
+  it('R5 fires (BLOCK) when inboundIntegrations populated AND architecturePattern=SUITECLOUD_ONLY', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.design.inboundIntegrations': 'Shopify | sales orders | real-time | RESTlet',
+        'ns.design.architecturePattern': 'SUITECLOUD_ONLY',
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'ns.design.inbound-integrations-need-method');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R5 does NOT fire when architecturePattern=SUITECLOUD_IPAAS', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.design.inboundIntegrations': 'Shopify | sales orders | real-time',
+        'ns.design.architecturePattern': 'SUITECLOUD_IPAAS',
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('ns.design.inbound-integrations-need-method');
+  });
+
+  it('R6 fires (WARN) when ipaasInScope=OTHER AND apiGovernance empty', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.design.ipaasInScope': 'OTHER',
+        'ns.design.apiGovernance': '',
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'ns.design.ipaas-name-required-when-other');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R7 fires (INFO) when auditLogRetentionMonths > 84', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: { 'ns.design.auditLogRetentionMonths': 120 },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'ns.design.long-audit-retention-needs-extract-strategy');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('INFO');
+  });
+
+  it('R7 does NOT fire at the boundary (84 months)', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: { 'ns.design.auditLogRetentionMonths': 84 },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('ns.design.long-audit-retention-needs-extract-strategy');
+  });
+
+  it('R8 fires (WARN) when customRecords populated AND edition is small (DSL has no line-count operator; pragmatic fallback fires on any populated customRecords + small edition)', () => {
+    for (const edition of ['STARTER', 'STANDARD', 'FINANCIALS_FIRST']) {
+      const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+        answers: {
+          'ns.design.customRecords': 'Approval Tracker\nVendor Onboarding\nProject Milestone',
+          'ns.foundation.edition': edition,
+        },
+        license: { edition: 'MID_MARKET', modules: [] },
+      });
+      const r = conflicts.find((c) => c.id === 'ns.design.heavy-custom-records-on-small-edition');
+      expect(r, `R8 should fire when edition=${edition}`).toBeDefined();
+      expect(r?.severity).toBe('WARN');
+    }
+  });
+
+  it('R8 does NOT fire on MID_MARKET / ENTERPRISE / ONEWORLD', () => {
+    for (const edition of ['MID_MARKET', 'ENTERPRISE', 'ONEWORLD']) {
+      const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+        answers: {
+          'ns.design.customRecords': 'Approval Tracker\nVendor Onboarding',
+          'ns.foundation.edition': edition,
+        },
+        license: { edition: 'MID_MARKET', modules: [] },
+      });
+      expect(
+        conflicts.map((c) => c.id),
+        `R8 should NOT fire when edition=${edition}`,
+      ).not.toContain('ns.design.heavy-custom-records-on-small-edition');
+    }
+  });
+
+  it('R9 fires (BLOCK) when fieldLevelSecurity=true AND foundation.customRolesRequired=false', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.design.fieldLevelSecurity': true,
+        'ns.foundation.customRolesRequired': false,
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'ns.design.field-level-security-needs-custom-roles');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R9 does NOT fire when customRolesRequired=true', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'ns.design.fieldLevelSecurity': true,
+        'ns.foundation.customRolesRequired': true,
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('ns.design.field-level-security-needs-custom-roles');
   });
 });

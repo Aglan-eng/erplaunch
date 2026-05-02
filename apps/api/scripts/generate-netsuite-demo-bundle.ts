@@ -196,6 +196,73 @@ const answers: Record<string, unknown> = {
     'EU SAF-T Germany — partner SuiteApp\n' +
     'Germany ZUGFeRD/XRechnung e-invoicing — partner SuiteApp',
   'ns.localization.customLocalizationDev': false,
+
+  // NS SD Depth Pack — Solution Design — Architecture
+  'ns.design.architecturePattern': 'SUITECLOUD_IPAAS',
+  'ns.design.customUiScope': 'MODERATE',
+  'ns.design.scriptingScope':
+    'User Event scripts on Sales Order (subsidiary auto-defaulting + ARM trigger)\n' +
+    'Map/Reduce script for monthly accruals across all 4 subsidiaries\n' +
+    'RESTlet for Salesforce → NetSuite customer master sync (hourly)\n' +
+    'Workflow Action scripts for $25k+ approval routing on POs and Bills\n' +
+    'Suitelet for consolidated AR aging dashboard (multi-subsidiary)',
+  'ns.design.reportingPlatform': 'MIXED',
+  'ns.design.customRecords':
+    'Approval Tracker (custom record — captures full chain per transaction)\n' +
+    'Vendor Onboarding Request (workflow-driven; replaces current spreadsheet)\n' +
+    'Project Milestone (links Project + Sales Order + Revenue Element)\n' +
+    'Intercompany Transfer Request (drives auto-mirror on counterpart entity)\n' +
+    'Tax Filing Calendar (per nexus, per period; tracks filed/due dates)',
+  'ns.design.customFieldsScope':
+    'Customer record: 6 custom fields (Tier, Industry, KAM, Renewal Date, Payment Terms Override, Tax Exemption Status)\n' +
+    'Sales Order: 8 custom fields (Project Reference, Renewal Type, Margin Override, ARM Trigger, Shipping Priority, EU Reverse-Charge Flag, Subsidiary Source, External Order ID)\n' +
+    'Item: 5 custom fields (Tier-Pricing Override, ASC-606 Performance Obligation Type, Standard Cost Variance Account, Subsidiary Restriction, Hazmat Class)\n' +
+    'Vendor record: 4 custom fields (1099 Withholding Class, Approved Tier, Audit Score, Last Compliance Review Date)\n' +
+    'Employee record: 3 custom fields (Cost Center, Department Hierarchy, Time-Entry Approver Override)',
+  'ns.design.masterDataOwnership':
+    'Customers: Sales Operations Manager (group level — single master across all 4 subs)\n' +
+    'Items: Inventory Manager per subsidiary (federated — each sub owns its catalog)\n' +
+    'Vendors: Procurement Manager (group level — shared across subs to leverage volume pricing)\n' +
+    'COA: Finance Director (group level — mastered in NetSuite, no external source)\n' +
+    'Employees: HR Director per subsidiary (federated — local labour-law compliance)\n' +
+    'Tax codes: AvaTax (auto-synced; no manual mastering)',
+  'ns.design.referenceDataSources':
+    'Currencies: Daily auto-pull from oanda.com via SuiteScript (5 AM UTC)\n' +
+    'Tax codes: Avalara AvaTax (real-time lookup at transaction)\n' +
+    'COA: Mastered in NetSuite, no external source\n' +
+    'Bank accounts: Plaid integration (sync nightly)\n' +
+    'Country / state lists: NetSuite native (no external source)\n' +
+    'Industry codes: NAICS (mastered in NetSuite, refreshed annually)',
+  'ns.design.standardRoleCustomization':
+    'A/P Clerk: remove "Approve Bills" permission (split into separate Approver role)\n' +
+    'A/R Clerk: add "Manage Customer Refunds" permission, scope to home subsidiary\n' +
+    'Sales Manager: add per-subsidiary scoping (currently full-tenant access)\n' +
+    'Inventory Manager: add "Adjust Inventory" but cap to ±$5k per single adjustment\n' +
+    'Custom Group Auditor role: read-only across all 4 subsidiaries + audit log access\n' +
+    'Custom Tax Specialist role: SuiteTax + ZATCA SuiteApp + Tax Reporting Framework only',
+  'ns.design.sodMatrixRequired': true,
+  'ns.design.fieldLevelSecurity': true,
+  'ns.design.auditLogRetentionMonths': 120,
+  'ns.design.inboundIntegrations':
+    'Salesforce | customer master | hourly | Boomi process\n' +
+    'Shopify | sales orders + product catalog | real-time | Celigo connector\n' +
+    'Plaid | bank statement reconciliation | nightly | Boomi process\n' +
+    'Concur | T&E expense reports | daily batch | RESTlet\n' +
+    'ADP | payroll journal entries | bi-weekly | Boomi process\n' +
+    'External auditor SFTP | adjustment journal entries | quarterly | manual SFTP + RESTlet ingestion',
+  'ns.design.outboundIntegrations':
+    'Salesforce | invoice status + balance updates | hourly | Boomi process\n' +
+    'Power BI | finance dashboard data extracts | daily | SuiteAnalytics Connect\n' +
+    'Avalara | tax-code lookup | real-time | native NetSuite connector\n' +
+    'Bank wire systems (UAE/UK/AU/DE) | payment files | per-payment-run | SFTP + custom format per bank\n' +
+    'EDI vendors (top-3 customers) | invoice + ASN | per-transaction | iPaaS-mediated EDI 810/856',
+  'ns.design.ipaasInScope': 'BOOMI',
+  'ns.design.apiGovernance':
+    'Rate limit: 600 req/min per integration role (NetSuite default 1000 req/min, leave headroom)\n' +
+    'Monitoring: Datadog APM + email alerts on >5% error rate over 15-min window\n' +
+    'Retry: exponential backoff up to 3 attempts then dead-letter queue\n' +
+    'Authentication: TBA (Token-Based Authentication) only — no user/password integration\n' +
+    'Logging: all integration payloads logged to S3 with 30-day retention for debugging',
 };
 
 const comments = [

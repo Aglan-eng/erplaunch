@@ -101,11 +101,18 @@ function buildSchema(): QuestionnaireSchema {
     // SuiteSuccess country bundles, statutory reporting frameworks,
     // data residency, multi-language UI, and country-specific
     // localization SuiteApps all gate the COA / forms that R2R uses.
+    // NS SD Depth Pack — SOLUTION_DESIGN flow sits AFTER LOCALIZATION
+    // and BEFORE R2R. Captures architecture pattern, custom UI scope,
+    // SuiteScript scope, data model, security/SoD, integration
+    // architecture. Closes the lifecycle harness Phase 3 gap (4/10 →
+    // 9+) by feeding deeper content into the schema-walking
+    // solutionDocGenerator.
     flows: [
       buildKickoffFlow(),
       buildFoundationFlow(),
       buildTaxFlow(),
       buildLocalizationFlow(),
+      buildSolutionDesignFlow(),
       ...['R2R', 'P2P', 'O2C', 'PRODUCTION', 'RETURNS']
         .map((id) => flows[id])
         .filter((f): f is FlowDefinition => !!f),
@@ -838,6 +845,211 @@ function buildLocalizationFlow(): FlowDefinition {
             required: true,
             label:
               'Custom localization development required? (for countries without SuiteApp coverage — e.g., e-invoicing for an unsupported country, country-specific WHT calculation)',
+          },
+        ],
+      },
+    ],
+  };
+}
+
+// ─── NS SD Depth Pack — Solution Design — Architecture ───────────────────────
+//
+// 16 questions across 4 sections:
+//   - approach       (4): architecture pattern (SuiteCloud / iPaaS /
+//                         Hybrid / Multi-platform), custom UI scope,
+//                         SuiteScript scope, reporting platform.
+//   - datamodel      (4): custom records, custom fields scope, master
+//                         data ownership, reference data sources.
+//   - security       (4): standard role customization, SoD matrix,
+//                         field-level security, audit log retention.
+//   - integrations   (4): inbound integrations, outbound integrations,
+//                         iPaaS in scope, API governance.
+//
+// Closes the lifecycle harness Phase 3 (Solution Design) gap from
+// 4/10 to 9+. Root cause was content (NetSuite adaptor lacked deeper
+// architecture-layer questions), not generator code — the schema-
+// walking solutionDocGenerator emits less per-adaptor when there's
+// less to walk. This pack adds the missing depth.
+//
+// Sources: NetSuite SuiteCloud Platform docs (governance, script
+// types, web services limits); Custom Records / Custom Fields
+// limits per edition; SuiteAnalytics Connect docs; iPaaS comparison
+// (Boomi / Celigo / MuleSoft / Workato); Audit Trail retention
+// policies; SOX SoD matrix conventions.
+function buildSolutionDesignFlow(): FlowDefinition {
+  return {
+    id: 'SOLUTION_DESIGN',
+    label: 'Solution Design — Architecture',
+    description:
+      'Architecture approach, customization scope, data model + master-data ownership, security/SoD framework, integration architecture, and reporting platform — the design-phase decisions that turn requirements into a buildable system.',
+    sections: [
+      {
+        id: 'approach',
+        label: 'Architecture Approach',
+        order: 1,
+        questions: [
+          {
+            id: 'ns.design.architecturePattern',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'Architecture pattern',
+            options: [
+              { value: 'SUITECLOUD_ONLY', label: 'SuiteCloud-only (NetSuite native — UE / CS / SS / RESTlets, no external systems)' },
+              { value: 'SUITECLOUD_IPAAS', label: 'SuiteCloud + iPaaS (NetSuite + Boomi / Celigo / MuleSoft / Workato for integrations)' },
+              { value: 'HYBRID_CUSTOM', label: 'Hybrid (NetSuite + custom-built middleware + bespoke integrations)' },
+              { value: 'MULTI_PLATFORM', label: 'Multi-platform (NetSuite + Salesforce / Workday / others — multi-cloud orchestration)' },
+            ],
+          },
+          {
+            id: 'ns.design.customUiScope',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'Custom UI scope',
+            options: [
+              { value: 'NONE', label: 'None (vanilla NetSuite UI only)' },
+              { value: 'MINIMAL', label: 'Minimal (a few User Event field hides / form tweaks)' },
+              { value: 'MODERATE', label: 'Moderate (Client Scripts on key forms, custom buttons, Suitelet pages)' },
+              { value: 'HEAVY', label: 'Heavy (extensive Suitelet pages, custom dashboards, multi-screen workflows)' },
+            ],
+          },
+          {
+            id: 'ns.design.scriptingScope',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "SuiteScript scope (one per line — e.g., 'User Event scripts on Sales Order', 'Map/Reduce for monthly accruals', 'RESTlet for external API ingestion', 'Workflow Action scripts for approval routing')",
+          },
+          {
+            id: 'ns.design.reportingPlatform',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'Reporting platform',
+            options: [
+              { value: 'SAVED_SEARCHES', label: 'Saved Searches + dashboards (vanilla NetSuite)' },
+              { value: 'SUITEANALYTICS', label: 'SuiteAnalytics Workbook (visual analytics inside NetSuite)' },
+              { value: 'CONNECT_TO_BI', label: 'SuiteAnalytics Connect → external BI (Power BI / Tableau / Looker)' },
+              { value: 'MIXED', label: 'Mixed — Saved Searches for ops, BI for executive reporting' },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'datamodel',
+        label: 'Data Model & Master Data',
+        order: 2,
+        questions: [
+          {
+            id: 'ns.design.customRecords',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Custom record types in scope (one per line — e.g., 'Approval Tracker (custom record)', 'Vendor Onboarding Request', 'Project Milestone')",
+          },
+          {
+            id: 'ns.design.customFieldsScope',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Custom field scope summary (one per line — e.g., 'Customer record: 4 custom fields (Tier, Industry, KAM, Renewal date)', 'Sales Order: 6 custom fields', 'Item: 3 custom fields')",
+            help: {
+              title: 'Custom field design intent',
+              body: 'Capture the high-level count + purpose. Phase 4 builds the exact field definitions; this captures the design intent.',
+            },
+          },
+          {
+            id: 'ns.design.masterDataOwnership',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Master data ownership matrix — who owns each major object across subsidiaries (one per line — e.g., 'Customers: Sales Operations Manager (group)', 'Items: Inventory Manager per subsidiary', 'COA: Finance Director (group, mastered)')",
+          },
+          {
+            id: 'ns.design.referenceDataSources',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Reference data sources — where does each come from (one per line — e.g., 'Currencies: Daily auto-pull from oanda.com', 'Tax codes: Avalara AvaTax', 'COA: Mastered in NetSuite, no external source')",
+          },
+        ],
+      },
+      {
+        id: 'security',
+        label: 'Security & Roles',
+        order: 3,
+        questions: [
+          {
+            id: 'ns.design.standardRoleCustomization',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Standard role customization scope (one per line — list each standard NetSuite role that needs tweaks — e.g., 'A/P Clerk: remove Approve Bills permission', 'Sales Manager: add subsidiary scoping', 'Custom Auditor role: read-only across all subsidiaries')",
+          },
+          {
+            id: 'ns.design.sodMatrixRequired',
+            inputType: 'BOOLEAN',
+            required: true,
+            label:
+              'Segregation of Duties (SoD) matrix required? (typical for SOX-compliant entities, public companies, regulated industries)',
+          },
+          {
+            id: 'ns.design.fieldLevelSecurity',
+            inputType: 'BOOLEAN',
+            required: true,
+            label:
+              'Field-level security required? (mask salary, SSN, banking details from non-authorized roles)',
+          },
+          {
+            id: 'ns.design.auditLogRetentionMonths',
+            inputType: 'NUMBER',
+            required: true,
+            label:
+              'Audit log retention (months) — how long must field-change history be retrievable?',
+            help: {
+              title: 'NetSuite audit retention',
+              body: "NetSuite stores ~84 months (7 years) by default. Longer retention requires periodic extracts to a data lake / archive — capture as a design decision now.",
+            },
+          },
+        ],
+      },
+      {
+        id: 'integrations',
+        label: 'Integration Architecture',
+        order: 4,
+        questions: [
+          {
+            id: 'ns.design.inboundIntegrations',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Inbound integrations (one per line — '<source system> | <data> | <frequency> | <method>'; e.g., 'Shopify | sales orders | real-time | RESTlet', 'Bank | statements | nightly | SFTP CSV', 'Salesforce | customer master | hourly | Boomi')",
+          },
+          {
+            id: 'ns.design.outboundIntegrations',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Outbound integrations (one per line — '<target system> | <data> | <frequency> | <method>')",
+          },
+          {
+            id: 'ns.design.ipaasInScope',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'iPaaS in scope?',
+            options: [
+              { value: 'NONE', label: 'None — NetSuite native integration only' },
+              { value: 'BOOMI', label: 'Boomi' },
+              { value: 'CELIGO', label: 'Celigo (NetSuite-specialized)' },
+              { value: 'MULESOFT', label: 'MuleSoft / Anypoint' },
+              { value: 'WORKATO', label: 'Workato' },
+              { value: 'OTHER', label: 'Other iPaaS — specify in Q4.4' },
+            ],
+          },
+          {
+            id: 'ns.design.apiGovernance',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "API governance approach (one per line — rate limits, monitoring, error handling — e.g., 'Rate limit: 600 req/min per integration role', 'Monitoring: Datadog + email alerts on >5% error rate', 'Retry: exponential backoff up to 3 attempts then dead-letter queue')",
           },
         ],
       },
@@ -1722,6 +1934,174 @@ const rules: RulePack = {
       message: 'Status report audience not captured. Status reports without a known audience never get read.',
       resolution: 'List names + roles — typically project sponsor, client PM, consultant PM, and 2–3 workstream leads from each side.',
       when: { answerFalsy: { questionId: 'kickoff.communication.statusReportAudience' } },
+    },
+
+    // ── NS SD Depth Pack — Solution Design rules ──────────────────────────
+
+    // R1: Heavy custom UI scope without SuiteCloud Plus exceeds the
+    // standard governance ceiling.
+    {
+      id: 'ns.design.heavy-customui-needs-suitecloud-plus',
+      type: 'CONFIG_CONFLICT',
+      severity: 'WARN',
+      questionIds: ['ns.design.customUiScope', 'ns.foundation.suiteCloudPlus'],
+      message: 'Heavy custom UI scope typically exceeds the script-governance ceiling on standard SuiteCloud. Without SuiteCloud Plus, scripts will hit governance limits during peak load.',
+      resolution: 'Add SuiteCloud Plus to license. The cost is dwarfed by the engineering pain of working around governance limits in heavily-customized environments.',
+      when: {
+        all: [
+          { answerEquals: { questionId: 'ns.design.customUiScope', value: 'HEAVY' } },
+          { answerFalsy: { questionId: 'ns.foundation.suiteCloudPlus' } },
+        ],
+      },
+    },
+
+    // R2: RESTlets consume web-services calls — typically need
+    // SuiteCloud Plus for non-trivial integration footprint.
+    //
+    // Implementation note: spec calls for "scriptingScope contains
+    // 'RESTlet'". DSL has no string-contains operator. Pragmatic
+    // fallback: fire whenever scriptingScope is populated (consultant
+    // listing any scripting work) AND SuiteCloud Plus is missing.
+    // Over-broad but WARN-level so dismissable; the resolution
+    // language already invites the consultant to confirm intent.
+    {
+      id: 'ns.design.restlets-need-suitecloud-plus',
+      type: 'CONFIG_CONFLICT',
+      severity: 'WARN',
+      questionIds: ['ns.design.scriptingScope', 'ns.foundation.suiteCloudPlus'],
+      message: 'RESTlet-based integrations consume web-services calls. Standard SuiteCloud has tight limits on concurrent web-services calls; SuiteCloud Plus raises them substantially.',
+      resolution: 'Add SuiteCloud Plus if any non-trivial integration footprint is in scope. Without it, expect throttling under realistic transaction volume.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'ns.design.scriptingScope' } },
+          { answerFalsy: { questionId: 'ns.foundation.suiteCloudPlus' } },
+        ],
+      },
+    },
+
+    // R3: SoD matrix without custom roles is a SOX audit finding.
+    // Standard NetSuite roles cannot enforce most SoD rules.
+    {
+      id: 'ns.design.sod-needs-custom-roles',
+      type: 'CONFIG_CONFLICT',
+      severity: 'WARN',
+      questionIds: ['ns.design.sodMatrixRequired', 'ns.foundation.customRolesRequired'],
+      message: 'Segregation of Duties matrix required but no custom roles flagged in NS Pack 1 Foundation. Standard NetSuite roles cannot enforce most SoD rules — they need to be tailored.',
+      resolution: 'Set foundation.customRolesRequired to true and capture the role tweaks in ns.design.standardRoleCustomization. SoD without custom roles is a SOX audit finding.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'ns.design.sodMatrixRequired' } },
+          { answerFalsy: { questionId: 'ns.foundation.customRolesRequired' } },
+        ],
+      },
+    },
+
+    // R4: External BI / Mixed reporting platforms require
+    // SuiteAnalytics Connect (paid SuiteApp).
+    {
+      id: 'ns.design.external-bi-needs-suiteanalytics-connect',
+      type: 'LICENSE_GAP',
+      severity: 'INFO',
+      questionIds: ['ns.design.reportingPlatform'],
+      message: "External BI integration requires SuiteAnalytics Connect (paid SuiteApp). Confirm it's in the NetSuite contract.",
+      resolution: 'Verify SuiteAnalytics Connect license is included. Without it, external BI tools cannot query NetSuite data — they can only consume saved-search exports.',
+      when: {
+        any: [
+          { answerEquals: { questionId: 'ns.design.reportingPlatform', value: 'CONNECT_TO_BI' } },
+          { answerEquals: { questionId: 'ns.design.reportingPlatform', value: 'MIXED' } },
+        ],
+      },
+    },
+
+    // R5: Inbound integrations require either RESTlet (NetSuite native)
+    // or iPaaS — neither is implied by SuiteCloud-only architecture.
+    {
+      id: 'ns.design.inbound-integrations-need-method',
+      type: 'CONFIG_CONFLICT',
+      severity: 'BLOCK',
+      questionIds: ['ns.design.inboundIntegrations', 'ns.design.architecturePattern'],
+      message: 'Inbound integrations listed but architecture pattern is SuiteCloud-only. Inbound integrations require either RESTlet (NetSuite native) or iPaaS — neither is implied by SuiteCloud-only.',
+      resolution: 'Either change architecturePattern to SUITECLOUD_IPAAS / HYBRID_CUSTOM / MULTI_PLATFORM, or remove the inbound integrations from scope.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'ns.design.inboundIntegrations' } },
+          { answerEquals: { questionId: 'ns.design.architecturePattern', value: 'SUITECLOUD_ONLY' } },
+        ],
+      },
+    },
+
+    // R6: iPaaS marked OTHER but no governance/provider details
+    // captured. iPaaS-specific governance varies meaningfully.
+    {
+      id: 'ns.design.ipaas-name-required-when-other',
+      type: 'DATA_WARNING',
+      severity: 'WARN',
+      questionIds: ['ns.design.ipaasInScope', 'ns.design.apiGovernance'],
+      message: "iPaaS marked 'Other' but no governance/provider details captured.",
+      resolution: 'Specify the iPaaS provider name and capture the API governance approach. iPaaS-specific governance varies meaningfully — Boomi atom limits differ from Celigo flow limits, etc.',
+      when: {
+        all: [
+          { answerEquals: { questionId: 'ns.design.ipaasInScope', value: 'OTHER' } },
+          { answerFalsy: { questionId: 'ns.design.apiGovernance' } },
+        ],
+      },
+    },
+
+    // R7: Audit log retention beyond 84 months requires periodic
+    // extracts to a data lake / archive.
+    {
+      id: 'ns.design.long-audit-retention-needs-extract-strategy',
+      type: 'DATA_WARNING',
+      severity: 'INFO',
+      questionIds: ['ns.design.auditLogRetentionMonths'],
+      message: "Audit log retention beyond 84 months (7 years) exceeds NetSuite's standard retention. Long retention requires periodic extracts to a data lake / archive.",
+      resolution: 'Plan a Phase 4 task: scheduled SuiteScript that extracts audit log to S3 / Azure Blob / similar. Allocate ~2 person-days for setup. Without this, history older than 7 years is lost.',
+      when: {
+        answerNumberGreaterThan: { questionId: 'ns.design.auditLogRetentionMonths', value: 84 },
+      },
+    },
+
+    // R8: Heavy custom-record footprint on a small edition risks
+    // hitting custom-field-per-record limits.
+    //
+    // Implementation note: spec calls for "customRecords contains 10
+    // or more lines". DSL has no line-count operator. Pragmatic
+    // fallback: fire whenever customRecords is populated AND edition
+    // is small. WARN-level so the consultant can dismiss for trivial
+    // (<10 record) lists.
+    {
+      id: 'ns.design.heavy-custom-records-on-small-edition',
+      type: 'LICENSE_GAP',
+      severity: 'WARN',
+      questionIds: ['ns.design.customRecords', 'ns.foundation.edition'],
+      message: 'Heavy custom-record footprint on a small edition. Custom records consume custom-field-per-record limits; small editions have tighter limits.',
+      resolution: 'Either consolidate custom records into fewer richer ones, or upgrade edition. Custom-record limits on Starter/Standard hit faster than expected.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'ns.design.customRecords' } },
+          { answerIn: {
+            questionId: 'ns.foundation.edition',
+            values: ['STARTER', 'STANDARD', 'FINANCIALS_FIRST'],
+          } },
+        ],
+      },
+    },
+
+    // R9: Field-level security (masking salary / SSN / banking)
+    // requires custom roles to enforce.
+    {
+      id: 'ns.design.field-level-security-needs-custom-roles',
+      type: 'CONFIG_CONFLICT',
+      severity: 'BLOCK',
+      questionIds: ['ns.design.fieldLevelSecurity', 'ns.foundation.customRolesRequired'],
+      message: 'Field-level security (masking salary / SSN / banking) requires custom roles to enforce. Foundation pack has customRolesRequired === false.',
+      resolution: 'Set customRolesRequired to true. Phase 4 builds the custom roles with appropriate field-level permission overrides.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'ns.design.fieldLevelSecurity' } },
+          { answerFalsy: { questionId: 'ns.foundation.customRolesRequired' } },
+        ],
+      },
     },
   ],
 };

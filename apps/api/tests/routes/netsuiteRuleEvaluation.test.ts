@@ -807,3 +807,199 @@ describe('NetSuite engagement — Kickoff Pack rules through the route', () => {
     expect(hit?.severity).toBe('WARN');
   });
 });
+
+// ─── NS SD Depth Pack — through the route ────────────────────────────────────
+
+describe('NetSuite engagement — NS SD Depth rules through the route', () => {
+  it('R1: customUiScope=HEAVY + suiteCloudPlus=false fires heavy-customui-needs-suitecloud-plus (WARN)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createNetSuiteEngagement(firmId, 'Heavy UI No-Plus Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'MID_MARKET', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'ns.design.customUiScope': 'HEAVY',
+        'ns.foundation.suiteCloudPlus': false,
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'ns.design.heavy-customui-needs-suitecloud-plus');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('WARN');
+  });
+
+  it('R2: scriptingScope populated + suiteCloudPlus=false fires restlets-need-suitecloud-plus (WARN)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createNetSuiteEngagement(firmId, 'RESTlet No-Plus Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'MID_MARKET', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'ns.design.scriptingScope': 'RESTlet for external API ingestion',
+        'ns.foundation.suiteCloudPlus': false,
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'ns.design.restlets-need-suitecloud-plus');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('WARN');
+  });
+
+  it('R3: sodMatrixRequired=true + customRolesRequired=false fires sod-needs-custom-roles (WARN)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createNetSuiteEngagement(firmId, 'SoD No-Custom-Roles Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'MID_MARKET', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'ns.design.sodMatrixRequired': true,
+        'ns.foundation.customRolesRequired': false,
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'ns.design.sod-needs-custom-roles');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('WARN');
+  });
+
+  it('R4: reportingPlatform=CONNECT_TO_BI fires external-bi-needs-suiteanalytics-connect (INFO)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createNetSuiteEngagement(firmId, 'External BI Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'MID_MARKET', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: { 'ns.design.reportingPlatform': 'CONNECT_TO_BI' } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'ns.design.external-bi-needs-suiteanalytics-connect');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('INFO');
+  });
+
+  it('R5: inboundIntegrations populated + architecturePattern=SUITECLOUD_ONLY fires inbound-integrations-need-method (BLOCK)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createNetSuiteEngagement(firmId, 'Inbound SuiteCloud Only Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'MID_MARKET', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'ns.design.inboundIntegrations': 'Shopify | sales orders | real-time | RESTlet',
+        'ns.design.architecturePattern': 'SUITECLOUD_ONLY',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'ns.design.inbound-integrations-need-method');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('BLOCK');
+  });
+
+  it('R6: ipaasInScope=OTHER + apiGovernance empty fires ipaas-name-required-when-other (WARN)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createNetSuiteEngagement(firmId, 'iPaaS Other No-Detail Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'MID_MARKET', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'ns.design.ipaasInScope': 'OTHER',
+        'ns.design.apiGovernance': '',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'ns.design.ipaas-name-required-when-other');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('WARN');
+  });
+
+  it('R7: auditLogRetentionMonths=120 fires long-audit-retention-needs-extract-strategy (INFO)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createNetSuiteEngagement(firmId, 'Long Audit Retention Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'MID_MARKET', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: { 'ns.design.auditLogRetentionMonths': 120 } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'ns.design.long-audit-retention-needs-extract-strategy');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('INFO');
+  });
+
+  it('R8: customRecords populated + edition=STARTER fires heavy-custom-records-on-small-edition (WARN)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createNetSuiteEngagement(firmId, 'Starter Heavy Custom Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'STARTER', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'ns.design.customRecords': 'Approval Tracker\nVendor Onboarding\nProject Milestone',
+        'ns.foundation.edition': 'STARTER',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'ns.design.heavy-custom-records-on-small-edition');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('WARN');
+  });
+
+  it('R9: fieldLevelSecurity=true + customRolesRequired=false fires field-level-security-needs-custom-roles (BLOCK)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createNetSuiteEngagement(firmId, 'Field Security No-Custom-Roles Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'MID_MARKET', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'ns.design.fieldLevelSecurity': true,
+        'ns.foundation.customRolesRequired': false,
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'ns.design.field-level-security-needs-custom-roles');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('BLOCK');
+  });
+});

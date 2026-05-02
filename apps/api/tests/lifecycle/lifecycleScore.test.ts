@@ -113,13 +113,16 @@ async function writeGapReport(runs: AdaptorRun[]): Promise<void> {
   const o = runs.find((r) => r.adaptor === 'odoo')!.score;
   const n = runs.find((r) => r.adaptor === 'netsuite')!.score;
   md += `| Uniform overall | ≥ 4.0 | ${o.uniformOverall} | ${n.uniformOverall} |\n`;
-  md += `| Front-half-weighted overall | ≥ 6.0 | ${o.frontHalfWeightedOverall} | ${n.frontHalfWeightedOverall} |\n`;
+  md += `| Front-half-weighted overall | ≥ 7.0 | ${o.frontHalfWeightedOverall} | ${n.frontHalfWeightedOverall} |\n`;
   const oP1 = o.perPhase.find((p) => p.number === 1)!;
   const nP1 = n.perPhase.find((p) => p.number === 1)!;
   const oP2 = o.perPhase.find((p) => p.number === 2)!;
   const nP2 = n.perPhase.find((p) => p.number === 2)!;
+  const oP3 = o.perPhase.find((p) => p.number === 3)!;
+  const nP3 = n.perPhase.find((p) => p.number === 3)!;
   md += `| Phase 1 (Kickoff) | ≥ 8.0 | ${oP1.score} | ${nP1.score} |\n`;
   md += `| Phase 2 (Discovery) | ≥ 8.0 | ${oP2.score} | ${nP2.score} |\n`;
+  md += `| Phase 3 (Solution Design) | ≥ 9.0 | ${oP3.score} | ${nP3.score} |\n`;
   md += `\n`;
 
   await fs.writeFile(reportPath, md, 'utf8');
@@ -140,12 +143,12 @@ describe('Lifecycle harness — threshold gates', () => {
     expect(o.score.uniformOverall, formatScoreDetails('odoo', o.score)).toBeGreaterThanOrEqual(4.0);
   });
 
-  it('Odoo bundle front-half-weighted overall ≥ 6.0', () => {
+  it('Odoo bundle front-half-weighted overall ≥ 7.0 (ratcheted after NS SD Depth Pack)', () => {
     const o = runs.find((r) => r.adaptor === 'odoo')!;
     expect(
       o.score.frontHalfWeightedOverall,
       formatScoreDetails('odoo', o.score),
-    ).toBeGreaterThanOrEqual(6.0);
+    ).toBeGreaterThanOrEqual(7.0);
   });
 
   it('Odoo bundle Phase 1 (Kickoff) ≥ 8.0 — Kickoff Pack just shipped, should be near-full', () => {
@@ -172,12 +175,12 @@ describe('Lifecycle harness — threshold gates', () => {
     ).toBeGreaterThanOrEqual(4.0);
   });
 
-  it('NetSuite bundle front-half-weighted overall ≥ 6.0', () => {
+  it('NetSuite bundle front-half-weighted overall ≥ 7.0 (ratcheted after NS SD Depth Pack)', () => {
     const n = runs.find((r) => r.adaptor === 'netsuite')!;
     expect(
       n.score.frontHalfWeightedOverall,
       formatScoreDetails('netsuite', n.score),
-    ).toBeGreaterThanOrEqual(6.0);
+    ).toBeGreaterThanOrEqual(7.0);
   });
 
   it('NetSuite bundle Phase 1 (Kickoff) ≥ 8.0', () => {
@@ -194,6 +197,26 @@ describe('Lifecycle harness — threshold gates', () => {
       p2.score,
       `Phase 2 (Discovery) failed: ${p2.failedCheckDescriptions.join('; ')}`,
     ).toBeGreaterThanOrEqual(8.0);
+  });
+
+  // Phase 3 (Solution Design) gate — NEW after NS SD Depth Pack.
+  // Pre-pack scores: Odoo 10/10, NetSuite 4/10. Post-pack: both 10/10.
+  // Ratcheted to ≥ 9.0 to lock in the 4 → 10 jump and prevent silent
+  // regressions when future packs touch the schema or generator.
+  it('Odoo bundle Phase 3 (Solution Design) ≥ 9.0', () => {
+    const p3 = runs.find((r) => r.adaptor === 'odoo')!.score.perPhase.find((p) => p.number === 3)!;
+    expect(
+      p3.score,
+      `Phase 3 (Solution Design) failed: ${p3.failedCheckDescriptions.join('; ')}`,
+    ).toBeGreaterThanOrEqual(9.0);
+  });
+
+  it('NetSuite bundle Phase 3 (Solution Design) ≥ 9.0 — locks in NS SD Depth Pack jump from 4/10', () => {
+    const p3 = runs.find((r) => r.adaptor === 'netsuite')!.score.perPhase.find((p) => p.number === 3)!;
+    expect(
+      p3.score,
+      `Phase 3 (Solution Design) failed: ${p3.failedCheckDescriptions.join('; ')}`,
+    ).toBeGreaterThanOrEqual(9.0);
   });
 });
 
