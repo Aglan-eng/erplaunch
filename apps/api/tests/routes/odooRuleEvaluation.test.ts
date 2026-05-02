@@ -95,7 +95,7 @@ describe('Odoo engagement — PUT /license triggers adaptor rule evaluation', ()
     expect(r?.severity).toBe('BLOCK');
   });
 
-  it('ENTERPRISE + full module set on a new engagement yields only data-completeness warnings', async () => {
+  it('ENTERPRISE + full module set on a new engagement yields no LICENSE_GAP BLOCKs', async () => {
     const { firmId, token } = await seedFirmAndToken();
     const engId = await createOdooEngagement(firmId, 'Clean Scoping Co');
 
@@ -106,11 +106,16 @@ describe('Odoo engagement — PUT /license triggers adaptor rule evaluation', ()
       payload: { edition: 'ENTERPRISE', modules: ['MRP', 'QUALITY', 'ENTERPRISE_STUDIO'] },
     });
     expect(res.statusCode).toBe(200);
-    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
-    // Without answers the fiscal-year-start DATA_WARNING fires, but no
-    // LICENSE_GAP BLOCKs should be present.
-    const blocks = body.data.conflicts.filter((c) => c.severity === 'BLOCK');
-    expect(blocks).toEqual([]);
+    const body = res.json() as { data: { conflicts: Array<{ id: string; type: string; severity: string }> } };
+    // Without answers, DATA_WARNING BLOCKs fire (fiscal-year-start,
+    // kickoff sponsor-required, kickoff escalation-path-required) — those
+    // are data-completeness prompts, not licensing problems. The contract
+    // this test pins is the narrower "no LICENSE_GAP BLOCK should fire
+    // from a clean licensing setup".
+    const licenseBlocks = body.data.conflicts.filter(
+      (c) => c.severity === 'BLOCK' && c.type === 'LICENSE_GAP',
+    );
+    expect(licenseBlocks).toEqual([]);
   });
 });
 
@@ -2030,5 +2035,126 @@ describe('Odoo engagement — Pack 9 Operations Apps rules through the route', (
     const hit = body.data.conflicts.find((c) => c.id === 'odoo.operations.attendance-on-selfhosted-needs-iot');
     expect(hit).toBeDefined();
     expect(hit?.severity).toBe('INFO');
+  });
+});
+
+// ─── Kickoff Pack — universal rules through the route (Odoo) ─────────────────
+
+describe('Odoo engagement — Kickoff Pack rules through the route', () => {
+  it('R1: empty sponsor fires kickoff.mandate.sponsor-required (BLOCK)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'No Sponsor Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: { 'kickoff.mandate.sponsor': '' } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'kickoff.mandate.sponsor-required');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('BLOCK');
+  });
+
+  it('R2: empty successCriteria fires success-criteria-required (WARN)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'No Success Criteria Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: { 'kickoff.mandate.successCriteria': '' } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'kickoff.mandate.success-criteria-required');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('WARN');
+  });
+
+  it('R3: monthly steering fires steering-cadence-monthly-warn (WARN)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'Monthly Steering Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: { 'kickoff.governance.steeringCadence': 'MONTHLY' } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'kickoff.governance.steering-cadence-monthly-warn');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('WARN');
+  });
+
+  it('R4: empty escalationPath fires escalation-path-required (BLOCK)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'No Escalation Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: { 'kickoff.governance.escalationPath': '' } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'kickoff.governance.escalation-path-required');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('BLOCK');
+  });
+
+  it('R5: targetGoLiveDate set + multiCompany=true fires tight-timeline-on-multi-entity (WARN)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'Tight Timeline Multi-Entity Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'kickoff.mandate.targetGoLiveDate': '2026-09-01',
+        'odoo.foundation.multiCompany': true,
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'kickoff.tight-timeline-on-multi-entity');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('WARN');
+  });
+
+  it('R6: empty statusReportAudience fires audience-empty (WARN)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createOdooEngagement(firmId, 'No Audience Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: { 'kickoff.communication.statusReportAudience': '' } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'kickoff.communication.audience-empty');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('WARN');
   });
 });

@@ -20,14 +20,17 @@ describe('netsuiteAdaptor: manifest', () => {
 });
 
 describe('netsuiteAdaptor: schema', () => {
-  it('exposes 8 flows in the canonical order — FOUNDATION + TAX + LOCALIZATION + the legacy 5', () => {
+  it('exposes 9 flows in the canonical order — KICKOFF + FOUNDATION + TAX + LOCALIZATION + the legacy 5', () => {
     const ids = netsuiteAdaptor.schema.flows.map((f) => f.id);
-    // NS Pack 1 added FOUNDATION at the head.
-    // NS Pack 2 inserted TAX after FOUNDATION.
-    // NS Pack 3 inserts LOCALIZATION after TAX, before the legacy 5.
+    // Kickoff Pack — UNIVERSAL pack renders FIRST. Mirrored verbatim
+    //   from adaptor-odoo.
+    // NS Pack 1 added FOUNDATION.
+    // NS Pack 2 inserted TAX.
+    // NS Pack 3 inserted LOCALIZATION.
     // NetSuite keeps its native R2R/P2P/O2C terminology (unlike Odoo
     // where they got restructured in Pack R).
     expect(ids).toEqual([
+      'KICKOFF',
       'FOUNDATION', 'TAX', 'LOCALIZATION',
       'R2R', 'P2P', 'O2C', 'PRODUCTION', 'RETURNS',
     ]);
@@ -149,9 +152,18 @@ describe('netsuiteAdaptor: rule pack (Phase 15)', () => {
     expect(conflicts.map((c) => c.id)).toContain('R2R-005');
   });
 
-  it('Valid scoping (OneWorld edition + OneWorld module + no conflicts) fires nothing', () => {
+  it('Valid scoping (OneWorld edition + OneWorld module + no conflicts + Kickoff Pack populated) fires nothing', () => {
     const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
       answers: {
+        // Universal Kickoff Pack — populate to satisfy BLOCK/WARN rules.
+        'kickoff.mandate.sponsor': 'Helena Reyes (CFO)',
+        'kickoff.mandate.successCriteria': 'Q close 5d\nSingle source of truth\nEliminate manual journals',
+        'kickoff.governance.steeringCadence': 'BIWEEKLY',
+        'kickoff.governance.escalationPath': 'PM → Steering → Sponsor',
+        'kickoff.communication.statusReportAudience': 'Sponsor, PM, leads',
+        // Note: Kickoff R5 (multi-entity timeline) only fires when
+        // targetGoLiveDate is also set — clean test omits it, so R5 stays
+        // dormant even though edition=ONEWORLD.
         'r2r.entities.multiEntity': true,
         'r2r.currencies.isMultiCurrency': true,
         'r2r.accountingPeriods.fiscalYearStart': 'January',
@@ -205,15 +217,14 @@ describe('netsuiteAdaptor: NS Pack 1 — FOUNDATION flow shape', () => {
     expect(foundation!.description).toMatch(/edition|suitesuccess|user|country|subsidiary|fiscal/i);
   });
 
-  it('FOUNDATION renders as the first flow (before TAX, before LOCALIZATION, before R2R)', () => {
+  it('FOUNDATION renders second (after KICKOFF), before TAX / LOCALIZATION / R2R', () => {
     const ids = netsuiteAdaptor.schema.flows.map((f) => f.id);
-    expect(ids[0]).toBe('FOUNDATION');
-    // NS Pack 2 inserted TAX (index 1).
-    // NS Pack 3 inserted LOCALIZATION between TAX and R2R, so R2R
-    // now sits at index 3.
-    expect(ids.indexOf('TAX')).toBe(1);
-    expect(ids.indexOf('LOCALIZATION')).toBe(2);
-    expect(ids.indexOf('R2R')).toBe(3);
+    // Kickoff Pack pushed FOUNDATION to index 1; TAX → 2; LOC → 3; R2R → 4.
+    expect(ids[0]).toBe('KICKOFF');
+    expect(ids[1]).toBe('FOUNDATION');
+    expect(ids.indexOf('TAX')).toBe(2);
+    expect(ids.indexOf('LOCALIZATION')).toBe(3);
+    expect(ids.indexOf('R2R')).toBe(4);
   });
 
   it('renders four sections in the documented order', () => {
@@ -1193,5 +1204,171 @@ describe('netsuiteAdaptor: NS Pack 3 — Localization rule evaluation', () => {
       license: { edition: 'MID_MARKET', modules: [] },
     });
     expect(conflicts.map((c) => c.id)).not.toContain('ns.localization.custom-localization-dev-needs-suitecloud-plus');
+  });
+});
+
+// ─── Kickoff Pack — UNIVERSAL (mirrored from adaptor-odoo) ───────────────────
+
+describe('netsuiteAdaptor: Kickoff Pack — KICKOFF flow shape', () => {
+  const kickoff = netsuiteAdaptor.schema.flows.find((f) => f.id === 'KICKOFF');
+
+  it('KICKOFF flow exists with the expected label + description', () => {
+    expect(kickoff).toBeDefined();
+    expect(kickoff!.label).toBe('Project Kickoff');
+    expect(kickoff!.description).toMatch(/mandate|governance|communication|discovery/i);
+  });
+
+  it('KICKOFF renders as the FIRST flow (before FOUNDATION)', () => {
+    const ids = netsuiteAdaptor.schema.flows.map((f) => f.id);
+    expect(ids[0]).toBe('KICKOFF');
+    expect(ids.indexOf('FOUNDATION')).toBe(1);
+  });
+
+  it('renders three sections in the documented order', () => {
+    const ids = (kickoff!.sections as Array<{ id: string; order: number }>)
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .map((s) => s.id);
+    expect(ids).toEqual(['mandate', 'governance', 'communication']);
+  });
+
+  it('Project Mandate — 4 questions identical to Odoo Kickoff (universal pack)', () => {
+    const sec = kickoff!.sections.find((s) => s.id === 'mandate')!;
+    expect(sec.label).toBe('Project Mandate');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('kickoff.mandate.sponsor')?.inputType).toBe('TEXT');
+    expect(byId.get('kickoff.mandate.businessCase')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('kickoff.mandate.successCriteria')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('kickoff.mandate.targetGoLiveDate')?.inputType).toBe('TEXT');
+  });
+
+  it('Governance & Decision-Making — 4 questions with the right options', () => {
+    const sec = kickoff!.sections.find((s) => s.id === 'governance')!;
+    expect(sec.label).toBe('Governance & Decision-Making');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('kickoff.governance.steeringCadence')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('kickoff.governance.steeringCadence')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['AD_HOC', 'BIWEEKLY', 'MONTHLY', 'WEEKLY']);
+    expect(byId.get('kickoff.governance.workingGroupCadence')?.inputType).toBe('SINGLE_SELECT');
+    expect(byId.get('kickoff.governance.decisionThresholds')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('kickoff.governance.escalationPath')?.inputType).toBe('TEXT');
+  });
+
+  it('Communication Plan — 4 questions with the right options', () => {
+    const sec = kickoff!.sections.find((s) => s.id === 'communication')!;
+    expect(sec.label).toBe('Communication Plan');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('kickoff.communication.statusReportCadence')?.inputType).toBe('SINGLE_SELECT');
+    expect(byId.get('kickoff.communication.statusReportAudience')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('kickoff.communication.issueReportingChannel')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('kickoff.communication.issueReportingChannel')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['EMAIL', 'MIXED', 'SHARED_DOC', 'WORKING_GROUP']);
+    expect(byId.get('kickoff.communication.stakeholderNotes')?.inputType).toBe('TEXTAREA');
+  });
+});
+
+describe('netsuiteAdaptor: Kickoff Pack — rules registered in netsuite-rules', () => {
+  const ids = netsuiteAdaptor.rules.rules.map((r) => r.id);
+
+  it('R1 sponsor required (BLOCK)', () => {
+    expect(ids).toContain('kickoff.mandate.sponsor-required');
+  });
+  it('R2 success criteria required (WARN)', () => {
+    expect(ids).toContain('kickoff.mandate.success-criteria-required');
+  });
+  it('R3 steering cadence monthly/ad-hoc warn', () => {
+    expect(ids).toContain('kickoff.governance.steering-cadence-monthly-warn');
+  });
+  it('R4 escalation path required (BLOCK)', () => {
+    expect(ids).toContain('kickoff.governance.escalation-path-required');
+  });
+  it('R5 tight timeline on multi-entity (NetSuite variant uses ns.foundation.edition=ONEWORLD)', () => {
+    expect(ids).toContain('kickoff.tight-timeline-on-multi-entity');
+  });
+  it('R6 communication audience empty', () => {
+    expect(ids).toContain('kickoff.communication.audience-empty');
+  });
+});
+
+describe('netsuiteAdaptor: Kickoff Pack — rule evaluation', () => {
+  it('R1 fires (BLOCK) when sponsor is empty', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: { 'kickoff.mandate.sponsor': '' },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'kickoff.mandate.sponsor-required');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R2 fires (WARN) when successCriteria is empty', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: { 'kickoff.mandate.successCriteria': '' },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).toContain('kickoff.mandate.success-criteria-required');
+  });
+
+  it('R3 fires (WARN) for MONTHLY or AD_HOC steering cadence', () => {
+    for (const cadence of ['MONTHLY', 'AD_HOC']) {
+      const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+        answers: { 'kickoff.governance.steeringCadence': cadence },
+        license: { edition: 'MID_MARKET', modules: [] },
+      });
+      expect(
+        conflicts.map((c) => c.id),
+        `R3 should fire when cadence=${cadence}`,
+      ).toContain('kickoff.governance.steering-cadence-monthly-warn');
+    }
+  });
+
+  it('R3 does NOT fire on BIWEEKLY', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: { 'kickoff.governance.steeringCadence': 'BIWEEKLY' },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('kickoff.governance.steering-cadence-monthly-warn');
+  });
+
+  it('R4 fires (BLOCK) when escalationPath is empty', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: { 'kickoff.governance.escalationPath': '' },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).toContain('kickoff.governance.escalation-path-required');
+  });
+
+  it('R5 fires (WARN) when targetGoLiveDate is set AND ns.foundation.edition=ONEWORLD', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'kickoff.mandate.targetGoLiveDate': '2026-11-15',
+        'ns.foundation.edition': 'ONEWORLD',
+      },
+      license: { edition: 'ONEWORLD', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'kickoff.tight-timeline-on-multi-entity');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R5 does NOT fire on non-OneWorld editions', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: {
+        'kickoff.mandate.targetGoLiveDate': '2026-11-15',
+        'ns.foundation.edition': 'MID_MARKET',
+      },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('kickoff.tight-timeline-on-multi-entity');
+  });
+
+  it('R6 fires (WARN) when statusReportAudience is empty', () => {
+    const conflicts = evaluateAdaptorRules(netsuiteAdaptor.rules, {
+      answers: { 'kickoff.communication.statusReportAudience': '' },
+      license: { edition: 'MID_MARKET', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).toContain('kickoff.communication.audience-empty');
   });
 });

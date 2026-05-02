@@ -15,6 +15,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { generateBRD, generateBRDHtml, type AdaptorContext } from '../src/services/generators/brdGenerator.js';
+import { generateKickoff, generateKickoffHtml, type KickoffMember } from '../src/services/generators/kickoffGenerator.js';
 import { generateRiskRegister } from '../src/services/generators/riskGenerator.js';
 import { generateUATPlan, generateUATPlanHtml } from '../src/services/generators/uatGenerator.js';
 import { generateSolutionDoc, generateSolutionDocHtml } from '../src/services/generators/solutionDocGenerator.js';
@@ -67,6 +68,38 @@ const license = {
   ],
 };
 const answers: Record<string, unknown> = {
+  // Kickoff Pack — universal
+  'kickoff.mandate.sponsor': 'Yousef Al-Rashid (CFO, Sahel Logistics Holding)',
+  'kickoff.mandate.businessCase':
+    'Replace 3 disconnected QuickBooks instances + spreadsheet inventory with a unified ' +
+    'Odoo Enterprise tenant. Drives the 2026 group consolidation plan for the new freight-forwarding ' +
+    'subsidiary; required for IFRS audit readiness ahead of the planned Series B raise in Q3 2026.',
+  'kickoff.mandate.successCriteria':
+    'Close month-end in 5 business days vs current 14 (target: month 6 post-go-live)\n' +
+    'Single source of truth for inventory across all 4 warehouses (target: month 1)\n' +
+    'Eliminate 80% of manual journal entries by automating intercompany flows (target: month 3)',
+  'kickoff.mandate.targetGoLiveDate': '2026-09-01',
+  'kickoff.governance.steeringCadence': 'BIWEEKLY',
+  'kickoff.governance.workingGroupCadence': 'WEEKLY',
+  'kickoff.governance.decisionThresholds':
+    '<AED 50k or in-scope: PM decides\n' +
+    'AED 50k–AED 200k or scope clarification: Steering\n' +
+    '>AED 200k or scope change: Sponsor + Steering joint approval',
+  'kickoff.governance.escalationPath':
+    'Hesham Aglan (consultant PM) → Steering Committee (bi-weekly) → Yousef Al-Rashid (Sponsor)',
+  'kickoff.communication.statusReportCadence': 'WEEKLY',
+  'kickoff.communication.statusReportAudience':
+    'Yousef Al-Rashid — Sponsor / CFO\n' +
+    'Layla Hassan — Client PM / Group Controller\n' +
+    'Hesham Aglan — Consultant PM\n' +
+    'Mariam Saeed — Workstream lead, Accounting & Tax\n' +
+    'Khaled Mansour — Workstream lead, Inventory & Logistics',
+  'kickoff.communication.issueReportingChannel': 'SHARED_DOC',
+  'kickoff.communication.stakeholderNotes':
+    'Tariq Al-Otaibi (Group CEO) — quarterly read-out only; no operational involvement\n' +
+    'Sara Mahmoud (Head of IT) — must be informed before any environment change\n' +
+    'External auditor (BDO) — read-only access to UAT data refresh window',
+
   // Pack 1 — Foundation
   'odoo.foundation.deploymentMode': 'ODOOSH',
   'odoo.foundation.edition': 'ENTERPRISE',
@@ -254,6 +287,17 @@ const images: unknown[] = [];
 const aiAdvice: unknown[] = [];
 const conflicts: unknown[] = [];
 
+// Engagement project members — drives kickoff Stakeholder Map + RACI auto-fill.
+const members: KickoffMember[] = [
+  { name: 'Yousef Al-Rashid', role: 'Project Sponsor / CFO', team: 'CLIENT', email: 'yousef.al-rashid@sahel-logistics.ae' },
+  { name: 'Layla Hassan', role: 'Project Manager / Group Controller', team: 'CLIENT', email: 'layla.hassan@sahel-logistics.ae' },
+  { name: 'Mariam Saeed', role: 'Workstream Lead — Accounting & Tax', team: 'CLIENT', email: 'mariam.saeed@sahel-logistics.ae' },
+  { name: 'Khaled Mansour', role: 'Workstream Lead — Inventory & Logistics', team: 'CLIENT', email: 'khaled.mansour@sahel-logistics.ae' },
+  { name: 'Hesham Aglan', role: 'Consultant Project Manager', team: 'CONSULTANT', email: 'hesham@erplaunch.io' },
+  { name: 'Aisha Khalid', role: 'Senior Odoo Consultant — Accounting', team: 'CONSULTANT', email: 'aisha@erplaunch.io' },
+  { name: 'Omar Reda', role: 'Senior Odoo Consultant — Inventory & MRP', team: 'CONSULTANT', email: 'omar@erplaunch.io' },
+];
+
 // ── Output folder ───────────────────────────────────────────────────────────
 const ts = new Date().toISOString().replace(/[:.]/g, '-');
 const outRoot = path.join(NSIX_ROOT, 'ODOO_DEMO_BUNDLE', ts);
@@ -262,6 +306,7 @@ await fs.mkdir(docDir, { recursive: true });
 
 // ── Generate ────────────────────────────────────────────────────────────────
 const brdData = { clientName, adaptor, license, answers, comments, images, aiAdvice };
+const kickoffData = { clientName, adaptor, answers, members };
 const sddData = { clientName, adaptor, license, answers, conflicts: conflicts as never[], comments, images, aiAdvice };
 const trainingData = { clientName, adaptor, answers, comments, images, aiAdvice };
 const uatData = { clientName, adaptor, answers, comments, images, aiAdvice };
@@ -270,6 +315,8 @@ const configPlanData = { clientName, adaptor, license, answers, comments, images
 const riskData = { clientName, conflicts: [], warnings: [] };
 
 const writes: Array<[string, string]> = [
+  ['Project_Kickoff.md', generateKickoff(kickoffData)],
+  ['Project_Kickoff.html', generateKickoffHtml(kickoffData)],
   ['BRD.md', generateBRD(brdData)],
   ['BRD.html', generateBRDHtml(brdData)],
   ['Risk_Register.md', generateRiskRegister(riskData)],

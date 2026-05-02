@@ -3,6 +3,7 @@ import * as path from 'path';
 import { fileURLToPath } from 'url';
 import type * as dbModule from '../db/index.js';
 import { generateBRD, generateBRDHtml, type AdaptorContext } from './generators/brdGenerator.js';
+import { generateKickoff, generateKickoffHtml, type KickoffMember } from './generators/kickoffGenerator.js';
 import { getAdaptorRegistry } from '@ofoq/adaptor-registry';
 import { generateSDFPackage } from './generators/sdfGenerator.js';
 import { validateSDFBundle, isValidationEnabled } from './generators/sdfValidator.js';
@@ -179,6 +180,25 @@ export async function processJob(jobId: string, db: DbModule) {
     const brdHtml = generateBRDHtml(brdData);
     await fs.writeFile(path.join(docDir, 'BRD.html'), brdHtml);
     await convertHtmlToPdf(brdHtml, path.join(docDir, 'BRD.pdf'));
+
+    // Project Kickoff — universal pack (runs for every adaptor). Pulls
+    // engagement project members for stakeholder map + RACI auto-fill.
+    const memberRows = await db.getMembers(eng.id as string);
+    const members: KickoffMember[] = (memberRows as Array<Record<string, unknown>>).map((m) => ({
+      name: String(m.name ?? ''),
+      role: String(m.role ?? ''),
+      team: String(m.team ?? 'CLIENT'),
+      email: m.email == null ? null : String(m.email),
+      phone: m.phone == null ? null : String(m.phone),
+    }));
+    const kickoffData = {
+      clientName: eng.clientName as string,
+      adaptor: adaptorCtx,
+      answers,
+      members,
+    };
+    await fs.writeFile(path.join(docDir, 'Project_Kickoff.md'), generateKickoff(kickoffData));
+    await fs.writeFile(path.join(docDir, 'Project_Kickoff.html'), generateKickoffHtml(kickoffData));
 
     const riskContent = generateRiskRegister({
       clientName: eng.clientName as string,

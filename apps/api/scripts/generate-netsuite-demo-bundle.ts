@@ -17,6 +17,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { generateBRD, generateBRDHtml, type AdaptorContext } from '../src/services/generators/brdGenerator.js';
+import { generateKickoff, generateKickoffHtml, type KickoffMember } from '../src/services/generators/kickoffGenerator.js';
 import { generateRiskRegister } from '../src/services/generators/riskGenerator.js';
 import { generateUATPlan, generateUATPlanHtml } from '../src/services/generators/uatGenerator.js';
 import { generateSolutionDoc, generateSolutionDocHtml } from '../src/services/generators/solutionDocGenerator.js';
@@ -70,6 +71,40 @@ const license = {
 };
 
 const answers: Record<string, unknown> = {
+  // Kickoff Pack — universal
+  'kickoff.mandate.sponsor': 'Helena Reyes (CFO, Atlas Industries Group)',
+  'kickoff.mandate.businessCase':
+    'Consolidate the 4 Atlas group subsidiaries (US/UK/AU/DE) onto a single NetSuite OneWorld tenant. ' +
+    'Drives ASC 606 / IFRS 15 compliance ahead of the 2027 audit refresh, eliminates the manual ' +
+    'multi-currency consolidation that currently takes 3 weeks per quarter, and unblocks the planned ' +
+    'expansion into 2 new EU subsidiaries in 2026.',
+  'kickoff.mandate.successCriteria':
+    'Quarterly consolidation in 5 business days vs current 21 (target: Q1 2027 close)\n' +
+    'Single source of truth for revenue recognition across all 4 subs (target: month 3 post-go-live)\n' +
+    'Eliminate 90% of manual intercompany journal entries via NetSuite intercompany automation',
+  'kickoff.mandate.targetGoLiveDate': '2026-11-15',
+  'kickoff.governance.steeringCadence': 'BIWEEKLY',
+  'kickoff.governance.workingGroupCadence': 'WEEKLY',
+  'kickoff.governance.decisionThresholds':
+    '<$25k or in-scope: PM decides\n' +
+    '$25k–$100k or scope clarification: Steering\n' +
+    '>$100k or scope change: Sponsor + Steering joint approval',
+  'kickoff.governance.escalationPath':
+    'Hesham Aglan (consultant PM) → Steering Committee (bi-weekly) → Helena Reyes (Sponsor)',
+  'kickoff.communication.statusReportCadence': 'WEEKLY',
+  'kickoff.communication.statusReportAudience':
+    'Helena Reyes — Sponsor / CFO\n' +
+    'David Chen — Client PM / VP Finance Transformation\n' +
+    'Hesham Aglan — Consultant PM\n' +
+    'Sophie Müller — Workstream lead, EU subsidiaries (UK + DE)\n' +
+    'Tom Wilson — Workstream lead, US + AU subsidiaries\n' +
+    'Priya Patel — Workstream lead, Revenue Recognition (ARM)',
+  'kickoff.communication.issueReportingChannel': 'SHARED_DOC',
+  'kickoff.communication.stakeholderNotes':
+    'Robert Atlas (CEO) — quarterly read-out only; no operational involvement\n' +
+    'Marcus Webb (Head of IT) — must be informed before any sandbox refresh or production change\n' +
+    'External auditor (KPMG) — read-only access to UAT data; SOX walkthrough required at each major release',
+
   // NS Pack 1 — Foundation & Account Type
   'ns.foundation.edition': 'ONEWORLD',
   'ns.foundation.suiteSuccessBundle': 'US',
@@ -183,8 +218,21 @@ const outRoot = path.join(NSIX_ROOT, 'NETSUITE_DEMO_BUNDLE', ts);
 const docDir = path.join(outRoot, 'Documentation');
 await fs.mkdir(docDir, { recursive: true });
 
+// Engagement project members — drives kickoff Stakeholder Map + RACI auto-fill.
+const members: KickoffMember[] = [
+  { name: 'Helena Reyes', role: 'Project Sponsor / CFO', team: 'CLIENT', email: 'helena.reyes@atlas-industries.com' },
+  { name: 'David Chen', role: 'Project Manager / VP Finance Transformation', team: 'CLIENT', email: 'david.chen@atlas-industries.com' },
+  { name: 'Sophie Müller', role: 'Workstream Lead — EU subsidiaries (UK + DE)', team: 'CLIENT', email: 'sophie.mueller@atlas-industries.com' },
+  { name: 'Tom Wilson', role: 'Workstream Lead — US + AU subsidiaries', team: 'CLIENT', email: 'tom.wilson@atlas-industries.com' },
+  { name: 'Priya Patel', role: 'Workstream Lead — Revenue Recognition (ARM)', team: 'CLIENT', email: 'priya.patel@atlas-industries.com' },
+  { name: 'Hesham Aglan', role: 'Consultant Project Manager', team: 'CONSULTANT', email: 'hesham@erplaunch.io' },
+  { name: 'Sarah Chen', role: 'Senior NetSuite Consultant — Financials', team: 'CONSULTANT', email: 'sarah@erplaunch.io' },
+  { name: 'Mostafa Sherif', role: 'Senior NetSuite Consultant — OneWorld + Tax', team: 'CONSULTANT', email: 'mostafa.s@erplaunch.io' },
+];
+
 // ── Generate ────────────────────────────────────────────────────────────────
 const brdData = { clientName, adaptor, license, answers, comments, images, aiAdvice };
+const kickoffData = { clientName, adaptor, answers, members };
 const sddData = { clientName, adaptor, license, answers, conflicts: conflicts as never[], comments, images, aiAdvice };
 const trainingData = { clientName, adaptor, answers, comments, images, aiAdvice };
 const uatData = { clientName, adaptor, answers, comments, images, aiAdvice };
@@ -192,6 +240,8 @@ const planData = { clientName, adaptor, license, answers, conflicts: conflicts a
 const riskData = { clientName, conflicts: [], warnings: [] };
 
 const writes: Array<[string, string]> = [
+  ['Project_Kickoff.md', generateKickoff(kickoffData)],
+  ['Project_Kickoff.html', generateKickoffHtml(kickoffData)],
   ['BRD.md', generateBRD(brdData)],
   ['BRD.html', generateBRDHtml(brdData)],
   ['Risk_Register.md', generateRiskRegister(riskData)],

@@ -686,3 +686,124 @@ describe('NetSuite engagement — NS Pack 3 Localization rules through the route
     expect(hit?.severity).toBe('INFO');
   });
 });
+
+// ─── Kickoff Pack — universal rules through the route (NetSuite) ─────────────
+
+describe('NetSuite engagement — Kickoff Pack rules through the route', () => {
+  it('R1: empty sponsor fires kickoff.mandate.sponsor-required (BLOCK)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createNetSuiteEngagement(firmId, 'No Sponsor Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'MID_MARKET', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: { 'kickoff.mandate.sponsor': '' } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'kickoff.mandate.sponsor-required');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('BLOCK');
+  });
+
+  it('R2: empty successCriteria fires success-criteria-required (WARN)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createNetSuiteEngagement(firmId, 'No Success Criteria Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'MID_MARKET', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: { 'kickoff.mandate.successCriteria': '' } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'kickoff.mandate.success-criteria-required');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('WARN');
+  });
+
+  it('R3: ad-hoc steering fires steering-cadence-monthly-warn (WARN)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createNetSuiteEngagement(firmId, 'Ad-Hoc Steering Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'MID_MARKET', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: { 'kickoff.governance.steeringCadence': 'AD_HOC' } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'kickoff.governance.steering-cadence-monthly-warn');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('WARN');
+  });
+
+  it('R4: empty escalationPath fires escalation-path-required (BLOCK)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createNetSuiteEngagement(firmId, 'No Escalation Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'MID_MARKET', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: { 'kickoff.governance.escalationPath': '' } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'kickoff.governance.escalation-path-required');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('BLOCK');
+  });
+
+  it('R5: targetGoLiveDate set + ns.foundation.edition=ONEWORLD fires tight-timeline-on-multi-entity (WARN)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createNetSuiteEngagement(firmId, 'Tight Timeline OneWorld Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'ONEWORLD', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: {
+        'kickoff.mandate.targetGoLiveDate': '2026-11-15',
+        'ns.foundation.edition': 'ONEWORLD',
+      } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'kickoff.tight-timeline-on-multi-entity');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('WARN');
+  });
+
+  it('R6: empty statusReportAudience fires audience-empty (WARN)', async () => {
+    const { firmId, token } = await seedFirmAndToken();
+    const engId = await createNetSuiteEngagement(firmId, 'No Audience Co');
+    await app.inject({
+      method: 'PUT', url: `/api/v1/engagements/${engId}/license`,
+      headers: authHeaders(token),
+      payload: { edition: 'MID_MARKET', modules: [] },
+    });
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/engagements/${engId}/profile`,
+      headers: authHeaders(token),
+      payload: { answers: { 'kickoff.communication.statusReportAudience': '' } },
+    });
+    const body = res.json() as { data: { conflicts: Array<{ id: string; severity: string }> } };
+    const hit = body.data.conflicts.find((c) => c.id === 'kickoff.communication.audience-empty');
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe('WARN');
+  });
+});

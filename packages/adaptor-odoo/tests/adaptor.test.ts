@@ -20,14 +20,15 @@ describe('odooAdaptor: manifest', () => {
 });
 
 describe('odooAdaptor: schema', () => {
-  it('exposes the canonical Odoo App-shaped flow order (Pack R + Pack 8 + Pack 9)', () => {
+  it('exposes the canonical Odoo App-shaped flow order (with KICKOFF first)', () => {
     const ids = odooAdaptor.schema.flows.map((f) => f.id);
+    // Kickoff Pack — UNIVERSAL pack renders FIRST. Mandate, governance,
+    //   communication. Mirrored verbatim into adaptor-netsuite.
     // Pack R — Restructure to Odoo App shape.
-    // Pack 8 — REVENUE_APPS (POS + eCommerce + Subscriptions) between
-    //          Sales and Manufacturing.
-    // Pack 9 — OPERATIONS_APPS (HR + Project + CRM) between Revenue
-    //          Apps and Manufacturing. Closes the Odoo content track.
+    // Pack 8 — REVENUE_APPS (POS + eCommerce + Subscriptions).
+    // Pack 9 — OPERATIONS_APPS (HR + Project + CRM).
     expect(ids).toEqual([
+      'KICKOFF',
       'FOUNDATION', 'ACCOUNTING', 'TAX', 'LOCALIZATION', 'INVENTORY',
       'P2P', 'O2C', 'REVENUE_APPS', 'OPERATIONS_APPS',
       'MANUFACTURING', 'RETURNS', 'MIGRATION',
@@ -43,12 +44,15 @@ describe('odooAdaptor: schema', () => {
     }
   });
 
-  it('question IDs are namespaced under "odoo." and unique', () => {
+  it('question IDs are namespaced under "odoo." or "kickoff." (universal pack) and unique', () => {
     const seen = new Set<string>();
     for (const flow of odooAdaptor.schema.flows) {
       for (const section of flow.sections) {
         for (const q of section.questions) {
-          expect(q.id.startsWith('odoo.'), `question ${q.id} not namespaced`).toBe(true);
+          // Universal Kickoff Pack questions live under the cross-adaptor
+          // `kickoff.*` namespace; everything else stays adaptor-scoped.
+          const valid = q.id.startsWith('odoo.') || q.id.startsWith('kickoff.');
+          expect(valid, `question ${q.id} not namespaced under odoo. or kickoff.`).toBe(true);
           expect(seen.has(q.id), `duplicate question id: ${q.id}`).toBe(false);
           seen.add(q.id);
         }
@@ -133,10 +137,11 @@ describe('odooAdaptor: rule pack', () => {
     }
   });
 
-  it('rule IDs are namespaced under "odoo." and unique', () => {
+  it('rule IDs are namespaced under "odoo." or "kickoff." (universal pack) and unique', () => {
     const seen = new Set<string>();
     for (const rule of odooAdaptor.rules.rules) {
-      expect(rule.id.startsWith('odoo.'), `rule id ${rule.id} not namespaced`).toBe(true);
+      const valid = rule.id.startsWith('odoo.') || rule.id.startsWith('kickoff.');
+      expect(valid, `rule id ${rule.id} not namespaced under odoo. or kickoff.`).toBe(true);
       expect(seen.has(rule.id), `duplicate rule id: ${rule.id}`).toBe(false);
       seen.add(rule.id);
     }
@@ -494,9 +499,18 @@ describe('odooAdaptor: Pack 1 — Foundation rule evaluation', () => {
 });
 
 describe('odooAdaptor: rule evaluation via evaluateAdaptorRules', () => {
-  it('clean Enterprise scoping raises no conflicts (Pack R repointed answer keys)', () => {
+  it('clean Enterprise scoping raises no conflicts (Pack R repointed answer keys + Kickoff Pack populated)', () => {
     const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
       answers: {
+        // Universal Kickoff Pack — populate to satisfy BLOCK/WARN rules.
+        'kickoff.mandate.sponsor': 'Helena Reyes (CFO)',
+        'kickoff.mandate.successCriteria': 'Close month-end in 5 days\nSingle source of truth\nEliminate manual entries',
+        'kickoff.governance.steeringCadence': 'BIWEEKLY',
+        'kickoff.governance.escalationPath': 'PM → Steering → Sponsor',
+        'kickoff.communication.statusReportAudience': 'Sponsor, PM, leads',
+        // Multi-company is fine here because Kickoff R5 only fires when
+        // targetGoLiveDate is also set — the clean test omits the date
+        // so R5 stays dormant.
         'odoo.foundation.multiCompany': true,
         'odoo.foundation.entityList': 'Holdco AE\nSubco EG',
         'odoo.foundation.fiscalYearStart': '01-01',
@@ -3565,5 +3579,190 @@ describe('odooAdaptor: Pack 9 — Operations Apps rule evaluation', () => {
         `R9 should NOT fire when deployment=${deployment}`,
       ).not.toContain('odoo.operations.attendance-on-selfhosted-needs-iot');
     }
+  });
+});
+
+// ─── Kickoff Pack — UNIVERSAL (mirrored in adaptor-netsuite) ─────────────────
+
+describe('odooAdaptor: Kickoff Pack — KICKOFF flow shape', () => {
+  const kickoff = odooAdaptor.schema.flows.find((f) => f.id === 'KICKOFF');
+
+  it('KICKOFF flow exists with the expected label + description', () => {
+    expect(kickoff).toBeDefined();
+    expect(kickoff!.label).toBe('Project Kickoff');
+    expect(kickoff!.description).toMatch(/mandate|governance|communication|discovery/i);
+  });
+
+  it('KICKOFF renders as the FIRST flow (before FOUNDATION)', () => {
+    const ids = odooAdaptor.schema.flows.map((f) => f.id);
+    expect(ids[0]).toBe('KICKOFF');
+    expect(ids.indexOf('FOUNDATION')).toBe(1);
+  });
+
+  it('renders three sections in the documented order', () => {
+    const ids = (kickoff!.sections as Array<{ id: string; order: number }>)
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .map((s) => s.id);
+    expect(ids).toEqual(['mandate', 'governance', 'communication']);
+  });
+
+  it('Project Mandate — 4 questions with the right ids + types', () => {
+    const sec = kickoff!.sections.find((s) => s.id === 'mandate')!;
+    expect(sec.label).toBe('Project Mandate');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('kickoff.mandate.sponsor')?.inputType).toBe('TEXT');
+    expect(byId.get('kickoff.mandate.businessCase')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('kickoff.mandate.successCriteria')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('kickoff.mandate.targetGoLiveDate')?.inputType).toBe('TEXT');
+  });
+
+  it('Governance & Decision-Making — 4 questions with the right ids + types + options', () => {
+    const sec = kickoff!.sections.find((s) => s.id === 'governance')!;
+    expect(sec.label).toBe('Governance & Decision-Making');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('kickoff.governance.steeringCadence')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('kickoff.governance.steeringCadence')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['AD_HOC', 'BIWEEKLY', 'MONTHLY', 'WEEKLY']);
+    expect(byId.get('kickoff.governance.workingGroupCadence')?.inputType).toBe('SINGLE_SELECT');
+    expect(byId.get('kickoff.governance.decisionThresholds')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('kickoff.governance.escalationPath')?.inputType).toBe('TEXT');
+  });
+
+  it('Communication Plan — 4 questions with the right ids + types + options', () => {
+    const sec = kickoff!.sections.find((s) => s.id === 'communication')!;
+    expect(sec.label).toBe('Communication Plan');
+    const byId = new Map(sec.questions.map((q) => [q.id, q]));
+    expect(byId.get('kickoff.communication.statusReportCadence')?.inputType).toBe('SINGLE_SELECT');
+    expect(byId.get('kickoff.communication.statusReportAudience')?.inputType).toBe('TEXTAREA');
+    expect(byId.get('kickoff.communication.issueReportingChannel')?.inputType).toBe('SINGLE_SELECT');
+    expect(
+      (byId.get('kickoff.communication.issueReportingChannel')?.options ?? []).map((o) => o.value).sort(),
+    ).toEqual(['EMAIL', 'MIXED', 'SHARED_DOC', 'WORKING_GROUP']);
+    expect(byId.get('kickoff.communication.stakeholderNotes')?.inputType).toBe('TEXTAREA');
+  });
+});
+
+describe('odooAdaptor: Kickoff Pack — rules registered in odoo-rules', () => {
+  const ids = odooAdaptor.rules.rules.map((r) => r.id);
+
+  it('R1 sponsor required (BLOCK)', () => {
+    expect(ids).toContain('kickoff.mandate.sponsor-required');
+  });
+  it('R2 success criteria required (WARN)', () => {
+    expect(ids).toContain('kickoff.mandate.success-criteria-required');
+  });
+  it('R3 steering cadence monthly/ad-hoc warn', () => {
+    expect(ids).toContain('kickoff.governance.steering-cadence-monthly-warn');
+  });
+  it('R4 escalation path required (BLOCK)', () => {
+    expect(ids).toContain('kickoff.governance.escalation-path-required');
+  });
+  it('R5 tight timeline on multi-entity (Odoo variant uses odoo.foundation.multiCompany)', () => {
+    expect(ids).toContain('kickoff.tight-timeline-on-multi-entity');
+  });
+  it('R6 communication audience empty', () => {
+    expect(ids).toContain('kickoff.communication.audience-empty');
+  });
+});
+
+describe('odooAdaptor: Kickoff Pack — rule evaluation', () => {
+  it('R1 fires (BLOCK) when sponsor is empty', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'kickoff.mandate.sponsor': '' },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'kickoff.mandate.sponsor-required');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R1 does NOT fire when sponsor is populated', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'kickoff.mandate.sponsor': 'Yousef Al-Rashid (CFO)' },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('kickoff.mandate.sponsor-required');
+  });
+
+  it('R2 fires (WARN) when successCriteria is empty', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'kickoff.mandate.successCriteria': '' },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'kickoff.mandate.success-criteria-required');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R3 fires (WARN) when steeringCadence=MONTHLY', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'kickoff.governance.steeringCadence': 'MONTHLY' },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'kickoff.governance.steering-cadence-monthly-warn');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R3 fires (WARN) when steeringCadence=AD_HOC', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'kickoff.governance.steeringCadence': 'AD_HOC' },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).toContain('kickoff.governance.steering-cadence-monthly-warn');
+  });
+
+  it('R3 does NOT fire on BIWEEKLY', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'kickoff.governance.steeringCadence': 'BIWEEKLY' },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('kickoff.governance.steering-cadence-monthly-warn');
+  });
+
+  it('R4 fires (BLOCK) when escalationPath is empty', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'kickoff.governance.escalationPath': '' },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'kickoff.governance.escalation-path-required');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('BLOCK');
+  });
+
+  it('R5 fires (WARN) when targetGoLiveDate is set AND foundation.multiCompany=true', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'kickoff.mandate.targetGoLiveDate': '2026-09-01',
+        'odoo.foundation.multiCompany': true,
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'kickoff.tight-timeline-on-multi-entity');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
+  });
+
+  it('R5 does NOT fire on single-company engagements', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: {
+        'kickoff.mandate.targetGoLiveDate': '2026-09-01',
+        'odoo.foundation.multiCompany': false,
+      },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    expect(conflicts.map((c) => c.id)).not.toContain('kickoff.tight-timeline-on-multi-entity');
+  });
+
+  it('R6 fires (WARN) when statusReportAudience is empty', () => {
+    const conflicts = evaluateAdaptorRules(odooAdaptor.rules, {
+      answers: { 'kickoff.communication.statusReportAudience': '' },
+      license: { edition: 'ENTERPRISE', modules: [] },
+    });
+    const r = conflicts.find((c) => c.id === 'kickoff.communication.audience-empty');
+    expect(r).toBeDefined();
+    expect(r?.severity).toBe('WARN');
   });
 });

@@ -89,6 +89,11 @@ function buildSchema(): QuestionnaireSchema {
     // adaptor (where R2R/P2P/O2C were NetSuite-cargo-cult and got
     // restructured in Pack R), NetSuite's R2R/P2P/O2C terminology is
     // native — those flows stay.
+    // Kickoff Pack — UNIVERSAL pack (mirrored verbatim in adaptor-odoo).
+    // Renders FIRST in the wizard so consultants capture sponsor +
+    // governance + comms before any platform-specific decisions. Same
+    // 12 questions, same 6 rules in both adaptors. Update both files
+    // when changing kickoff content.
     // NS Pack 2 — TAX flow sits between FOUNDATION and R2R because
     // SuiteTax engine, nexus list, and e-invoicing SuiteApps gate
     // every accounting transaction downstream.
@@ -97,12 +102,158 @@ function buildSchema(): QuestionnaireSchema {
     // data residency, multi-language UI, and country-specific
     // localization SuiteApps all gate the COA / forms that R2R uses.
     flows: [
+      buildKickoffFlow(),
       buildFoundationFlow(),
       buildTaxFlow(),
       buildLocalizationFlow(),
       ...['R2R', 'P2P', 'O2C', 'PRODUCTION', 'RETURNS']
         .map((id) => flows[id])
         .filter((f): f is FlowDefinition => !!f),
+    ],
+  };
+}
+
+// ─── Kickoff Pack — UNIVERSAL (mirrored verbatim in adaptor-odoo) ────────────
+//
+// 12 questions across 3 sections + 6 universal rules. Both adaptors get
+// the same flow because project-kickoff content (sponsor, charter, RACI,
+// governance, comms) is platform-agnostic. The kickoffGenerator in
+// apps/api produces a consolidated Project_Kickoff.{md,html} document
+// from these answers, adaptor-aware via AdaptorContext so prose flexes
+// per platform. Update BOTH adaptor index.ts files when changing kickoff
+// content.
+//
+// Sources: PMI / PMBOK project charter standard; standard ERP-
+// implementation kickoff agenda (consensus across SuiteSuccess, SAP
+// Activate, Oracle Cloud Implementation Methodology, Odoo methodology);
+// RACI matrix conventions (one Accountable per activity; never two).
+function buildKickoffFlow(): FlowDefinition {
+  return {
+    id: 'KICKOFF',
+    label: 'Project Kickoff',
+    description:
+      'Mandate, governance, and communication — the foundational agreements that frame the project before Discovery starts.',
+    sections: [
+      {
+        id: 'mandate',
+        label: 'Project Mandate',
+        order: 1,
+        questions: [
+          {
+            id: 'kickoff.mandate.sponsor',
+            inputType: 'TEXT',
+            required: true,
+            label: 'Project sponsor — name, title, organization (the single accountable executive)',
+          },
+          {
+            id: 'kickoff.mandate.businessCase',
+            inputType: 'TEXTAREA',
+            required: true,
+            label:
+              'Business case — one paragraph: why is this project happening now? what business outcome does it enable?',
+          },
+          {
+            id: 'kickoff.mandate.successCriteria',
+            inputType: 'TEXTAREA',
+            required: true,
+            label:
+              "Top 3 success criteria, measurable (one per line — e.g., 'Close month-end in 5 business days vs current 12', 'Eliminate 80% of manual journal entries', 'Single source of truth for inventory across all 4 warehouses')",
+          },
+          {
+            id: 'kickoff.mandate.targetGoLiveDate',
+            inputType: 'TEXT',
+            required: true,
+            label: "Target go-live date (YYYY-MM-DD or 'TBD')",
+          },
+        ],
+      },
+      {
+        id: 'governance',
+        label: 'Governance & Decision-Making',
+        order: 2,
+        questions: [
+          {
+            id: 'kickoff.governance.steeringCadence',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'Steering committee cadence',
+            options: [
+              { value: 'WEEKLY', label: 'Weekly' },
+              { value: 'BIWEEKLY', label: 'Bi-weekly (typical for mid-market implementations)' },
+              { value: 'MONTHLY', label: 'Monthly (typical for small / phased)' },
+              { value: 'AD_HOC', label: 'Ad-hoc (high risk — recommend converting to scheduled cadence)' },
+            ],
+          },
+          {
+            id: 'kickoff.governance.workingGroupCadence',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'Working group / project board cadence',
+            options: [
+              { value: 'DAILY', label: 'Daily standup' },
+              { value: 'WEEKLY', label: 'Weekly' },
+              { value: 'BIWEEKLY', label: 'Bi-weekly' },
+            ],
+          },
+          {
+            id: 'kickoff.governance.decisionThresholds',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Decision authority thresholds (one per line — e.g., '<$10k: PM decides', '$10k–$50k: Steering', '>$50k or scope change: Sponsor + Steering')",
+          },
+          {
+            id: 'kickoff.governance.escalationPath',
+            inputType: 'TEXT',
+            required: true,
+            label:
+              "Escalation path — named individual(s) when issues are unresolved at working-group level (e.g., 'Sarah Chen (consultant PM) → Steering Committee → Project Sponsor')",
+          },
+        ],
+      },
+      {
+        id: 'communication',
+        label: 'Communication Plan',
+        order: 3,
+        questions: [
+          {
+            id: 'kickoff.communication.statusReportCadence',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'Status report cadence to client team',
+            options: [
+              { value: 'WEEKLY', label: 'Weekly' },
+              { value: 'BIWEEKLY', label: 'Bi-weekly' },
+              { value: 'MONTHLY', label: 'Monthly' },
+            ],
+          },
+          {
+            id: 'kickoff.communication.statusReportAudience',
+            inputType: 'TEXTAREA',
+            required: true,
+            label: 'Status report distribution list (one per line — name + role)',
+          },
+          {
+            id: 'kickoff.communication.issueReportingChannel',
+            inputType: 'SINGLE_SELECT',
+            required: true,
+            label: 'Primary issue/risk reporting channel',
+            options: [
+              { value: 'EMAIL', label: 'Email to PM' },
+              { value: 'SHARED_DOC', label: 'Shared issue log (Google Sheet / Notion / Jira)' },
+              { value: 'WORKING_GROUP', label: 'Surface at working-group meeting' },
+              { value: 'MIXED', label: 'Mixed — different channels per severity' },
+            ],
+          },
+          {
+            id: 'kickoff.communication.stakeholderNotes',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Stakeholder map notes — anyone NOT in the engagement team list who needs visibility (e.g., 'CFO Maria Khan — quarterly read-out only', 'IT Director Ahmed — must be informed before any environment change')",
+          },
+        ],
+      },
     ],
   };
 }
@@ -1477,6 +1628,100 @@ const rules: RulePack = {
           { answerFalsy: { questionId: 'ns.foundation.suiteCloudPlus' } },
         ],
       },
+    },
+
+    // ── Kickoff Pack — UNIVERSAL rules (mirrored verbatim in adaptor-odoo,
+    //                                    except R5 adaptor-specific multi-
+    //                                    entity check) ──
+    //
+    // R5 note: spec's "tight timeline on OneWorld" — NetSuite-native
+    // vocabulary. Mirrored Odoo variant uses odoo.foundation.multiCompany.
+    // Same rule id (kickoff.tight-timeline-on-multi-entity) so the
+    // message and resolution stay identical across both adaptors.
+    //
+    // The "<8 weeks from today" date-math constraint from the spec is
+    // dropped — DSL has no date arithmetic. Pragmatic version fires
+    // whenever a target go-live is set on a multi-entity engagement,
+    // prompting the consultant to confirm-or-dismiss the timeline.
+
+    // R1: Every project requires a single accountable sponsor.
+    {
+      id: 'kickoff.mandate.sponsor-required',
+      type: 'DATA_WARNING',
+      severity: 'BLOCK',
+      questionIds: ['kickoff.mandate.sponsor'],
+      message: 'Every project requires a single accountable sponsor. Without one, scope decisions stall.',
+      resolution: 'Name the sponsor — typically the C-level executive whose budget or operational scope owns the outcome.',
+      when: { answerFalsy: { questionId: 'kickoff.mandate.sponsor' } },
+    },
+
+    // R2: Measurable success criteria are the project's evaluation
+    // baseline.
+    {
+      id: 'kickoff.mandate.success-criteria-required',
+      type: 'DATA_WARNING',
+      severity: 'WARN',
+      questionIds: ['kickoff.mandate.successCriteria'],
+      message: "No measurable success criteria captured. Without them, the project can't be objectively evaluated at go-live.",
+      resolution: "Capture at least 3 measurable criteria. Soft language ('improve', 'better') doesn't count — use numbers and timeframes.",
+      when: { answerFalsy: { questionId: 'kickoff.mandate.successCriteria' } },
+    },
+
+    // R3: Monthly or ad-hoc steering on a non-trivial implementation is
+    // too sparse — issues compound between meetings.
+    {
+      id: 'kickoff.governance.steering-cadence-monthly-warn',
+      type: 'CONFIG_CONFLICT',
+      severity: 'WARN',
+      questionIds: ['kickoff.governance.steeringCadence'],
+      message: 'Monthly or ad-hoc steering on a non-trivial implementation is too sparse — issues compound between meetings.',
+      resolution: 'Bi-weekly steering is the standard for mid-market. Reserve monthly for very small / phased rollouts. Ad-hoc is high risk.',
+      when: {
+        any: [
+          { answerEquals: { questionId: 'kickoff.governance.steeringCadence', value: 'MONTHLY' } },
+          { answerEquals: { questionId: 'kickoff.governance.steeringCadence', value: 'AD_HOC' } },
+        ],
+      },
+    },
+
+    // R4: Without an escalation path, decisions stall indefinitely when
+    // working group cannot resolve.
+    {
+      id: 'kickoff.governance.escalation-path-required',
+      type: 'DATA_WARNING',
+      severity: 'BLOCK',
+      questionIds: ['kickoff.governance.escalationPath'],
+      message: 'No escalation path defined. When working-group cannot resolve, decisions stall indefinitely.',
+      resolution: 'Name the path explicitly: PM → Steering → Sponsor. Names, not just roles.',
+      when: { answerFalsy: { questionId: 'kickoff.governance.escalationPath' } },
+    },
+
+    // R5: Tight timeline on a multi-entity engagement. NetSuite variant —
+    // fires when targetGoLiveDate is set AND ns.foundation.edition=ONEWORLD.
+    {
+      id: 'kickoff.tight-timeline-on-multi-entity',
+      type: 'DATA_WARNING',
+      severity: 'WARN',
+      questionIds: ['kickoff.mandate.targetGoLiveDate', 'ns.foundation.edition'],
+      message: 'Multi-entity implementations rarely complete in under 8 weeks — multi-subsidiary configuration + tax engine setup typically takes 6–12 weeks alone.',
+      resolution: 'Push target to at least 12 weeks, or scope the first go-live to a single subsidiary with phased entity rollout.',
+      when: {
+        all: [
+          { answerTruthy: { questionId: 'kickoff.mandate.targetGoLiveDate' } },
+          { answerEquals: { questionId: 'ns.foundation.edition', value: 'ONEWORLD' } },
+        ],
+      },
+    },
+
+    // R6: Status reports without a known audience never get read.
+    {
+      id: 'kickoff.communication.audience-empty',
+      type: 'DATA_WARNING',
+      severity: 'WARN',
+      questionIds: ['kickoff.communication.statusReportAudience'],
+      message: 'Status report audience not captured. Status reports without a known audience never get read.',
+      resolution: 'List names + roles — typically project sponsor, client PM, consultant PM, and 2–3 workstream leads from each side.',
+      when: { answerFalsy: { questionId: 'kickoff.communication.statusReportAudience' } },
     },
   ],
 };
