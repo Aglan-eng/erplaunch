@@ -22,6 +22,14 @@ import { generateSolutionDoc, generateSolutionDocHtml } from '../src/services/ge
 import { generateTrainingManual, generateTrainingManualHtml } from '../src/services/generators/trainingManualGenerator.js';
 import { generateImplementationPlanHtml } from '../src/services/generators/planGenerator.js';
 import { generateOdooConfigurationPlan, generateOdooConfigurationPlanHtml } from '../src/services/generators/odooConfigurationPlanGenerator.js';
+import { generateTestScripts } from '../src/services/generators/testScriptGenerator.js';
+import {
+  generateSignOffMatrix,
+  type SignOffMember,
+} from '../src/services/generators/signOffMatrixGenerator.js';
+import { generateDefectLogTemplate } from '../src/services/generators/defectLogTemplateGenerator.js';
+import { generatePerformanceTestPlan } from '../src/services/generators/performanceTestPlanGenerator.js';
+import { generateRegressionTestSuite } from '../src/services/generators/regressionTestSuiteGenerator.js';
 import odooAdaptor from '@ofoq/adaptor-odoo';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -277,6 +285,45 @@ const answers: Record<string, unknown> = {
   'odoo.operations.crmPipelineStages': 'New\nQualified\nProposal\nNegotiation\nWon / Lost',
   'odoo.operations.crmLeadEnrichmentInScope': true,
   'odoo.operations.crmEmailIntegration': 'Outlook plug-in\nIMAP catch-all (sales@sahel.ae)\nMailchimp sync',
+
+  // Pack T — TESTING flow (cross-platform). Sahel exercises 10
+  // scenarios across R2R/P2P/O2C/MFG/INV + 5 perf benchmarks + 5
+  // regression smoke scenarios + 5 test roles.
+  'testing.scope.scenariosPerWorkstream':
+    'R2R: Period close: Run month-end close for fiscal period; verify all journals posted + TB balances per entity\n' +
+    'R2R: Trial balance: Generate consolidated TB across both entities; verify drilldown to source JEs\n' +
+    'P2P: PO approval routing: Create PO at each tier; verify correct approver routed per double-tier policy\n' +
+    'P2P: Three-way match: Enter vendor bill against PO + receipt; verify match status + GL impact\n' +
+    'O2C: SO creation with pricelist: Create SO for tier-2 customer; verify wholesale pricelist applied\n' +
+    'O2C: Invoice + dunning: Generate invoice from delivered SO; verify follow-up reminder cadence\n' +
+    'MFG: Manufacturing order: Create MO for multi-level BOM; consume components; complete production\n' +
+    'MFG: Quality check pass/fail: Trigger quality checkpoint mid-MO; verify hard-block on fail\n' +
+    'INV: Lot tracking: Receive pharma lot; ship FEFO; verify expiry-date routing\n' +
+    'CRM: Lead conversion: Convert lead to opportunity to quote to SO; verify pipeline stages',
+  'testing.scope.testRoles':
+    'AP Clerk: Test all P2P scenarios (PO + bill + payment)\n' +
+    'AR Clerk: Test all O2C scenarios (SO + invoicing + collections)\n' +
+    'Inventory Manager: Test all INV + MFG scenarios (lots + serials + expiry)\n' +
+    'Mariam Saeed (Group Controller): Sign off on R2R scenarios + period close\n' +
+    'Yousef Al-Rashid (CFO): Sign off on consolidated reports + final UAT gate',
+  'testing.scope.acceptanceCriteriaTemplate': 'GIVEN_WHEN_THEN',
+  'testing.performance.performanceBenchmarks':
+    'PO creation: <2 seconds end-to-end\n' +
+    'Trial balance generation across 2 entities + 38k inventory lines: <30 seconds\n' +
+    'Inventory query 14.5k SKUs with lot expiry filter: <5 seconds\n' +
+    'Period close batch (full reval + IFRS adjustments): <15 minutes\n' +
+    'Consolidated AR aging across 8.5k customers: <8 seconds',
+  'testing.performance.loadProfile':
+    'Peak: 35 internal users + 50 portal users (month-end close window)\n' +
+    'Steady: 25 internal users + 15 portal users (daily ops)\n' +
+    'Off-peak: 5 internal users (overnight batch jobs)',
+  'testing.regression.regressionSmokeScenarios':
+    'Login as each role: User can log in + lands on correct dashboard\n' +
+    'Create PO + approve: PO routes through double-tier approval correctly\n' +
+    'Create SO + invoice: Invoice generated with correct pricelist applied\n' +
+    'Run TB report: TB balances per entity + consolidated within 30s\n' +
+    'Inventory query: 14.5k SKU dataset returns within 5s with filters',
+  'testing.regression.defectSeverityLevels': 'STANDARD_4_LEVEL',
 };
 const comments = [
   { sectionKey: 'license', text: 'Enterprise edition confirmed; Studio + Documents required for approval matrix + contract storage. MRP + Quality modules for the two production lines.' },
@@ -314,6 +361,42 @@ const planData = { clientName, adaptor, license, answers, conflicts: conflicts a
 const configPlanData = { clientName, adaptor, license, answers, comments, images, aiAdvice };
 const riskData = { clientName, conflicts: [], warnings: [] };
 
+// ── Pack T — Test Artifacts (cross-platform — runs for Odoo too) ────────────
+const signoffMembers: SignOffMember[] = members.map((m) => ({
+  name: m.name,
+  role: m.role,
+  team: m.team,
+}));
+const testScriptsResult = generateTestScripts({
+  scenariosPerWorkstream: answers['testing.scope.scenariosPerWorkstream'] as string,
+  testRoles: answers['testing.scope.testRoles'] as string,
+  acceptanceCriteriaTemplate: answers['testing.scope.acceptanceCriteriaTemplate'] as string,
+  adaptorName: 'Odoo',
+});
+const signOffResult = generateSignOffMatrix({
+  clientName,
+  scenariosPerWorkstream: answers['testing.scope.scenariosPerWorkstream'] as string,
+  testRoles: answers['testing.scope.testRoles'] as string,
+  members: signoffMembers,
+  adaptorName: 'Odoo',
+});
+const defectLogResult = generateDefectLogTemplate({
+  clientName,
+  defectSeverityLevels: answers['testing.regression.defectSeverityLevels'] as string,
+  adaptorName: 'Odoo',
+});
+const perfPlanResult = generatePerformanceTestPlan({
+  clientName,
+  performanceBenchmarks: answers['testing.performance.performanceBenchmarks'] as string,
+  loadProfile: answers['testing.performance.loadProfile'] as string,
+  adaptorName: 'Odoo',
+});
+const regressionResult = generateRegressionTestSuite({
+  clientName,
+  regressionSmokeScenarios: answers['testing.regression.regressionSmokeScenarios'] as string,
+  adaptorName: 'Odoo',
+});
+
 const writes: Array<[string, string]> = [
   ['Project_Kickoff.md', generateKickoff(kickoffData)],
   ['Project_Kickoff.html', generateKickoffHtml(kickoffData)],
@@ -329,11 +412,34 @@ const writes: Array<[string, string]> = [
   ['Implementation_Plan.html', generateImplementationPlanHtml(planData)],
   ['Configuration_Plan.md', generateOdooConfigurationPlan(configPlanData)],
   ['Configuration_Plan.html', generateOdooConfigurationPlanHtml(configPlanData)],
+  // Pack T artefacts.
+  ['Sign_Off_Matrix.md', signOffResult.markdown],
+  ['Sign_Off_Matrix.html', signOffResult.html],
+  ['Defect_Log_Template.md', defectLogResult.markdown],
+  ['Performance_Test_Plan.md', perfPlanResult.markdown],
+  ['Performance_Test_Plan.html', perfPlanResult.html],
+  ['Regression_Test_Suite.md', regressionResult.markdown],
+  ['Regression_Test_Suite.html', regressionResult.html],
 ];
 
 for (const [filename, content] of writes) {
   await fs.writeFile(path.join(docDir, filename), content, 'utf8');
   process.stdout.write(`  ✓ ${filename}\n`);
+}
+
+// Pack T — Test_Scripts/ subfolder. Generator emits each TC-*.md keyed
+// by its full bundle-relative path (Documentation/Test_Scripts/...).
+// Strip the Documentation/ prefix, mkdir -p the parent, and write.
+const testScriptsDir = path.join(docDir, 'Test_Scripts');
+if (testScriptsResult.emitted.length > 0) {
+  await fs.mkdir(testScriptsDir, { recursive: true });
+}
+for (const [bundlePath, content] of Object.entries(testScriptsResult.files)) {
+  const rel = bundlePath.replace(/^Documentation\//, '');
+  const fullPath = path.join(docDir, rel);
+  await fs.mkdir(path.dirname(fullPath), { recursive: true });
+  await fs.writeFile(fullPath, content, 'utf8');
+  process.stdout.write(`  ✓ ${rel}\n`);
 }
 
 // ── Banlist verification ────────────────────────────────────────────────────

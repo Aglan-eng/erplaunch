@@ -93,20 +93,24 @@ export async function loadLatestBundle(adaptor: AdaptorId): Promise<BundleSnapsh
   const latest = timestamps[timestamps.length - 1];
   const bundlePath = path.join(bundleRoot, latest);
 
-  // ── docs map: flat read of bundle/Documentation/ ──
+  // ── docs map: recursive read of bundle/Documentation/ ──
+  // Top-level files keep their bare filename key (back-compat for the
+  // 45 existing phase checks that read e.g. docs.get('BRD.md')).
+  // Files inside subdirectories — Pack T's Test_Scripts/ being the
+  // first one — use a relative path key (e.g.
+  // "Test_Scripts/TC-P2P-01-foo.md") so harness checks can scan them
+  // without needing a separate map. Forward slashes only, for
+  // Windows/Unix portability.
   const docDir = path.join(bundlePath, 'Documentation');
   const docs = new Map<string, string>();
   try {
-    const docFiles = await fs.readdir(docDir);
-    for (const filename of docFiles) {
-      const full = path.join(docDir, filename);
-      const stat = await fs.stat(full);
-      if (!stat.isFile()) continue;
-      docs.set(filename, await fs.readFile(full, 'utf8'));
-    }
+    await collectDocs(docDir, '', docs);
   } catch {
     // Documentation/ missing means the bundle is broken — surface it.
     throw new Error(`Lifecycle harness: Documentation/ not found in ${bundlePath}.`);
+  }
+  if (docs.size === 0) {
+    throw new Error(`Lifecycle harness: Documentation/ in ${bundlePath} is empty.`);
   }
 
   // ── buildArtefacts map: recursive walk of bundle/ excluding Documentation/ ──
@@ -114,6 +118,34 @@ export async function loadLatestBundle(adaptor: AdaptorId): Promise<BundleSnapsh
   await collectBuildArtefacts(bundlePath, '', buildArtefacts);
 
   return { bundlePath, adaptor, docs, buildArtefacts };
+}
+
+/**
+ * Recursively walk Documentation/ and populate the docs map. Top-level
+ * files are keyed by bare filename (back-compat); files inside
+ * subdirectories are keyed by their relative path inside Documentation/
+ * with forward slashes. e.g.:
+ *   docs.set('BRD.md', ...)                          // top-level
+ *   docs.set('Test_Scripts/TC-P2P-01-foo.md', ...)   // nested
+ */
+async function collectDocs(
+  docRoot: string,
+  relativeSoFar: string,
+  out: Map<string, string>,
+): Promise<void> {
+  const absoluteDir = path.join(docRoot, relativeSoFar);
+  const entries = await fs.readdir(absoluteDir, { withFileTypes: true });
+  for (const entry of entries) {
+    const childRel = relativeSoFar
+      ? `${relativeSoFar}/${entry.name}`
+      : entry.name;
+    if (entry.isDirectory()) {
+      await collectDocs(docRoot, childRel, out);
+    } else if (entry.isFile()) {
+      const full = path.join(docRoot, childRel);
+      out.set(childRel, await fs.readFile(full, 'utf8'));
+    }
+  }
 }
 
 /**

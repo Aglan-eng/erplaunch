@@ -142,6 +142,11 @@ const schema: QuestionnaireSchema = {
     buildManufacturingFlow(),
     buildReturnsFlow(),
     buildMigrationFlow(),
+    // Pack T — TESTING flow renders LAST (after all build-side flows)
+    // because test scenarios reference apps + workstreams declared
+    // upstream. Cross-platform pack — same flow definition mirrored
+    // verbatim in adaptor-netsuite.
+    buildTestingFlow(),
   ],
 };
 
@@ -2062,6 +2067,111 @@ function buildMigrationFlow(): FlowDefinition {
             inputType: 'TEXT',
             required: true,
             label: 'Migration sign-off owner (who approves go/no-go on cutover day)',
+          },
+        ],
+      },
+    ],
+  };
+}
+
+// ─── Pack T — TESTING flow (CROSS-PLATFORM, mirrored in adaptor-netsuite) ────
+//
+// Test & UAT planning. Same 7 questions in both adaptors — test
+// artefacts (test scripts, sign-off matrix, defect log, performance
+// plan, regression suite) are platform-agnostic. Update BOTH
+// adaptor index.ts files when changing this flow.
+//
+// Sources:
+//   - IEEE 829 Standard for Software Test Documentation.
+//   - ISO/IEC 25010 software quality model.
+//   - ASTM E1909 Standard Practice for Software Testing Documentation.
+//   - NetSuite UAT methodology (Oracle Help — Testing your Customizations).
+//   - Odoo testing guidance (Odoo developer documentation — tests).
+function buildTestingFlow(): FlowDefinition {
+  return {
+    id: 'TESTING',
+    label: 'Test & UAT Planning',
+    description:
+      'Test scenarios, performance benchmarks, defect tracking conventions, and regression coverage. Drives Documentation/Test_Scripts/, Sign_Off_Matrix, Defect_Log_Template, Performance_Test_Plan, and Regression_Test_Suite artefacts.',
+    sections: [
+      {
+        id: 'scope',
+        label: 'Test Scope',
+        order: 1,
+        questions: [
+          {
+            id: 'testing.scope.scenariosPerWorkstream',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Test scenarios per workstream (one per line — '<workstream>: <scenario name>: <description>'; e.g., 'R2R: Period close: Run month-end close for fiscal period; verify all journals posted', 'P2P: PO approval routing: Create PO at each tier; verify correct approver routed')",
+          },
+          {
+            id: 'testing.scope.testRoles',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Test roles + responsibilities (one per line — '<role>: <responsibility>'; e.g., 'AP Clerk: Test all P2P scenarios', 'CFO: Sign off on R2R scenarios + financial reports')",
+          },
+          {
+            id: 'testing.scope.acceptanceCriteriaTemplate',
+            inputType: 'SINGLE_SELECT',
+            required: false,
+            label: 'Acceptance criteria style',
+            options: [
+              { value: 'SIMPLE', label: 'Simple bulleted list' },
+              { value: 'GIVEN_WHEN_THEN', label: 'Given / When / Then (BDD-style)' },
+              { value: 'GHERKIN', label: 'Full Gherkin scenario (with Feature header)' },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'performance',
+        label: 'Performance Benchmarks',
+        order: 2,
+        questions: [
+          {
+            id: 'testing.performance.performanceBenchmarks',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Performance benchmarks (one per line — '<operation>: <target>'; e.g., 'PO creation: <2 seconds end-to-end', 'Trial balance generation for 4 entities: <30 seconds', 'Inventory query 50k SKUs: <5 seconds')",
+          },
+          {
+            id: 'testing.performance.loadProfile',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Concurrent user load profile (e.g., 'Peak: 80 users, Steady: 25 users, Off-peak: 5 users')",
+          },
+        ],
+      },
+      {
+        id: 'regression',
+        label: 'Regression & Defects',
+        order: 3,
+        questions: [
+          {
+            id: 'testing.regression.regressionSmokeScenarios',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Smoke test scenarios for post-deploy regression (one per line — '<scenario_name>: <key validation>'; e.g., 'Login as each role: User can log in + lands on correct center', 'Create PO + approve: PO routes through approval workflow correctly')",
+          },
+          {
+            id: 'testing.regression.defectSeverityLevels',
+            inputType: 'SINGLE_SELECT',
+            required: false,
+            label: 'Defect severity scheme',
+            options: [
+              {
+                value: 'STANDARD_4_LEVEL',
+                label: 'Standard 4-level (Critical / High / Medium / Low) — recommended',
+              },
+              { value: 'MAJOR_MINOR', label: 'Major / Minor (lightweight, common in small implementations)' },
+              { value: 'NUMERIC_1_5', label: 'Numeric 1-5 (used by some QA teams + Jira defaults)' },
+            ],
           },
         ],
       },

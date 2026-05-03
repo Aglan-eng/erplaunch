@@ -20,7 +20,7 @@ describe('netsuiteAdaptor: manifest', () => {
 });
 
 describe('netsuiteAdaptor: schema', () => {
-  it('exposes 10 flows in the canonical order — KICKOFF + FOUNDATION + TAX + LOCALIZATION + SOLUTION_DESIGN + the legacy 5', () => {
+  it('exposes 12 flows in the canonical order — KICKOFF + FOUNDATION + TAX + LOCALIZATION + SOLUTION_DESIGN + the legacy 5 + TESTING', () => {
     const ids = netsuiteAdaptor.schema.flows.map((f) => f.id);
     // Kickoff Pack — UNIVERSAL pack renders FIRST.
     // NS Pack 1 added FOUNDATION.
@@ -30,10 +30,15 @@ describe('netsuiteAdaptor: schema', () => {
     // before R2R — closes the Phase 3 lifecycle-harness gap (4/10 → 9+).
     // NS Pack W inserts APPROVALS between P2P and O2C — drives the
     // SuiteFlow workflow + WFA script generators.
+    // Pack T appends TESTING after RETURNS (cross-platform — same flow
+    // mirrored verbatim in adaptor-odoo) — drives Phase 5 (Test/UAT)
+    // artefacts: test scripts, sign-off matrix, defect log, performance
+    // plan, regression suite. Closes Phase 5 lifecycle gap (3/10 → 9+).
     expect(ids).toEqual([
       'KICKOFF',
       'FOUNDATION', 'TAX', 'LOCALIZATION', 'SOLUTION_DESIGN',
       'R2R', 'P2P', 'APPROVALS', 'O2C', 'PRODUCTION', 'RETURNS',
+      'TESTING',
     ]);
   });
 
@@ -1879,5 +1884,104 @@ describe('netsuiteAdaptor: NS Pack D — Tax engine questions', () => {
     expect(ids).toContain('ns.tax.itemPriceMode');
     expect(ids).toContain('ns.tax.defaultSalesTaxCode');
     expect(ids).toContain('ns.tax.defaultPurchaseTaxCode');
+  });
+});
+
+// ─── Pack T — TESTING flow shape ────────────────────────────────────────────
+
+describe('netsuiteAdaptor: Pack T — TESTING flow shape', () => {
+  const testing = netsuiteAdaptor.schema.flows.find((f) => f.id === 'TESTING');
+
+  it('TESTING flow exists with the expected label', () => {
+    expect(testing).toBeDefined();
+    expect(testing!.label).toBe('Test & UAT Planning');
+  });
+
+  it('TESTING sits LAST in the flow order (after RETURNS)', () => {
+    const ids = netsuiteAdaptor.schema.flows.map((f) => f.id);
+    expect(ids[ids.length - 1]).toBe('TESTING');
+    expect(ids.indexOf('TESTING')).toBeGreaterThan(ids.indexOf('RETURNS'));
+  });
+
+  it('TESTING has the 3 sections in canonical order — scope / performance / regression', () => {
+    const sectionIds = testing!.sections.map((s) => s.id);
+    expect(sectionIds).toEqual(['scope', 'performance', 'regression']);
+  });
+
+  it('Section 1 (scope) carries the 3 scope questions', () => {
+    const scope = testing!.sections.find((s) => s.id === 'scope')!;
+    const ids = scope.questions.map((q) => q.id);
+    expect(ids).toEqual([
+      'testing.scope.scenariosPerWorkstream',
+      'testing.scope.testRoles',
+      'testing.scope.acceptanceCriteriaTemplate',
+    ]);
+  });
+
+  it('Section 2 (performance) carries the 2 performance questions', () => {
+    const perf = testing!.sections.find((s) => s.id === 'performance')!;
+    const ids = perf.questions.map((q) => q.id);
+    expect(ids).toEqual([
+      'testing.performance.performanceBenchmarks',
+      'testing.performance.loadProfile',
+    ]);
+  });
+
+  it('Section 3 (regression) carries the 2 regression questions', () => {
+    const reg = testing!.sections.find((s) => s.id === 'regression')!;
+    const ids = reg.questions.map((q) => q.id);
+    expect(ids).toEqual([
+      'testing.regression.regressionSmokeScenarios',
+      'testing.regression.defectSeverityLevels',
+    ]);
+  });
+
+  it('acceptanceCriteriaTemplate offers SIMPLE / GIVEN_WHEN_THEN / GHERKIN', () => {
+    const q = testing!
+      .sections.find((s) => s.id === 'scope')!
+      .questions.find((qq) => qq.id === 'testing.scope.acceptanceCriteriaTemplate')!;
+    expect(q.inputType).toBe('SINGLE_SELECT');
+    const values = (q.options ?? []).map((o) => o.value).sort();
+    expect(values).toEqual(['GHERKIN', 'GIVEN_WHEN_THEN', 'SIMPLE']);
+  });
+
+  it('defectSeverityLevels offers STANDARD_4_LEVEL / MAJOR_MINOR / NUMERIC_1_5', () => {
+    const q = testing!
+      .sections.find((s) => s.id === 'regression')!
+      .questions.find((qq) => qq.id === 'testing.regression.defectSeverityLevels')!;
+    expect(q.inputType).toBe('SINGLE_SELECT');
+    const values = (q.options ?? []).map((o) => o.value).sort();
+    expect(values).toEqual(['MAJOR_MINOR', 'NUMERIC_1_5', 'STANDARD_4_LEVEL']);
+  });
+
+  it('all TEXTAREA questions are non-required (consultant skip-friendly)', () => {
+    for (const section of testing!.sections) {
+      for (const q of section.questions) {
+        if (q.inputType === 'TEXTAREA') {
+          expect(q.required, `${q.id} should be optional`).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('flow description references the test artefacts the generators emit', () => {
+    expect(testing!.description ?? '').toMatch(/Test_Scripts/);
+    expect(testing!.description ?? '').toMatch(/Sign_Off_Matrix/);
+    expect(testing!.description ?? '').toMatch(/Defect_Log_Template/);
+    expect(testing!.description ?? '').toMatch(/Performance_Test_Plan/);
+    expect(testing!.description ?? '').toMatch(/Regression_Test_Suite/);
+  });
+
+  it('question IDs use the testing.* namespace (cross-platform — same on Odoo)', () => {
+    for (const section of testing!.sections) {
+      for (const q of section.questions) {
+        expect(q.id).toMatch(/^testing\./);
+      }
+    }
+  });
+
+  it('TESTING flow contributes 7 questions total (3 + 2 + 2)', () => {
+    const total = testing!.sections.reduce((sum, s) => sum + s.questions.length, 0);
+    expect(total).toBe(7);
   });
 });

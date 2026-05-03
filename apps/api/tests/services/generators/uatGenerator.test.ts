@@ -172,3 +172,83 @@ describe('generateUATPlan — custom adaptor (fall-through default)', () => {
     expect(html).not.toContain('SDF');
   });
 });
+
+// ─── Pack T — Acceptance criteria + linked test scripts + cross-refs ────────
+
+describe('generateUATPlan — Pack T extensions', () => {
+  it('always renders the Acceptance Criteria section (closes pre-Pack-T harness gap)', () => {
+    const md = generateUATPlan(baseData(NETSUITE_CTX));
+    expect(md).toContain('## 3. Acceptance Criteria');
+  });
+
+  it('Linked Test Scripts column populates from testing.scope.scenariosPerWorkstream', () => {
+    const md = generateUATPlan(
+      baseData(NETSUITE_CTX, {
+        answers: {
+          // r2r.entities.multiEntity triggers an R2R UAT row in
+          // buildTestCases (so the linked scripts column for R2R has
+          // somewhere to land).
+          'r2r.entities.multiEntity': true,
+          'p2p.purchasing.usePurchaseOrders': true,
+          'p2p.purchasing.poApprovalRequired': true,
+          'testing.scope.scenariosPerWorkstream':
+            'P2P: PO creation: desc\nP2P: PO approval: desc\nR2R: Period close: desc',
+        },
+      }),
+    );
+    // Each P2P UAT row should reference all P2P TC IDs derived from the
+    // scenarios answer; the R2R row should reference R2R TC IDs.
+    expect(md).toContain('`TC-P2P-01`');
+    expect(md).toContain('`TC-P2P-02`');
+    expect(md).toContain('`TC-R2R-01`');
+  });
+
+  it('cross-references all four Pack T artefacts (sign-off + defect log + perf plan + regression)', () => {
+    const md = generateUATPlan(baseData(NETSUITE_CTX));
+    expect(md).toContain('Sign_Off_Matrix.md');
+    expect(md).toContain('Defect_Log_Template.md');
+    expect(md).toContain('Performance_Test_Plan.md');
+    expect(md).toContain('Regression_Test_Suite.md');
+  });
+
+  it('GHERKIN style emits Feature / Scenario / Given / When / Then blocks', () => {
+    const md = generateUATPlan(
+      baseData(NETSUITE_CTX, {
+        answers: {
+          'p2p.purchasing.usePurchaseOrders': true,
+          'testing.scope.acceptanceCriteriaTemplate': 'GHERKIN',
+        },
+      }),
+    );
+    expect(md).toContain('```gherkin');
+    expect(md).toContain('Feature:');
+    expect(md).toContain('Scenario:');
+    expect(md).toContain('Given the engagement is configured');
+  });
+
+  it('GIVEN_WHEN_THEN style emits BDD bullets without Gherkin fenced block', () => {
+    const md = generateUATPlan(
+      baseData(NETSUITE_CTX, {
+        answers: {
+          'p2p.purchasing.usePurchaseOrders': true,
+          'testing.scope.acceptanceCriteriaTemplate': 'GIVEN_WHEN_THEN',
+        },
+      }),
+    );
+    expect(md).toContain('**Given**');
+    expect(md).toContain('**When**');
+    expect(md).toContain('**Then**');
+    expect(md).not.toContain('```gherkin');
+  });
+
+  it('SIMPLE / unset style emits bulleted criteria + section 4 references the perf plan', () => {
+    const md = generateUATPlan(
+      baseData(NETSUITE_CTX, {
+        answers: { 'p2p.purchasing.usePurchaseOrders': true },
+      }),
+    );
+    expect(md).toContain('## 4. Performance Targets');
+    expect(md).toContain('Performance_Test_Plan.md');
+    expect(md).not.toContain('```gherkin');
+  });
+});

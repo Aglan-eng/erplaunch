@@ -48,6 +48,14 @@ import { generateTaxTypes } from '../src/services/generators/sdfTaxTypeGenerator
 import { generateTaxCodes } from '../src/services/generators/sdfTaxCodeGenerator.js';
 import { generateTaxSchedules } from '../src/services/generators/sdfTaxScheduleGenerator.js';
 import { validateSDFBundle } from '../src/services/generators/sdfValidator.js';
+import { generateTestScripts } from '../src/services/generators/testScriptGenerator.js';
+import {
+  generateSignOffMatrix,
+  type SignOffMember,
+} from '../src/services/generators/signOffMatrixGenerator.js';
+import { generateDefectLogTemplate } from '../src/services/generators/defectLogTemplateGenerator.js';
+import { generatePerformanceTestPlan } from '../src/services/generators/performanceTestPlanGenerator.js';
+import { generateRegressionTestSuite } from '../src/services/generators/regressionTestSuiteGenerator.js';
 import netsuiteAdaptor from '@ofoq/adaptor-netsuite';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -357,6 +365,14 @@ const answers: Record<string, unknown> = {
     'Authentication: TBA (Token-Based Authentication) only — no user/password integration\n' +
     'Logging: all integration payloads logged to S3 with 30-day retention for debugging',
 
+  // R2R — multi-entity + multi-currency + intercompany. Drives the
+  // matching UAT scenarios in buildTestCases (each true-flag triggers
+  // one row in the UAT plan).
+  'r2r.entities.multiEntity': true,
+  'r2r.currencies.isMultiCurrency': true,
+  'r2r.currencies.autoExchangeRateUpdate': true,
+  'r2r.journalEntries.intercompanyJE': true,
+  'r2r.fiscalClose.hardClose': true,
   // P2P — PO approval routing. Drives the SuiteScript UE generator. The
   // legacy approvalThresholds TABLE captures the same intent for the
   // consultant-facing UI; this TEXTAREA is the generator-friendly form
@@ -364,11 +380,38 @@ const answers: Record<string, unknown> = {
   // actual thresholds wired from day one.
   'p2p.purchasing.usePurchaseOrders': true,
   'p2p.purchasing.poApprovalRequired': true,
+  'p2p.receiving.formalReceiving': true,
+  'p2p.receiving.threeWayMatch': true,
+  'p2p.bills.billApprovalRequired': true,
+  'p2p.expenses.employeeExpenses': true,
+  'p2p.payments.bankFileExport': true,
   'p2p.purchasing.poApprovalTiers':
     '<$5,000: auto-approve\n' +
     '$5,000-$50,000: Department Manager\n' +
     '$50,000-$250,000: VP Operations\n' +
     '>$250,000: CFO + Steering',
+
+  // O2C — credit limits, multi-currency pricing, fulfilment, ARM.
+  'o2c.customers.creditLimits': true,
+  'o2c.pricing.foreignCurrencyPricing': true,
+  'o2c.salesOrders.soApprovalRequired': true,
+  'o2c.fulfillment.pickPackShip': true,
+  'o2c.fulfillment.multipleLocations': true,
+  'o2c.invoicing.revenueRecognition': true,
+  'o2c.collections.dunningLetters': true,
+
+  // MFG — full WIP/Routings + outsourcing + demand planning.
+  'mfg.productionFlow.type': 'WIP_ROUTINGS',
+  'mfg.productionFlow.trackLabor': true,
+  'mfg.bom.multiBom': true,
+  'mfg.outsourced.useOutsourced': true,
+  'mfg.demand.useDemandPlanning': true,
+
+  // RTN — full RMA + restocking + vendor returns.
+  'rtn.customerReturns.useRMA': true,
+  'rtn.processing.restockingFees': true,
+  'rtn.processing.feePercentage': 15,
+  'rtn.vendorReturns.useVendorRMA': true,
 
   // Pack W — APPROVALS flow. Multi-workflow scope drives the SuiteFlow
   // workflow XMLs + Workflow Action scripts. Atlas covers the full
@@ -404,6 +447,49 @@ const answers: Record<string, unknown> = {
     'Vendor Onboarding Request: Submitted, Under Review, Approved, Active, Suspended',
   'ns.approvals.notificationCadence': 'IMMEDIATE',
   'ns.approvals.escalationDays': 3,
+
+  // Pack T — TESTING flow (cross-platform — same answer keys as Odoo).
+  // Atlas exercises 12 scenarios across R2R/P2P/O2C/MFG/RTN + 6 perf
+  // benchmarks + 6 regression smoke scenarios + 5 test roles.
+  'testing.scope.scenariosPerWorkstream':
+    'R2R: Period close: Run month-end close for fiscal period; verify all journals posted across all 4 subsidiaries\n' +
+    'R2R: Trial balance: Generate consolidated TB across 4 subsidiaries; verify drilldown to source JEs\n' +
+    'R2R: Intercompany JE: Create intercompany journal entry; verify auto-mirror on counterpart entity\n' +
+    'P2P: PO approval routing: Create PO at each tier ($5k / $50k / $250k / >$250k); verify correct approver\n' +
+    'P2P: PO three-way match: Receive against PO + enter bill; verify match status + GL impact\n' +
+    'P2P: Vendor bill approval: Submit bill above $50k; verify CFO approval routing\n' +
+    'O2C: SO with deep discount: Create SO with >15% discount; verify SO approval workflow triggers\n' +
+    'O2C: Invoice with rev rec: Create invoice with deferred revenue schedule; verify ASC 606 posting\n' +
+    'O2C: AR aging dunning: Trigger dunning letter at 60-day overdue; verify customer record + email\n' +
+    'MFG: Work order completion: Release WO for WIP item; consume components; complete production; verify variance\n' +
+    'MFG: Multi-BOM: Build assembly using alternate BOM revision; verify costing\n' +
+    'RTN: Customer RMA: Create RMA against historic invoice; receive return; verify Credit Memo + restocking fee',
+  'testing.scope.testRoles':
+    'AP Clerk: Test all P2P scenarios (PO + bill + 3-way match)\n' +
+    'AR Clerk: Test all O2C scenarios (SO + invoice + dunning + RMA)\n' +
+    'Inventory Manager: Test all MFG + RTN scenarios (WO + RMA + adjustments)\n' +
+    'Priya Patel (ARM): Sign off on revenue recognition + ASC 606 scenarios\n' +
+    'Helena Reyes (CFO): Sign off on consolidated reports + final UAT gate',
+  'testing.scope.acceptanceCriteriaTemplate': 'GHERKIN',
+  'testing.performance.performanceBenchmarks':
+    'PO creation end-to-end: <2 seconds\n' +
+    'Trial balance generation across 4 subsidiaries: <30 seconds\n' +
+    'Inventory query 50k SKUs: <5 seconds\n' +
+    'Period close batch (full reval + ARM + intercompany eliminations): <20 minutes\n' +
+    'Consolidated AR aging across all 4 subsidiaries: <8 seconds\n' +
+    'Saved search (AR aging > 60 days, full tenant): <6 seconds',
+  'testing.performance.loadProfile':
+    'Peak: 85 internal users + 240 ESS users (month-end close window)\n' +
+    'Steady: 60 internal users + 120 ESS users (daily ops)\n' +
+    'Off-peak: 10 internal users (overnight scheduled scripts + integrations)',
+  'testing.regression.regressionSmokeScenarios':
+    'Login as each role: User can log in + lands on correct center (ACCOUNTING / SALES / etc.)\n' +
+    'Create PO + approve: PO routes through approval workflow correctly per amount-tier policy\n' +
+    'Create SO + invoice: Invoice generated; ARM schedule attached; AR balance increases\n' +
+    'Run TB report: Trial balance balances per subsidiary + consolidated within 30s\n' +
+    'Run AR aging > 60 days saved search: returns within 6s with correct count\n' +
+    'Trigger PO User Event script: required-approver field populates correctly per tier',
+  'testing.regression.defectSeverityLevels': 'STANDARD_4_LEVEL',
 };
 
 const comments = [
@@ -447,6 +533,43 @@ const uatData = { clientName, adaptor, answers, comments, images, aiAdvice };
 const planData = { clientName, adaptor, license, answers, conflicts: conflicts as never[] };
 const riskData = { clientName, conflicts: [], warnings: [] };
 
+// ── Pack T — Test Artifacts (cross-platform) ────────────────────────────────
+const signoffMembers: SignOffMember[] = members.map((m) => ({
+  name: m.name,
+  role: m.role,
+  team: m.team,
+}));
+const testScriptsResult = generateTestScripts({
+  scenariosPerWorkstream: answers['testing.scope.scenariosPerWorkstream'] as string,
+  testRoles: answers['testing.scope.testRoles'] as string,
+  acceptanceCriteriaTemplate: answers['testing.scope.acceptanceCriteriaTemplate'] as string,
+  adaptorName: 'NetSuite',
+});
+const signOffResult = generateSignOffMatrix({
+  clientName,
+  scenariosPerWorkstream: answers['testing.scope.scenariosPerWorkstream'] as string,
+  testRoles: answers['testing.scope.testRoles'] as string,
+  standardRoleCustomization: answers['ns.design.standardRoleCustomization'] as string,
+  members: signoffMembers,
+  adaptorName: 'NetSuite',
+});
+const defectLogResult = generateDefectLogTemplate({
+  clientName,
+  defectSeverityLevels: answers['testing.regression.defectSeverityLevels'] as string,
+  adaptorName: 'NetSuite',
+});
+const perfPlanResult = generatePerformanceTestPlan({
+  clientName,
+  performanceBenchmarks: answers['testing.performance.performanceBenchmarks'] as string,
+  loadProfile: answers['testing.performance.loadProfile'] as string,
+  adaptorName: 'NetSuite',
+});
+const regressionResult = generateRegressionTestSuite({
+  clientName,
+  regressionSmokeScenarios: answers['testing.regression.regressionSmokeScenarios'] as string,
+  adaptorName: 'NetSuite',
+});
+
 const writes: Array<[string, string]> = [
   ['Project_Kickoff.md', generateKickoff(kickoffData)],
   ['Project_Kickoff.html', generateKickoffHtml(kickoffData)],
@@ -460,11 +583,32 @@ const writes: Array<[string, string]> = [
   ['Training_Manual.md', generateTrainingManual(trainingData)],
   ['Training_Manual.html', generateTrainingManualHtml(trainingData)],
   ['Implementation_Plan.html', generateImplementationPlanHtml(planData)],
+  // Pack T artefacts.
+  ['Sign_Off_Matrix.md', signOffResult.markdown],
+  ['Sign_Off_Matrix.html', signOffResult.html],
+  ['Defect_Log_Template.md', defectLogResult.markdown],
+  ['Performance_Test_Plan.md', perfPlanResult.markdown],
+  ['Performance_Test_Plan.html', perfPlanResult.html],
+  ['Regression_Test_Suite.md', regressionResult.markdown],
+  ['Regression_Test_Suite.html', regressionResult.html],
 ];
 
 for (const [filename, content] of writes) {
   await fs.writeFile(path.join(docDir, filename), content, 'utf8');
   process.stdout.write(`  ✓ ${filename}\n`);
+}
+
+// Pack T — Test_Scripts/ subfolder (one TC-*.md per declared scenario).
+const testScriptsDir = path.join(docDir, 'Test_Scripts');
+if (testScriptsResult.emitted.length > 0) {
+  await fs.mkdir(testScriptsDir, { recursive: true });
+}
+for (const [bundlePath, content] of Object.entries(testScriptsResult.files)) {
+  const rel = bundlePath.replace(/^Documentation\//, '');
+  const fullPath = path.join(docDir, rel);
+  await fs.mkdir(path.dirname(fullPath), { recursive: true });
+  await fs.writeFile(fullPath, content, 'utf8');
+  process.stdout.write(`  ✓ ${rel}\n`);
 }
 
 // ── Real-code generation: SDF bundle ────────────────────────────────────────

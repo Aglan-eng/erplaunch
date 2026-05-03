@@ -845,6 +845,16 @@ const PHASE_4_BUILD: Phase = {
 };
 
 // ─── Phase 5 — Test ──────────────────────────────────────────────────────────
+//
+// Pack T closure — pre-Pack-T this rubric was 5 checks, of which only
+// 3 reliably passed (UAT plan exists + 3 named scenarios + Performance
+// keyword), so the floor sat at 3/10. Pack T adds 7 new checks for the
+// new artefacts (Test_Scripts/, Sign_Off_Matrix, Defect_Log_Template,
+// Performance_Test_Plan, Regression_Test_Suite). The 5 original UAT
+// checks are kept (they still pass — Pack T enriched the UAT plan
+// rather than replacing it). New checks all use the recursive docs map
+// loader so Documentation/Test_Scripts/*.md files are visible by their
+// relative path key.
 
 const PHASE_5_TEST: Phase = {
   number: 5,
@@ -857,28 +867,94 @@ const PHASE_5_TEST: Phase = {
     },
     {
       id: 'p5.acceptance-criteria',
-      description: 'UAT_Plan.md contains "Acceptance Criteria" (gap until Test pack)',
+      description: 'UAT_Plan.md contains "Acceptance Criteria" section',
       evaluator: (s) => fileContains(docs(s), 'UAT_Plan.md', 'Acceptance Criteria'),
     },
     {
       id: 'p5.three-named-scenarios',
-      description: 'UAT_Plan.md has at least 3 named scenarios (lines starting with TC- or Scenario)',
+      description: 'UAT_Plan.md has at least 3 named scenarios (lines starting with TC-/UAT- or Scenario)',
       evaluator: (s) => {
         const c = docs(s).get('UAT_Plan.md');
         if (!c) return false;
-        const matches = c.match(/^(?:TC-|Scenario|### TC|\| TC-)/gm);
+        // Pack T enriched the UAT plan with `| UAT-NNN |` table rows
+        // (test cases) plus `**UAT-NNN — name**` headers (acceptance
+        // criteria block). Pre-Pack-T fixtures used `TC-` / `Scenario`.
+        // Match any of those — the check just verifies 3+ named scenarios
+        // exist anywhere in the UAT plan body.
+        const matches = c.match(/^(?:TC-|UAT-|Scenario|### TC|\| TC-|\| UAT-|\*\*UAT-)/gm);
         return (matches?.length ?? 0) >= 3;
       },
     },
     {
       id: 'p5.signoff-section',
-      description: 'UAT_Plan.md contains "Sign-off" (gap until Test pack)',
+      description: 'UAT_Plan.md contains "Sign-off"',
       evaluator: (s) => fileContains(docs(s), 'UAT_Plan.md', 'Sign-off'),
     },
     {
       id: 'p5.performance-section',
-      description: 'UAT_Plan.md mentions "Performance" (gap until Test pack)',
+      description: 'UAT_Plan.md mentions "Performance"',
       evaluator: (s) => fileContains(docs(s), 'UAT_Plan.md', 'Performance'),
+    },
+    // ── Pack T artefact checks (7 new) ─────────────────────────────────────
+    {
+      id: 'p5.test-scripts-emitted',
+      description:
+        'Documentation/Test_Scripts/TC-*.md files are emitted (≥ 5 when scenariosPerWorkstream is non-empty)',
+      // Vacuous-truth: when no test scripts exist (input wasn't populated),
+      // we still expect an empty Test_Scripts dir or zero TC files —
+      // the harness check only fires when the consultant declared
+      // scenarios. We can't read the wizard answer from the bundle
+      // directly, but the demo bundles ALWAYS populate this answer, so
+      // ≥ 1 TC- file is the right threshold.
+      evaluator: (s) => {
+        let count = 0;
+        for (const key of docs(s).keys()) {
+          if (/^Test_Scripts\/TC-/.test(key) && key.endsWith('.md')) count++;
+        }
+        return count >= 5;
+      },
+    },
+    {
+      id: 'p5.test-scripts-have-acceptance-criteria',
+      description:
+        'At least one Test_Scripts/TC-*.md contains an "Acceptance Criteria" section header',
+      evaluator: (s) => {
+        for (const [key, content] of docs(s)) {
+          if (!/^Test_Scripts\/TC-/.test(key)) continue;
+          if (content.includes('## Acceptance Criteria')) return true;
+        }
+        return false;
+      },
+    },
+    {
+      id: 'p5.signoff-matrix-emitted',
+      description: 'Documentation/Sign_Off_Matrix.md exists',
+      evaluator: (s) => docs(s).has('Sign_Off_Matrix.md'),
+    },
+    {
+      id: 'p5.signoff-matrix-references-roles',
+      description:
+        'Sign_Off_Matrix.md references at least one role (e.g., "AP Clerk", "CFO", "Sponsor", "PM")',
+      evaluator: (s) => {
+        const c = docs(s).get('Sign_Off_Matrix.md');
+        if (!c) return false;
+        return /(AP Clerk|AR Clerk|CFO|Sponsor|Project Manager|Manager|Controller)/i.test(c);
+      },
+    },
+    {
+      id: 'p5.defect-log-template-emitted',
+      description: 'Documentation/Defect_Log_Template.md exists',
+      evaluator: (s) => docs(s).has('Defect_Log_Template.md'),
+    },
+    {
+      id: 'p5.performance-test-plan-emitted',
+      description: 'Documentation/Performance_Test_Plan.md exists',
+      evaluator: (s) => docs(s).has('Performance_Test_Plan.md'),
+    },
+    {
+      id: 'p5.regression-test-suite-emitted',
+      description: 'Documentation/Regression_Test_Suite.md exists',
+      evaluator: (s) => docs(s).has('Regression_Test_Suite.md'),
     },
   ],
 };

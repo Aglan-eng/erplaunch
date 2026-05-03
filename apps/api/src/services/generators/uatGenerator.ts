@@ -19,6 +19,35 @@ interface TestCase {
   workstream: string;
   scenario: string;
   expected: string;
+  /** Pack T — linked TC-* IDs from testScriptGenerator emissions when
+   *  the wizard's testing.scope.scenariosPerWorkstream covers this workstream. */
+  linkedTestScripts?: string[];
+}
+
+/**
+ * Pack T — parse the wizard's testing.scope.scenariosPerWorkstream answer to
+ * derive TC-<workstream>-NN references that downstream test scripts
+ * carry. The UAT plan now points directly at the per-scenario MD files
+ * in Documentation/Test_Scripts/, closing the gap where consultants
+ * couldn't trace a UAT row to a real test script.
+ */
+function buildLinkedScriptMap(scenariosPerWorkstream: string): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  const counters: Record<string, number> = {};
+  const re = /^([\w]+):\s*([^:]+):\s*(.+)$/;
+  for (const line of scenariosPerWorkstream.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) continue;
+    const m = trimmed.match(re);
+    if (!m) continue;
+    const ws = m[1].toUpperCase();
+    const next = (counters[ws] ?? 0) + 1;
+    counters[ws] = next;
+    const id = `TC-${ws}-${next < 10 ? `0${next}` : String(next)}`;
+    if (!out.has(ws)) out.set(ws, []);
+    out.get(ws)!.push(id);
+  }
+  return out;
 }
 
 export function generateUATPlan(data: UATData): string {
@@ -28,27 +57,67 @@ export function generateUATPlan(data: UATData): string {
   // get a schema-driven test case per populated wizard question, so an
   // Odoo engagement's UAT plan isn't an empty table even before the
   // per-adaptor scenario libraries land.
-  const cases = adaptor.id === 'netsuite'
+  const baseCases = adaptor.id === 'netsuite'
     ? buildTestCases(answers)
     : buildSchemaDrivenTestCases(adaptor, answers);
+
+  // Pack T — link UAT rows to the per-scenario test scripts emitted by
+  // testScriptGenerator. The map is keyed by upper-cased workstream id;
+  // we attach all TC-<ws>-NN ids derived from that workstream's
+  // scenariosPerWorkstream entries.
+  const scenariosRaw = (answers['testing.scope.scenariosPerWorkstream'] as string | undefined) ?? '';
+  const linkedScriptMap = buildLinkedScriptMap(scenariosRaw);
+  const cases = baseCases.map((tc) => {
+    // Workstream tokens in baseCases use uppercase short forms (R2R/P2P
+    // /O2C/MFG/RTN). Look up directly; if no scenarios emitted for the
+    // workstream the column reads "—".
+    const linked = linkedScriptMap.get(tc.workstream.toUpperCase()) ?? [];
+    return { ...tc, linkedTestScripts: linked };
+  });
+
+  // Acceptance-criteria style — same SELECT the consultant chooses on
+  // Pack T testScriptGenerator. Default SIMPLE if omitted.
+  const acceptanceStyle = (() => {
+    const raw = (answers['testing.scope.acceptanceCriteriaTemplate'] as string | undefined) ?? 'SIMPLE';
+    const upper = raw.toString().toUpperCase();
+    return upper === 'GIVEN_WHEN_THEN' || upper === 'GHERKIN' ? upper : 'SIMPLE';
+  })();
 
   let content = `# User Acceptance Test (UAT) Plan\n\n`;
   content += `**Client:** ${clientName}  \n**Date:** ${now}  \n**Prepared by:** ERPLaunch\n\n`;
   content += `## 1. Introduction\n\nThis document contains functional test cases auto-generated from the business profile captured for **${clientName}**. Each test case validates a specific configuration decision made during the discovery workshop.\n\n`;
-  content += `**Total Test Cases:** ${cases.length}\n\n---\n\n`;
+  content += `**Total Test Cases:** ${cases.length}\n\n`;
+  content += `**Linked artefacts (Pack T):** \`Documentation/Test_Scripts/\` (per-scenario step-by-step), `;
+  content += `\`Documentation/Sign_Off_Matrix.md\`, \`Documentation/Defect_Log_Template.md\`, `;
+  content += `\`Documentation/Performance_Test_Plan.md\`, \`Documentation/Regression_Test_Suite.md\`.\n\n`;
+  content += `---\n\n`;
   content += `## 2. Test Cases\n\n`;
-  content += `| TC ID | Workstream | Scenario | Expected Result | Status |\n`;
-  content += `| :--- | :--- | :--- | :--- | :--- |\n`;
+  content += `| TC ID | Workstream | Scenario | Expected Result | Linked Test Scripts | Status |\n`;
+  content += `| :--- | :--- | :--- | :--- | :--- | :--- |\n`;
 
   cases.forEach(tc => {
-    content += `| ${tc.id} | ${tc.workstream} | ${tc.scenario} | ${tc.expected} | ☐ Pass / ☐ Fail |\n`;
+    const links = (tc.linkedTestScripts ?? []).length === 0
+      ? '—'
+      : tc.linkedTestScripts!.map((id) => `\`${id}\``).join(', ');
+    content += `| ${tc.id} | ${tc.workstream} | ${tc.scenario} | ${tc.expected} | ${links} | ☐ Pass / ☐ Fail |\n`;
   });
 
   if (cases.length === 0) {
-    content += `| — | All | No specific test cases triggered. Complete wizard questions first. | N/A | — |\n`;
+    content += `| — | All | No specific test cases triggered. Complete wizard questions first. | N/A | — | — |\n`;
   }
 
-  content += `\n---\n\n## 3. Implementation Notes\n\n`;
+  // Acceptance Criteria block — Pack T contract: every UAT plan must
+  // include an Acceptance Criteria section (replaces pre-Pack-T gap
+  // where the harness check p5.acceptance-criteria failed).
+  content += `\n---\n\n## 3. Acceptance Criteria\n\n`;
+  content += `Acceptance criteria style for this engagement: **${acceptanceStyleLabel(acceptanceStyle)}**.\n\n`;
+  content += renderAcceptanceCriteriaBlock(acceptanceStyle, cases);
+  content += `\n\n---\n\n`;
+  content += `**Defect tracking:** All defects discovered during UAT are logged in \`Documentation/Defect_Log_Template.md\` per the configured severity scheme. Any Critical or High defect blocks UAT sign-off until resolved or accepted by the project sponsor.\n\n`;
+  content += `\n---\n\n## 4. Performance Targets\n\n`;
+  content += `Performance benchmarks for this engagement are documented in \`Documentation/Performance_Test_Plan.md\`. UAT pass requires every benchmark met under steady-state load (see that document for the full table).\n\n`;
+
+  content += `\n---\n\n## 5. Implementation Notes\n\n`;
   
   const commentsList = data.comments ?? [];
   const imagesList = data.images ?? [];
@@ -70,7 +139,8 @@ export function generateUATPlan(data: UATData): string {
     content += `_No additional implementation notes captured._\n\n`;
   }
 
-  content += `\n---\n\n## 4. Sign-off\n\n`;
+  content += `\n---\n\n## 6. Sign-off\n\n`;
+  content += `For the full per-workstream + per-role sign-off matrix see \`Documentation/Sign_Off_Matrix.md\`. The roll-up signatures below are the project-level gate.\n\n`;
   content += `| Role | Name | Signature | Date |\n`;
   content += `| :--- | :--- | :--- | :--- |\n`;
   content += `| Implementation Lead | | | |\n`;
@@ -78,6 +148,70 @@ export function generateUATPlan(data: UATData): string {
   content += `| Finance Approver | | | |\n`;
 
   return content;
+}
+
+function acceptanceStyleLabel(style: string): string {
+  switch (style) {
+    case 'GHERKIN':
+      return 'Gherkin (Feature / Scenario / Given / When / Then)';
+    case 'GIVEN_WHEN_THEN':
+      return 'Given / When / Then (BDD-style)';
+    case 'SIMPLE':
+    default:
+      return 'Simple bulleted criteria';
+  }
+}
+
+function renderAcceptanceCriteriaBlock(style: string, cases: TestCase[]): string {
+  if (cases.length === 0) {
+    return '_No test cases — populate the wizard before acceptance criteria can be generated._\n';
+  }
+  if (style === 'GHERKIN') {
+    return cases
+      .map((tc) =>
+        [
+          '```gherkin',
+          `Feature: ${tc.scenario}`,
+          '',
+          `  Scenario: ${tc.scenario}`,
+          `    Given the engagement is configured per discovery answers`,
+          `    When the tester executes ${tc.id}`,
+          `    Then ${tc.expected.toLowerCase().replace(/\.$/, '')}`,
+          `    And no Critical or High defects are logged for this case`,
+          '```',
+          '',
+        ].join('\n'),
+      )
+      .join('\n');
+  }
+  if (style === 'GIVEN_WHEN_THEN') {
+    return cases
+      .map((tc) =>
+        [
+          `**${tc.id} — ${tc.scenario}**`,
+          '',
+          '- **Given** the engagement is configured per discovery answers',
+          `- **When** the tester executes ${tc.id}`,
+          `- **Then** ${tc.expected}`,
+          `- **And** no Critical or High defects are logged for this case`,
+          '',
+        ].join('\n'),
+      )
+      .join('\n');
+  }
+  // SIMPLE — bulleted per case.
+  return cases
+    .map((tc) =>
+      [
+        `**${tc.id} — ${tc.scenario}**`,
+        '',
+        `- ${tc.expected}`,
+        `- Audit log captures actor + action + timestamp`,
+        `- No Critical or High defects logged against this case`,
+        '',
+      ].join('\n'),
+    )
+    .join('\n');
 }
 
 function buildTestCases(answers: Record<string, any>): TestCase[] {

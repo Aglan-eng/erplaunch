@@ -38,6 +38,15 @@ import { generateSolutionDoc, generateSolutionDocHtml } from './generators/solut
 import { generateTrainingManual, generateTrainingManualHtml } from './generators/trainingManualGenerator.js';
 import { generateImplementationPlanHtml } from './generators/planGenerator.js';
 import { generateOdooConfigurationPlan, generateOdooConfigurationPlanHtml } from './generators/odooConfigurationPlanGenerator.js';
+// Pack T — Test Artifacts (cross-platform — runs for both NetSuite + Odoo).
+import { generateTestScripts } from './generators/testScriptGenerator.js';
+import {
+  generateSignOffMatrix,
+  type SignOffMember,
+} from './generators/signOffMatrixGenerator.js';
+import { generateDefectLogTemplate } from './generators/defectLogTemplateGenerator.js';
+import { generatePerformanceTestPlan } from './generators/performanceTestPlanGenerator.js';
+import { generateRegressionTestSuite } from './generators/regressionTestSuiteGenerator.js';
 import { convertHtmlToPdf } from './pdfService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -234,6 +243,90 @@ export async function processJob(jobId: string, db: DbModule) {
     const uatData = { clientName: eng.clientName as string, adaptor: adaptorCtx, answers, comments, images, aiAdvice };
     await fs.writeFile(path.join(docDir, 'UAT_Plan.md'), generateUATPlan(uatData));
     await fs.writeFile(path.join(docDir, 'UAT_Plan.html'), generateUATPlanHtml(uatData));
+
+    // ── Pack T — Test Artifacts (CROSS-PLATFORM) ─────────────────────────────
+    // Five generators run unconditionally on every adaptor — test
+    // artefacts are platform-agnostic. Reads the TESTING flow's wizard
+    // answers (testing.scope.scenariosPerWorkstream / testRoles /
+    // acceptanceCriteriaTemplate / performanceBenchmarks / loadProfile /
+    // regressionSmokeScenarios / defectSeverityLevels). Emits to
+    // Documentation/Test_Scripts/ + Documentation/Sign_Off_Matrix.{md,html}
+    // + Documentation/Defect_Log_Template.md +
+    // Documentation/Performance_Test_Plan.{md,html} +
+    // Documentation/Regression_Test_Suite.{md,html}.
+    const testScriptsResult = generateTestScripts({
+      scenariosPerWorkstream: answers['testing.scope.scenariosPerWorkstream'] as string | undefined,
+      testRoles: answers['testing.scope.testRoles'] as string | undefined,
+      acceptanceCriteriaTemplate: answers['testing.scope.acceptanceCriteriaTemplate'] as
+        | string
+        | undefined,
+      adaptorName: adaptorCtx.name,
+    });
+    // testScriptGenerator emits files keyed by their full bundle-relative
+    // path (Documentation/Test_Scripts/TC-*.md) — we have to peel off
+    // the Documentation/ prefix and write them under docDir.
+    const testScriptsDir = path.join(docDir, 'Test_Scripts');
+    if (testScriptsResult.emitted.length > 0) {
+      await fs.mkdir(testScriptsDir, { recursive: true });
+    }
+    for (const [bundlePath, content] of Object.entries(testScriptsResult.files)) {
+      const rel = bundlePath.replace(/^Documentation\//, '');
+      const fullPath = path.join(docDir, rel);
+      await fs.mkdir(path.dirname(fullPath), { recursive: true });
+      await fs.writeFile(fullPath, content);
+    }
+
+    // Sign-off matrix — wired to engagement members (CLIENT + CONSULTANT
+    // teams) so per-workstream + per-role rows have real names where
+    // possible.
+    const signoffMembers: SignOffMember[] = (memberRows as Array<Record<string, unknown>>).map(
+      (m) => ({
+        name: String(m.name ?? ''),
+        role: String(m.role ?? ''),
+        team: String(m.team ?? 'CLIENT'),
+      }),
+    );
+    const signOffResult = generateSignOffMatrix({
+      clientName: eng.clientName as string,
+      scenariosPerWorkstream: answers['testing.scope.scenariosPerWorkstream'] as string | undefined,
+      testRoles: answers['testing.scope.testRoles'] as string | undefined,
+      // Pack C standardRoleCustomization supplements the role list when
+      // present (NetSuite engagements). Other adaptors don't have this
+      // answer; the generator handles the empty case gracefully.
+      standardRoleCustomization: answers['ns.design.standardRoleCustomization'] as
+        | string
+        | undefined,
+      members: signoffMembers,
+      adaptorName: adaptorCtx.name,
+    });
+    await fs.writeFile(path.join(docDir, 'Sign_Off_Matrix.md'), signOffResult.markdown);
+    await fs.writeFile(path.join(docDir, 'Sign_Off_Matrix.html'), signOffResult.html);
+
+    const defectLogResult = generateDefectLogTemplate({
+      clientName: eng.clientName as string,
+      defectSeverityLevels: answers['testing.regression.defectSeverityLevels'] as string | undefined,
+      adaptorName: adaptorCtx.name,
+    });
+    await fs.writeFile(path.join(docDir, 'Defect_Log_Template.md'), defectLogResult.markdown);
+
+    const perfPlanResult = generatePerformanceTestPlan({
+      clientName: eng.clientName as string,
+      performanceBenchmarks: answers['testing.performance.performanceBenchmarks'] as string | undefined,
+      loadProfile: answers['testing.performance.loadProfile'] as string | undefined,
+      adaptorName: adaptorCtx.name,
+    });
+    await fs.writeFile(path.join(docDir, 'Performance_Test_Plan.md'), perfPlanResult.markdown);
+    await fs.writeFile(path.join(docDir, 'Performance_Test_Plan.html'), perfPlanResult.html);
+
+    const regressionResult = generateRegressionTestSuite({
+      clientName: eng.clientName as string,
+      regressionSmokeScenarios: answers['testing.regression.regressionSmokeScenarios'] as
+        | string
+        | undefined,
+      adaptorName: adaptorCtx.name,
+    });
+    await fs.writeFile(path.join(docDir, 'Regression_Test_Suite.md'), regressionResult.markdown);
+    await fs.writeFile(path.join(docDir, 'Regression_Test_Suite.html'), regressionResult.html);
 
     const sddData = {
       clientName: eng.clientName as string,
@@ -599,8 +692,17 @@ export async function processJob(jobId: string, db: DbModule) {
           'Solution_Design.html',
           'Training_Manual.html',
           'Implementation_Plan.html',
+          // Pack T — Test Artifacts (cross-platform).
+          'Sign_Off_Matrix.md', 'Sign_Off_Matrix.html',
+          'Defect_Log_Template.md',
+          'Performance_Test_Plan.md', 'Performance_Test_Plan.html',
+          'Regression_Test_Suite.md', 'Regression_Test_Suite.html',
           ...(isNetSuite ? [] : ['Configuration_Plan.md', 'Configuration_Plan.html']),
         ],
+        testScripts: {
+          count: testScriptsResult.emitted.length,
+          path: 'Documentation/Test_Scripts/',
+        },
         ...(isNetSuite ? { sdf: 'SDF/', suiteScript: 'SuiteScript/' } : {}),
       },
     };

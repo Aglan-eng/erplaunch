@@ -20,18 +20,23 @@ describe('odooAdaptor: manifest', () => {
 });
 
 describe('odooAdaptor: schema', () => {
-  it('exposes the canonical Odoo App-shaped flow order (with KICKOFF first)', () => {
+  it('exposes the canonical Odoo App-shaped flow order (with KICKOFF first + TESTING last)', () => {
     const ids = odooAdaptor.schema.flows.map((f) => f.id);
     // Kickoff Pack — UNIVERSAL pack renders FIRST. Mandate, governance,
     //   communication. Mirrored verbatim into adaptor-netsuite.
     // Pack R — Restructure to Odoo App shape.
     // Pack 8 — REVENUE_APPS (POS + eCommerce + Subscriptions).
     // Pack 9 — OPERATIONS_APPS (HR + Project + CRM).
+    // Pack T — TESTING universal pack renders LAST (cross-platform —
+    //   same flow mirrored verbatim in adaptor-netsuite). Drives Phase 5
+    //   (Test/UAT) artefacts: test scripts, sign-off matrix, defect log,
+    //   performance plan, regression suite.
     expect(ids).toEqual([
       'KICKOFF',
       'FOUNDATION', 'ACCOUNTING', 'TAX', 'LOCALIZATION', 'INVENTORY',
       'P2P', 'O2C', 'REVENUE_APPS', 'OPERATIONS_APPS',
       'MANUFACTURING', 'RETURNS', 'MIGRATION',
+      'TESTING',
     ]);
   });
 
@@ -44,15 +49,19 @@ describe('odooAdaptor: schema', () => {
     }
   });
 
-  it('question IDs are namespaced under "odoo." or "kickoff." (universal pack) and unique', () => {
+  it('question IDs are namespaced under "odoo." or universal "kickoff." / "testing." and unique', () => {
     const seen = new Set<string>();
     for (const flow of odooAdaptor.schema.flows) {
       for (const section of flow.sections) {
         for (const q of section.questions) {
           // Universal Kickoff Pack questions live under the cross-adaptor
-          // `kickoff.*` namespace; everything else stays adaptor-scoped.
-          const valid = q.id.startsWith('odoo.') || q.id.startsWith('kickoff.');
-          expect(valid, `question ${q.id} not namespaced under odoo. or kickoff.`).toBe(true);
+          // `kickoff.*` namespace; Pack T TESTING questions under
+          // `testing.*` (cross-platform); everything else adaptor-scoped.
+          const valid =
+            q.id.startsWith('odoo.') ||
+            q.id.startsWith('kickoff.') ||
+            q.id.startsWith('testing.');
+          expect(valid, `question ${q.id} not namespaced under odoo. / kickoff. / testing.`).toBe(true);
           expect(seen.has(q.id), `duplicate question id: ${q.id}`).toBe(false);
           seen.add(q.id);
         }
@@ -2508,10 +2517,13 @@ describe('odooAdaptor: Pack 7 — MIGRATION flow shape', () => {
     expect(mig!.description).toMatch(/volume|source|history|cutover|reconciliation/i);
   });
 
-  it('MIGRATION is the LAST flow in the array (after RETURNS)', () => {
+  it('MIGRATION sits AFTER RETURNS (and BEFORE TESTING which Pack T appends last)', () => {
     const ids = odooAdaptor.schema.flows.map((f) => f.id);
-    expect(ids[ids.length - 1]).toBe('MIGRATION');
     expect(ids.indexOf('MIGRATION')).toBe(ids.indexOf('RETURNS') + 1);
+    // Pack T appended TESTING after MIGRATION; pre-Pack-T this test
+    // asserted MIGRATION was the array tail, which the new TESTING flow
+    // (cross-platform, mirrored in adaptor-netsuite) supersedes.
+    expect(ids.indexOf('MIGRATION')).toBeLessThan(ids.indexOf('TESTING'));
   });
 
   it('renders four sections in the documented order', () => {
@@ -3764,5 +3776,104 @@ describe('odooAdaptor: Kickoff Pack — rule evaluation', () => {
     const r = conflicts.find((c) => c.id === 'kickoff.communication.audience-empty');
     expect(r).toBeDefined();
     expect(r?.severity).toBe('WARN');
+  });
+});
+
+// ─── Pack T — TESTING flow shape (cross-platform parity with NetSuite) ──────
+
+describe('odooAdaptor: Pack T — TESTING flow shape', () => {
+  const testing = odooAdaptor.schema.flows.find((f) => f.id === 'TESTING');
+
+  it('TESTING flow exists with the expected label', () => {
+    expect(testing).toBeDefined();
+    expect(testing!.label).toBe('Test & UAT Planning');
+  });
+
+  it('TESTING sits LAST in the flow order (after MIGRATION)', () => {
+    const ids = odooAdaptor.schema.flows.map((f) => f.id);
+    expect(ids[ids.length - 1]).toBe('TESTING');
+    expect(ids.indexOf('TESTING')).toBeGreaterThan(ids.indexOf('MIGRATION'));
+  });
+
+  it('TESTING has the 3 sections in canonical order — scope / performance / regression', () => {
+    const sectionIds = testing!.sections.map((s) => s.id);
+    expect(sectionIds).toEqual(['scope', 'performance', 'regression']);
+  });
+
+  it('Section 1 (scope) carries the 3 scope questions', () => {
+    const scope = testing!.sections.find((s) => s.id === 'scope')!;
+    const ids = scope.questions.map((q) => q.id);
+    expect(ids).toEqual([
+      'testing.scope.scenariosPerWorkstream',
+      'testing.scope.testRoles',
+      'testing.scope.acceptanceCriteriaTemplate',
+    ]);
+  });
+
+  it('Section 2 (performance) carries the 2 performance questions', () => {
+    const perf = testing!.sections.find((s) => s.id === 'performance')!;
+    const ids = perf.questions.map((q) => q.id);
+    expect(ids).toEqual([
+      'testing.performance.performanceBenchmarks',
+      'testing.performance.loadProfile',
+    ]);
+  });
+
+  it('Section 3 (regression) carries the 2 regression questions', () => {
+    const reg = testing!.sections.find((s) => s.id === 'regression')!;
+    const ids = reg.questions.map((q) => q.id);
+    expect(ids).toEqual([
+      'testing.regression.regressionSmokeScenarios',
+      'testing.regression.defectSeverityLevels',
+    ]);
+  });
+
+  it('acceptanceCriteriaTemplate offers SIMPLE / GIVEN_WHEN_THEN / GHERKIN', () => {
+    const q = testing!
+      .sections.find((s) => s.id === 'scope')!
+      .questions.find((qq) => qq.id === 'testing.scope.acceptanceCriteriaTemplate')!;
+    expect(q.inputType).toBe('SINGLE_SELECT');
+    const values = (q.options ?? []).map((o) => o.value).sort();
+    expect(values).toEqual(['GHERKIN', 'GIVEN_WHEN_THEN', 'SIMPLE']);
+  });
+
+  it('defectSeverityLevels offers STANDARD_4_LEVEL / MAJOR_MINOR / NUMERIC_1_5', () => {
+    const q = testing!
+      .sections.find((s) => s.id === 'regression')!
+      .questions.find((qq) => qq.id === 'testing.regression.defectSeverityLevels')!;
+    expect(q.inputType).toBe('SINGLE_SELECT');
+    const values = (q.options ?? []).map((o) => o.value).sort();
+    expect(values).toEqual(['MAJOR_MINOR', 'NUMERIC_1_5', 'STANDARD_4_LEVEL']);
+  });
+
+  it('all TEXTAREA questions are non-required (consultant skip-friendly)', () => {
+    for (const section of testing!.sections) {
+      for (const q of section.questions) {
+        if (q.inputType === 'TEXTAREA') {
+          expect(q.required, `${q.id} should be optional`).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('flow description references the test artefacts the generators emit', () => {
+    expect(testing!.description ?? '').toMatch(/Test_Scripts/);
+    expect(testing!.description ?? '').toMatch(/Sign_Off_Matrix/);
+    expect(testing!.description ?? '').toMatch(/Defect_Log_Template/);
+    expect(testing!.description ?? '').toMatch(/Performance_Test_Plan/);
+    expect(testing!.description ?? '').toMatch(/Regression_Test_Suite/);
+  });
+
+  it('question IDs use the testing.* universal namespace (cross-platform — same on NetSuite)', () => {
+    for (const section of testing!.sections) {
+      for (const q of section.questions) {
+        expect(q.id).toMatch(/^testing\./);
+      }
+    }
+  });
+
+  it('TESTING flow contributes 7 questions total (3 + 2 + 2)', () => {
+    const total = testing!.sections.reduce((sum, s) => sum + s.questions.length, 0);
+    expect(total).toBe(7);
   });
 });

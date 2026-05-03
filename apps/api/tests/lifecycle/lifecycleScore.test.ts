@@ -286,6 +286,30 @@ describe('Lifecycle harness — threshold gates', () => {
       `Phase 4 (Build) failed: ${p4.failedCheckDescriptions.join('; ')}`,
     ).toBeGreaterThanOrEqual(9.0);
   });
+
+  // Phase 5 (Test) gates — NEW after Pack T (Test Artifacts). Pre-Pack-T
+  // floor was 3/10 on both adaptors (only the UAT plan existed; no test
+  // scripts, sign-off matrix, defect log, performance plan, or
+  // regression suite). Pack T adds the five remaining artefacts and
+  // enriches UAT_Plan with acceptance criteria + linked test scripts.
+  // Both adaptors now hit 12/12 of the rubric on the demo bundles.
+  // Ratcheted to ≥ 8.0 — anything below 8.0 means a Pack T artefact
+  // dropped or the harness loader stopped seeing Test_Scripts/.
+  it('Odoo bundle Phase 5 (Test) ≥ 8.0 — locks in Pack T closure (3/10 → 9+/10)', () => {
+    const p5 = runs.find((r) => r.adaptor === 'odoo')!.score.perPhase.find((p) => p.number === 5)!;
+    expect(
+      p5.score,
+      `Phase 5 (Test) failed: ${p5.failedCheckDescriptions.join('; ')}`,
+    ).toBeGreaterThanOrEqual(8.0);
+  });
+
+  it('NetSuite bundle Phase 5 (Test) ≥ 8.0 — locks in Pack T closure (3/10 → 9+/10)', () => {
+    const p5 = runs.find((r) => r.adaptor === 'netsuite')!.score.perPhase.find((p) => p.number === 5)!;
+    expect(
+      p5.score,
+      `Phase 5 (Test) failed: ${p5.failedCheckDescriptions.join('; ')}`,
+    ).toBeGreaterThanOrEqual(8.0);
+  });
 });
 
 function formatScoreDetails(adaptor: AdaptorId, score: BundleScore): string {
