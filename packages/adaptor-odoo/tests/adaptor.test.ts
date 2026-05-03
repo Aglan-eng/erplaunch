@@ -20,17 +20,17 @@ describe('odooAdaptor: manifest', () => {
 });
 
 describe('odooAdaptor: schema', () => {
-  it('exposes the canonical Odoo App-shaped flow order (with KICKOFF first + CUTOVER last)', () => {
+  it('exposes the canonical Odoo App-shaped flow order (with KICKOFF first + HYPERCARE last)', () => {
     const ids = odooAdaptor.schema.flows.map((f) => f.id);
     // Cross-platform pack ordering — universal lifecycle phases append
-    // in lifecycle order. Pack T (TESTING) → Phase 5,
-    // Pack U (TRAINING) → Phase 6, Pack V (CUTOVER) → Phase 7.
+    // in lifecycle order. T → Phase 5, U → Phase 6, V → Phase 7,
+    // X → Phase 8.
     expect(ids).toEqual([
       'KICKOFF',
       'FOUNDATION', 'ACCOUNTING', 'TAX', 'LOCALIZATION', 'INVENTORY',
       'P2P', 'O2C', 'REVENUE_APPS', 'OPERATIONS_APPS',
       'MANUFACTURING', 'RETURNS', 'MIGRATION',
-      'TESTING', 'TRAINING', 'CUTOVER',
+      'TESTING', 'TRAINING', 'CUTOVER', 'HYPERCARE',
     ]);
   });
 
@@ -43,26 +43,28 @@ describe('odooAdaptor: schema', () => {
     }
   });
 
-  it('question IDs are namespaced under "odoo." or universal "kickoff." / "testing." / "training." / "cutover." and unique', () => {
+  it('question IDs are namespaced under "odoo." or universal "kickoff." / "testing." / "training." / "cutover." / "hypercare." and unique', () => {
     const seen = new Set<string>();
     for (const flow of odooAdaptor.schema.flows) {
       for (const section of flow.sections) {
         for (const q of section.questions) {
           // Universal packs live under cross-adaptor namespaces:
-          //   - kickoff.*  (Project Kickoff)
-          //   - testing.*  (Pack T — Test Artifacts)
-          //   - training.* (Pack U — Training Collateral)
-          //   - cutover.*  (Pack V — Cutover Runbook)
+          //   - kickoff.*   (Project Kickoff)
+          //   - testing.*   (Pack T — Test Artifacts)
+          //   - training.*  (Pack U — Training Collateral)
+          //   - cutover.*   (Pack V — Cutover Runbook)
+          //   - hypercare.* (Pack X — Hypercare Program)
           // Everything else stays adaptor-scoped under odoo.*.
           const valid =
             q.id.startsWith('odoo.') ||
             q.id.startsWith('kickoff.') ||
             q.id.startsWith('testing.') ||
             q.id.startsWith('training.') ||
-            q.id.startsWith('cutover.');
+            q.id.startsWith('cutover.') ||
+            q.id.startsWith('hypercare.');
           expect(
             valid,
-            `question ${q.id} not namespaced under odoo. / kickoff. / testing. / training. / cutover.`,
+            `question ${q.id} not namespaced under odoo. / kickoff. / testing. / training. / cutover. / hypercare.`,
           ).toBe(true);
           expect(seen.has(q.id), `duplicate question id: ${q.id}`).toBe(false);
           seen.add(q.id);
@@ -4000,10 +4002,10 @@ describe('odooAdaptor: Pack V — CUTOVER flow shape', () => {
     expect(cutover!.label).toBe('Cutover & Go-Live');
   });
 
-  it('CUTOVER sits LAST in the flow order (after TRAINING)', () => {
+  it('CUTOVER sits AFTER TRAINING (and BEFORE HYPERCARE which Pack X appends last)', () => {
     const ids = odooAdaptor.schema.flows.map((f) => f.id);
-    expect(ids[ids.length - 1]).toBe('CUTOVER');
     expect(ids.indexOf('CUTOVER')).toBeGreaterThan(ids.indexOf('TRAINING'));
+    expect(ids.indexOf('CUTOVER')).toBeLessThan(ids.indexOf('HYPERCARE'));
   });
 
   it('CUTOVER has 3 sections in canonical order — team / decisions / communication', () => {
@@ -4076,5 +4078,95 @@ describe('odooAdaptor: Pack V — CUTOVER flow shape', () => {
   it('CUTOVER flow contributes 8 questions total', () => {
     const total = cutover!.sections.reduce((sum, s) => sum + s.questions.length, 0);
     expect(total).toBe(8);
+  });
+});
+
+// ─── Pack X — HYPERCARE flow shape (cross-platform parity with NetSuite) ────
+
+describe('odooAdaptor: Pack X — HYPERCARE flow shape', () => {
+  const hypercare = odooAdaptor.schema.flows.find((f) => f.id === 'HYPERCARE');
+
+  it('HYPERCARE flow exists with the expected label', () => {
+    expect(hypercare).toBeDefined();
+    expect(hypercare!.label).toBe('Hypercare & BAU Transition');
+  });
+
+  it('HYPERCARE sits LAST in the flow order (after CUTOVER)', () => {
+    const ids = odooAdaptor.schema.flows.map((f) => f.id);
+    expect(ids[ids.length - 1]).toBe('HYPERCARE');
+    expect(ids.indexOf('HYPERCARE')).toBeGreaterThan(ids.indexOf('CUTOVER'));
+  });
+
+  it('HYPERCARE has 3 sections in canonical order', () => {
+    const sectionIds = hypercare!.sections.map((s) => s.id);
+    expect(sectionIds).toEqual(['team', 'sla', 'cadence']);
+  });
+
+  it('Section 1 (team) carries the 3 team questions', () => {
+    const team = hypercare!.sections.find((s) => s.id === 'team')!;
+    const ids = team.questions.map((q) => q.id);
+    expect(ids).toEqual([
+      'hypercare.team.hypercareLeadName',
+      'hypercare.team.hypercareTeamRoster',
+      'hypercare.team.sustainmentOwner',
+    ]);
+  });
+
+  it('Section 2 (sla) carries the 4 SLA questions', () => {
+    const sla = hypercare!.sections.find((s) => s.id === 'sla')!;
+    const ids = sla.questions.map((q) => q.id);
+    expect(ids).toEqual([
+      'hypercare.sla.hypercareDurationDays',
+      'hypercare.sla.severityDefinitions',
+      'hypercare.sla.responseTimeBySeverity',
+      'hypercare.sla.businessHoursDefinition',
+    ]);
+  });
+
+  it('Section 3 (cadence) carries the 4 cadence questions', () => {
+    const cadence = hypercare!.sections.find((s) => s.id === 'cadence')!;
+    const ids = cadence.questions.map((q) => q.id);
+    expect(ids).toEqual([
+      'hypercare.cadence.dailyStandupTime',
+      'hypercare.cadence.weeklyReviewTime',
+      'hypercare.cadence.warRoomHours',
+      'hypercare.cadence.hypercareExitCriteria',
+    ]);
+  });
+
+  it('hypercareDurationDays is a NUMBER input', () => {
+    const q = hypercare!
+      .sections.find((s) => s.id === 'sla')!
+      .questions.find((qq) => qq.id === 'hypercare.sla.hypercareDurationDays')!;
+    expect(q.inputType).toBe('NUMBER');
+  });
+
+  it('all TEXTAREA questions are non-required', () => {
+    for (const section of hypercare!.sections) {
+      for (const q of section.questions) {
+        if (q.inputType === 'TEXTAREA') {
+          expect(q.required, `${q.id} should be optional`).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('flow description references the hypercare artefacts', () => {
+    expect(hypercare!.description ?? '').toMatch(/hypercare plan/i);
+    expect(hypercare!.description ?? '').toMatch(/escalation matrix/i);
+    expect(hypercare!.description ?? '').toMatch(/war-room/i);
+  });
+
+  it('question IDs use the hypercare.* universal namespace', () => {
+    for (const section of hypercare!.sections) {
+      for (const q of section.questions) {
+        expect(q.id).toMatch(/^hypercare\./);
+      }
+    }
+  });
+
+  it('HYPERCARE flow contributes 11 questions total', () => {
+    const total = hypercare!.sections.reduce((sum, s) => sum + s.questions.length, 0);
+    expect(total).toBe(11);
   });
 });

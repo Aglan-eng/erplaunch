@@ -155,6 +155,10 @@ const schema: QuestionnaireSchema = {
     // preFreezeDays / parallelRunDays from the existing odoo.migration
     // flow.
     buildCutoverFlow(),
+    // Pack X — HYPERCARE flow renders AFTER CUTOVER (Phase 8 follows
+    // Phase 7). Cross-platform pack — mirrored verbatim in
+    // adaptor-netsuite.
+    buildHypercareFlow(),
   ],
 };
 
@@ -2395,7 +2399,120 @@ function buildCutoverFlow(): FlowDefinition {
             inputType: 'TEXTAREA',
             required: false,
             label:
-              "Cutover escalation contacts beyond the team roster (one per line — '<contact>: <when to call>'; e.g., 'Group CEO: only if rollback triggered', 'External SuiteCloud Support: if SDF deploy fails', 'Banking partner contact: if intercompany payment files fail')",
+              "Cutover escalation contacts beyond the team roster (one per line — '<contact>: <when to call>'; e.g., 'Group CEO: only if rollback triggered', 'OdooSH Support: if database recovery needed', 'Banking partner contact: if payment files fail')",
+          },
+        ],
+      },
+    ],
+  };
+}
+
+// ─── Pack X — HYPERCARE flow (CROSS-PLATFORM, mirrored in adaptor-netsuite) ─
+//
+// Post-go-live triage program: team + on-call + cadence + transition
+// to BAU support. Same 11 questions in both adaptors.
+//
+// Sources:
+//   - ITIL service-transition + early-life support (ELS) patterns.
+//   - Standard ERP hypercare playbooks (SuiteSuccess Hypercare,
+//     SAP Activate Run phase, Odoo go-live + post-deployment guide).
+function buildHypercareFlow(): FlowDefinition {
+  return {
+    id: 'HYPERCARE',
+    label: 'Hypercare & BAU Transition',
+    description:
+      'Post-go-live triage team, response SLAs, daily standup cadence, war-room hours, KPI dashboard, exit criteria, and transition to BAU support. Drives Documentation/Hypercare/ artefacts: hypercare plan, daily readiness checklist, escalation matrix, war-room SOP, transition-to-support plan, KPI dashboard, and power-user office hours schedule.',
+    sections: [
+      {
+        id: 'team',
+        label: 'Hypercare Team & Sustainment',
+        order: 1,
+        questions: [
+          {
+            id: 'hypercare.team.hypercareLeadName',
+            inputType: 'TEXT',
+            required: false,
+            label:
+              'Hypercare lead — single accountable owner of the hypercare program (e.g., "Lara Mansour")',
+          },
+          {
+            id: 'hypercare.team.hypercareTeamRoster',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              'Hypercare team roster (one per line — \'<Name> | <Role> | <Coverage hours> | <Phone>\'; e.g., \'Lara Mansour | Hypercare Lead | Sun-Thu 08:00-18:00 | +966-50-xxx-1001\')',
+          },
+          {
+            id: 'hypercare.team.sustainmentOwner',
+            inputType: 'TEXT',
+            required: false,
+            label:
+              'Sustainment owner — the person/team taking over after hypercare exit',
+          },
+        ],
+      },
+      {
+        id: 'sla',
+        label: 'Severity & SLAs',
+        order: 2,
+        questions: [
+          {
+            id: 'hypercare.sla.hypercareDurationDays',
+            inputType: 'NUMBER',
+            required: false,
+            label: 'Hypercare duration in days (default: 30)',
+          },
+          {
+            id: 'hypercare.sla.severityDefinitions',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              'Severity definitions (one per line — \'<Severity> | <Description> | <Example>\')',
+          },
+          {
+            id: 'hypercare.sla.responseTimeBySeverity',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              'Response and resolution SLAs by severity (one per line — \'<Severity> | <Response SLA> | <Resolution target>\')',
+          },
+          {
+            id: 'hypercare.sla.businessHoursDefinition',
+            inputType: 'TEXT',
+            required: false,
+            label: 'Business hours definition',
+          },
+        ],
+      },
+      {
+        id: 'cadence',
+        label: 'Cadence & Exit Criteria',
+        order: 3,
+        questions: [
+          {
+            id: 'hypercare.cadence.dailyStandupTime',
+            inputType: 'TEXT',
+            required: false,
+            label: 'Daily standup time',
+          },
+          {
+            id: 'hypercare.cadence.weeklyReviewTime',
+            inputType: 'TEXT',
+            required: false,
+            label: 'Weekly review time',
+          },
+          {
+            id: 'hypercare.cadence.warRoomHours',
+            inputType: 'TEXT',
+            required: false,
+            label: 'War-room hours / tapering schedule',
+          },
+          {
+            id: 'hypercare.cadence.hypercareExitCriteria',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              'Hypercare exit criteria — measurable gates (one per line)',
           },
         ],
       },

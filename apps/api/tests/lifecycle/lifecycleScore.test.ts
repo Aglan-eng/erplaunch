@@ -356,6 +356,26 @@ describe('Lifecycle harness — threshold gates', () => {
       `Phase 7 (Cutover) failed: ${p7.failedCheckDescriptions.join('; ')}`,
     ).toBeGreaterThanOrEqual(9.0);
   });
+
+  // Phase 8 (Hypercare) gates — NEW after Pack X (Hypercare Program).
+  // Pre-Pack-X floor: 0/10 on BOTH adaptors (placeholder rubric only;
+  // no Hypercare_Plan generated). Pack X emits 7 dedicated artefacts
+  // → 10 fresh checks; both adaptors hit 10/10. Ratcheted to ≥ 9.0.
+  it('Odoo bundle Phase 8 (Hypercare) ≥ 9.0 — locks in Pack X closure (0/10 → 10/10)', () => {
+    const p8 = runs.find((r) => r.adaptor === 'odoo')!.score.perPhase.find((p) => p.number === 8)!;
+    expect(
+      p8.score,
+      `Phase 8 (Hypercare) failed: ${p8.failedCheckDescriptions.join('; ')}`,
+    ).toBeGreaterThanOrEqual(9.0);
+  });
+
+  it('NetSuite bundle Phase 8 (Hypercare) ≥ 9.0 — locks in Pack X closure (0/10 → 10/10)', () => {
+    const p8 = runs.find((r) => r.adaptor === 'netsuite')!.score.perPhase.find((p) => p.number === 8)!;
+    expect(
+      p8.score,
+      `Phase 8 (Hypercare) failed: ${p8.failedCheckDescriptions.join('; ')}`,
+    ).toBeGreaterThanOrEqual(9.0);
+  });
 });
 
 function formatScoreDetails(adaptor: AdaptorId, score: BundleScore): string {

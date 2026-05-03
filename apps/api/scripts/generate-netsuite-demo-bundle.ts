@@ -68,6 +68,13 @@ import { generatePostCutoverSmoke } from '../src/services/generators/postCutover
 import { generateCutoverCommPlan } from '../src/services/generators/cutoverCommPlanGenerator.js';
 import { generateDryRunPlan } from '../src/services/generators/dryRunPlanGenerator.js';
 import { generateCutoverTeamRoster } from '../src/services/generators/cutoverTeamRosterGenerator.js';
+import { generateHypercarePlan } from '../src/services/generators/hypercarePlanGenerator.js';
+import { generateDailyReadinessChecklist } from '../src/services/generators/dailyReadinessChecklistGenerator.js';
+import { generateIssueEscalationMatrix } from '../src/services/generators/issueEscalationMatrixGenerator.js';
+import { generateWarRoomSop } from '../src/services/generators/warRoomSopGenerator.js';
+import { generateTransitionToSupportPlan } from '../src/services/generators/transitionToSupportPlanGenerator.js';
+import { generateHypercareKpiDashboard } from '../src/services/generators/hypercareKpiDashboardGenerator.js';
+import { generatePowerUserOfficeHours } from '../src/services/generators/powerUserOfficeHoursGenerator.js';
 import netsuiteAdaptor from '@ofoq/adaptor-netsuite';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -577,6 +584,48 @@ const answers: Record<string, unknown> = {
     'Avalara support: if tax-engine integration fails during cutover\n' +
     'Banking partners (US + UK + AU + DE): if intercompany payment files fail\n' +
     'External auditor (KPMG): if SOX walkthrough triggered or ASC 606 issues persist',
+
+  // Pack X — HYPERCARE flow (cross-platform). Atlas exercises a 30-day
+  // hypercare with a 5-person team, full STANDARD_4_LEVEL severity,
+  // KSA + EU + US business hours coverage.
+  'hypercare.team.hypercareLeadName': 'Hesham Aglan',
+  'hypercare.team.hypercareTeamRoster':
+    'Hesham Aglan | Hypercare Lead — Consultant PM | Mon-Fri 09:00-18:00 GMT (24h on-call rotation T+1 to T+10) | +44-7700-xxx-3001\n' +
+    'Sarah Chen | NetSuite Functional Lead — Financials + ARM | Mon-Fri 09:00-18:00 EST | +1-617-xxx-3002\n' +
+    'Mostafa Sherif | OneWorld Integration Engineer | Mon-Fri 09:00-18:00 GMT | +44-7700-xxx-3003\n' +
+    'Sophie Müller | Power-User Coach — EU subsidiaries (UK + DE) | Mon-Fri 09:00-18:00 CET | +49-30-xxx-3004\n' +
+    'Tom Wilson | Power-User Coach — US + AU subsidiaries | Mon-Fri 09:00-18:00 EST + occasional SYD | +1-617-xxx-3005',
+  'hypercare.team.sustainmentOwner':
+    'Atlas IT Shared Services — David Chen (VP Finance Transformation, transitioning to ongoing IT lead) + 4-person internal team',
+  'hypercare.sla.hypercareDurationDays': 30,
+  'hypercare.sla.severityDefinitions':
+    'S1 | Production halted, no workaround | Period close blocked across any subsidiary, ARM revenue recognition broken, multi-currency consolidation broken\n' +
+    'S2 | Major function impaired, workaround exists | Reports broken, batch job failing, integration retry queue growing\n' +
+    'S3 | Minor function impaired or single-user | Field validation issue, single user permission gap, workflow misroute on edge case\n' +
+    'S4 | Cosmetic or enhancement | Label typo, dashboard color, dropdown sort order',
+  'hypercare.sla.responseTimeBySeverity':
+    'S1 | 15 minutes | 4 hours\n' +
+    'S2 | 1 business hour | 1 business day\n' +
+    'S3 | 1 business day | 5 business days\n' +
+    'S4 | 5 business days | Backlog (next quarterly review)',
+  'hypercare.sla.businessHoursDefinition':
+    'Mon-Fri 09:00-18:00 (per timezone of each team member). 24h on-call rotation for S1 incidents during T+1 to T+10. After T+10, S1 on-call only during business hours of any team member.',
+  'hypercare.cadence.dailyStandupTime':
+    '14:00 GMT daily (08:00 EST / 09:00 EDT / 16:00 CET / 23:00 SYD — covers all team timezones)',
+  'hypercare.cadence.weeklyReviewTime':
+    'Thu 15:00 GMT (09:00 EST — covers US + EU + Sponsor)',
+  'hypercare.cadence.warRoomHours':
+    'T+1 to T+10: full team in war-room with timezone overlap maintained 09:00-22:00 GMT (US + EU + AU coverage). T+11 to T+20: war-room 14:00-18:00 GMT (overlap window only). T+21 to T+30: standup-only, async on Teams.',
+  'hypercare.cadence.hypercareExitCriteria':
+    'Zero S1 open for 5 consecutive business days\n' +
+    'Zero S2 open more than 5 business days\n' +
+    'First month-end close completed within 5 business days across all 4 subsidiaries\n' +
+    'ASC 606 revenue recognition validated for full month with auditor sign-off\n' +
+    'Multi-currency revaluation completed correctly for first month-end\n' +
+    'Integration retry queue depth < 5 for 5 consecutive business days (all integrations)\n' +
+    'User adoption ≥ 90% of named users posting at least 1 transaction in trailing 7 days\n' +
+    'Project Sponsor (Helena Reyes) sign-off captured\n' +
+    'External auditor (KPMG) interim review passed',
 };
 
 const comments = [
@@ -782,6 +831,75 @@ const teamRosterResult = generateCutoverTeamRoster({
   targetGoLiveDate: answers['kickoff.mandate.targetGoLiveDate'] as string,
 });
 
+// ── Pack X — Hypercare Program (cross-platform — runs on NetSuite too) ──────
+const hypercareDurationDaysAtlas =
+  (answers['hypercare.sla.hypercareDurationDays'] as number) ?? 30;
+const atlasIntegrations = [
+  answers['ns.design.inboundIntegrations'] as string,
+  answers['ns.design.outboundIntegrations'] as string,
+]
+  .filter((s) => typeof s === 'string' && s.trim().length > 0)
+  .join('\n');
+
+const hypercarePlanResult = generateHypercarePlan({
+  clientName,
+  adaptorName: 'NetSuite',
+  hypercareLeadName: answers['hypercare.team.hypercareLeadName'] as string,
+  hypercareTeamRoster: answers['hypercare.team.hypercareTeamRoster'] as string,
+  sustainmentOwner: answers['hypercare.team.sustainmentOwner'] as string,
+  hypercareDurationDays: hypercareDurationDaysAtlas,
+  severityDefinitions: answers['hypercare.sla.severityDefinitions'] as string,
+  responseTimeBySeverity: answers['hypercare.sla.responseTimeBySeverity'] as string,
+  businessHoursDefinition: answers['hypercare.sla.businessHoursDefinition'] as string,
+  dailyStandupTime: answers['hypercare.cadence.dailyStandupTime'] as string,
+  weeklyReviewTime: answers['hypercare.cadence.weeklyReviewTime'] as string,
+  warRoomHours: answers['hypercare.cadence.warRoomHours'] as string,
+  hypercareExitCriteria: answers['hypercare.cadence.hypercareExitCriteria'] as string,
+  targetGoLiveDate: answers['kickoff.mandate.targetGoLiveDate'] as string,
+});
+const dailyReadinessResult = generateDailyReadinessChecklist({
+  clientName,
+  adaptorName: 'NetSuite',
+  hypercareDurationDays: hypercareDurationDaysAtlas,
+  integrationsList: atlasIntegrations,
+});
+const escalationMatrixResult = generateIssueEscalationMatrix({
+  clientName,
+  adaptorName: 'NetSuite',
+  hypercareLeadName: answers['hypercare.team.hypercareLeadName'] as string,
+  severityDefinitions: answers['hypercare.sla.severityDefinitions'] as string,
+  responseTimeBySeverity: answers['hypercare.sla.responseTimeBySeverity'] as string,
+});
+const warRoomResult = generateWarRoomSop({
+  clientName,
+  adaptorName: 'NetSuite',
+  hypercareDurationDays: hypercareDurationDaysAtlas,
+  warRoomHours: answers['hypercare.cadence.warRoomHours'] as string,
+  hypercareLeadName: answers['hypercare.team.hypercareLeadName'] as string,
+  dailyStandupTime: answers['hypercare.cadence.dailyStandupTime'] as string,
+});
+const transitionResult = generateTransitionToSupportPlan({
+  clientName,
+  adaptorName: 'NetSuite',
+  sustainmentOwner: answers['hypercare.team.sustainmentOwner'] as string,
+  hypercareLeadName: answers['hypercare.team.hypercareLeadName'] as string,
+  hypercareDurationDays: hypercareDurationDaysAtlas,
+  targetGoLiveDate: answers['kickoff.mandate.targetGoLiveDate'] as string,
+});
+const kpiDashboardResult = generateHypercareKpiDashboard({
+  clientName,
+  adaptorName: 'NetSuite',
+  hypercareLeadName: answers['hypercare.team.hypercareLeadName'] as string,
+  integrationsList: atlasIntegrations,
+});
+const officeHoursResult = generatePowerUserOfficeHours({
+  clientName,
+  adaptorName: 'NetSuite',
+  hypercareDurationDays: hypercareDurationDaysAtlas,
+  hypercareLeadName: answers['hypercare.team.hypercareLeadName'] as string,
+  workstreamsInScope: ['R2R', 'P2P', 'O2C', 'INV', 'MFG', 'RTN', 'IT'],
+});
+
 const writes: Array<[string, string]> = [
   ['Project_Kickoff.md', generateKickoff(kickoffData)],
   ['Project_Kickoff.html', generateKickoffHtml(kickoffData)],
@@ -864,6 +982,23 @@ const cutoverWrites: Array<[string, string]> = [
 for (const [filename, content] of cutoverWrites) {
   await fs.writeFile(path.join(cutoverDir, filename), content, 'utf8');
   process.stdout.write(`  ✓ Cutover/${filename}\n`);
+}
+
+// Pack X — Hypercare/ subfolder (7 hypercare artefacts).
+const hypercareDir = path.join(docDir, 'Hypercare');
+await fs.mkdir(hypercareDir, { recursive: true });
+const hypercareWrites: Array<[string, string]> = [
+  ['Hypercare_Plan.md', hypercarePlanResult.markdown],
+  ['Daily_Readiness_Checklist.md', dailyReadinessResult.markdown],
+  ['Issue_Escalation_Matrix.md', escalationMatrixResult.markdown],
+  ['War_Room_SOP.md', warRoomResult.markdown],
+  ['Transition_To_Support_Plan.md', transitionResult.markdown],
+  ['Hypercare_KPI_Dashboard.md', kpiDashboardResult.markdown],
+  ['Power_User_Office_Hours.md', officeHoursResult.markdown],
+];
+for (const [filename, content] of hypercareWrites) {
+  await fs.writeFile(path.join(hypercareDir, filename), content, 'utf8');
+  process.stdout.write(`  ✓ Hypercare/${filename}\n`);
 }
 
 // ── Real-code generation: SDF bundle ────────────────────────────────────────

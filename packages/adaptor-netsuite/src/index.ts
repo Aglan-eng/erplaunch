@@ -142,6 +142,12 @@ function buildSchema(): QuestionnaireSchema {
       // existing Migration flow, and references roles + sponsors from
       // KICKOFF + Pack C.
       buildCutoverFlow(),
+      // Pack X — HYPERCARE flow renders AFTER CUTOVER (Phase 8 follows
+      // Phase 7). Cross-platform pack — post-go-live triage + cadence
+      // + transition to BAU. Reuses targetGoLiveDate from KICKOFF and
+      // standardRoleCustomization from Pack C for power-user coach +
+      // role-aware hypercare lists.
+      buildHypercareFlow(),
     ],
   };
 }
@@ -1624,6 +1630,125 @@ function buildCutoverFlow(): FlowDefinition {
             required: false,
             label:
               "Cutover escalation contacts beyond the team roster (one per line — '<contact>: <when to call>'; e.g., 'Group CEO: only if rollback triggered', 'External SuiteCloud Support: if SDF deploy fails', 'Banking partner contact: if intercompany payment files fail')",
+          },
+        ],
+      },
+    ],
+  };
+}
+
+// ─── Pack X — HYPERCARE flow (CROSS-PLATFORM, mirrored in adaptor-odoo) ─────
+//
+// Post-go-live triage program: team + on-call + cadence + transition
+// to BAU support. Same 11 questions in both adaptors. Reuses
+// targetGoLiveDate from KICKOFF and standardRoleCustomization from
+// Pack C. Drives Documentation/Hypercare/ artefacts (7 files).
+//
+// Sources:
+//   - ITIL service-transition + early-life support (ELS) patterns.
+//   - Standard ERP hypercare playbooks (SuiteSuccess Hypercare,
+//     SAP Activate Run phase, Odoo go-live + post-deployment guide).
+//   - PMI / PMBOK transition-and-closeout knowledge area (handover to
+//     ongoing support).
+function buildHypercareFlow(): FlowDefinition {
+  return {
+    id: 'HYPERCARE',
+    label: 'Hypercare & BAU Transition',
+    description:
+      'Post-go-live triage team, response SLAs, daily standup cadence, war-room hours, KPI dashboard, exit criteria, and transition to BAU support. Drives Documentation/Hypercare/ artefacts: hypercare plan, daily readiness checklist, escalation matrix, war-room SOP, transition-to-support plan, KPI dashboard, and power-user office hours schedule.',
+    sections: [
+      {
+        id: 'team',
+        label: 'Hypercare Team & Sustainment',
+        order: 1,
+        questions: [
+          {
+            id: 'hypercare.team.hypercareLeadName',
+            inputType: 'TEXT',
+            required: false,
+            label:
+              'Hypercare lead — single accountable owner of the hypercare program (e.g., "Lara Mansour")',
+          },
+          {
+            id: 'hypercare.team.hypercareTeamRoster',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              'Hypercare team roster (one per line — \'<Name> | <Role> | <Coverage hours> | <Phone>\'; e.g., \'Lara Mansour | Hypercare Lead | Sun-Thu 08:00-18:00 | +966-50-xxx-1001\')',
+          },
+          {
+            id: 'hypercare.team.sustainmentOwner',
+            inputType: 'TEXT',
+            required: false,
+            label:
+              'Sustainment owner — the person/team taking over after hypercare exit (e.g., "Atlas IT Shared Services — Saif Al-Otaibi")',
+          },
+        ],
+      },
+      {
+        id: 'sla',
+        label: 'Severity & SLAs',
+        order: 2,
+        questions: [
+          {
+            id: 'hypercare.sla.hypercareDurationDays',
+            inputType: 'NUMBER',
+            required: false,
+            label: 'Hypercare duration in days (default: 30)',
+          },
+          {
+            id: 'hypercare.sla.severityDefinitions',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              'Severity definitions (one per line — \'<Severity> | <Description> | <Example>\'; e.g., \'S1 | Production halted, no workaround | Period-end close blocked\')',
+          },
+          {
+            id: 'hypercare.sla.responseTimeBySeverity',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              'Response and resolution SLAs by severity (one per line — \'<Severity> | <Response SLA> | <Resolution target>\'; e.g., \'S1 | 15 minutes | 4 hours\')',
+          },
+          {
+            id: 'hypercare.sla.businessHoursDefinition',
+            inputType: 'TEXT',
+            required: false,
+            label:
+              'Business hours definition (e.g., "Sun-Thu 08:00-17:00 KSA. Fri-Sat off. After-hours on-call only for S1.")',
+          },
+        ],
+      },
+      {
+        id: 'cadence',
+        label: 'Cadence & Exit Criteria',
+        order: 3,
+        questions: [
+          {
+            id: 'hypercare.cadence.dailyStandupTime',
+            inputType: 'TEXT',
+            required: false,
+            label: 'Daily standup time (e.g., "09:00 KSA daily")',
+          },
+          {
+            id: 'hypercare.cadence.weeklyReviewTime',
+            inputType: 'TEXT',
+            required: false,
+            label: 'Weekly review time (e.g., "Thu 14:00 KSA")',
+          },
+          {
+            id: 'hypercare.cadence.warRoomHours',
+            inputType: 'TEXT',
+            required: false,
+            label:
+              'War-room hours / tapering schedule (e.g., "T+1 to T+5: full team in war-room 08:00-18:00. T+6 to T+15: 09:00-13:00. T+16 to T+30: standup-only, async on Teams.")',
+          },
+          {
+            id: 'hypercare.cadence.hypercareExitCriteria',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              'Hypercare exit criteria — measurable gates (one per line; e.g., "Zero S1 open for 5 consecutive business days", "First month-end close completed within 5 business days", "Sponsor sign-off captured")',
           },
         ],
       },

@@ -61,6 +61,14 @@ import { generatePostCutoverSmoke } from './generators/postCutoverSmokeGenerator
 import { generateCutoverCommPlan } from './generators/cutoverCommPlanGenerator.js';
 import { generateDryRunPlan } from './generators/dryRunPlanGenerator.js';
 import { generateCutoverTeamRoster } from './generators/cutoverTeamRosterGenerator.js';
+// Pack X — Hypercare Program (cross-platform — runs for both NetSuite + Odoo).
+import { generateHypercarePlan } from './generators/hypercarePlanGenerator.js';
+import { generateDailyReadinessChecklist } from './generators/dailyReadinessChecklistGenerator.js';
+import { generateIssueEscalationMatrix } from './generators/issueEscalationMatrixGenerator.js';
+import { generateWarRoomSop } from './generators/warRoomSopGenerator.js';
+import { generateTransitionToSupportPlan } from './generators/transitionToSupportPlanGenerator.js';
+import { generateHypercareKpiDashboard } from './generators/hypercareKpiDashboardGenerator.js';
+import { generatePowerUserOfficeHours } from './generators/powerUserOfficeHoursGenerator.js';
 import { convertHtmlToPdf } from './pdfService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -604,6 +612,148 @@ export async function processJob(jobId: string, db: DbModule) {
       teamRosterResult.markdown,
     );
 
+    // ── Pack X — Hypercare Program (CROSS-PLATFORM) ─────────────────────────
+    // Seven generators emit to Documentation/Hypercare/. Reuses
+    // hypercare.* wizard answers + targetGoLiveDate + integrations
+    // from Pack 3. Workstream scope drives power-user-office-hours
+    // topic list. Adaptor-conditional vendor channel (L4 escalation
+    // tier) + KPI data sources branch on adaptorName.
+    const hypercareDir = path.join(docDir, 'Hypercare');
+    await fs.mkdir(hypercareDir, { recursive: true });
+
+    const hypercareDurationDays =
+      typeof answers['hypercare.sla.hypercareDurationDays'] === 'number'
+        ? (answers['hypercare.sla.hypercareDurationDays'] as number)
+        : 30;
+
+    // Combine inbound + outbound integrations (NetSuite) — Odoo doesn't
+    // have an equivalent answer today; the helpers handle empty input.
+    const inboundForHypercare =
+      (answers['ns.design.inboundIntegrations'] as string | undefined) ?? '';
+    const outboundForHypercare =
+      (answers['ns.design.outboundIntegrations'] as string | undefined) ?? '';
+    const hypercareIntegrations = [inboundForHypercare, outboundForHypercare]
+      .filter((s) => s.trim().length > 0)
+      .join('\n');
+
+    const hypercarePlanResult = generateHypercarePlan({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      hypercareLeadName: answers['hypercare.team.hypercareLeadName'] as string | undefined,
+      hypercareTeamRoster: answers['hypercare.team.hypercareTeamRoster'] as string | undefined,
+      sustainmentOwner: answers['hypercare.team.sustainmentOwner'] as string | undefined,
+      hypercareDurationDays,
+      severityDefinitions: answers['hypercare.sla.severityDefinitions'] as string | undefined,
+      responseTimeBySeverity: answers['hypercare.sla.responseTimeBySeverity'] as
+        | string
+        | undefined,
+      businessHoursDefinition: answers['hypercare.sla.businessHoursDefinition'] as
+        | string
+        | undefined,
+      dailyStandupTime: answers['hypercare.cadence.dailyStandupTime'] as string | undefined,
+      weeklyReviewTime: answers['hypercare.cadence.weeklyReviewTime'] as string | undefined,
+      warRoomHours: answers['hypercare.cadence.warRoomHours'] as string | undefined,
+      hypercareExitCriteria: answers['hypercare.cadence.hypercareExitCriteria'] as
+        | string
+        | undefined,
+      targetGoLiveDate: answers['kickoff.mandate.targetGoLiveDate'] as string | undefined,
+    });
+    await fs.writeFile(
+      path.join(hypercareDir, 'Hypercare_Plan.md'),
+      hypercarePlanResult.markdown,
+    );
+
+    const dailyReadinessResult = generateDailyReadinessChecklist({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      hypercareDurationDays,
+      integrationsList: hypercareIntegrations.length > 0 ? hypercareIntegrations : undefined,
+    });
+    await fs.writeFile(
+      path.join(hypercareDir, 'Daily_Readiness_Checklist.md'),
+      dailyReadinessResult.markdown,
+    );
+
+    const escalationMatrixResult = generateIssueEscalationMatrix({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      hypercareLeadName: answers['hypercare.team.hypercareLeadName'] as string | undefined,
+      severityDefinitions: answers['hypercare.sla.severityDefinitions'] as string | undefined,
+      responseTimeBySeverity: answers['hypercare.sla.responseTimeBySeverity'] as
+        | string
+        | undefined,
+    });
+    await fs.writeFile(
+      path.join(hypercareDir, 'Issue_Escalation_Matrix.md'),
+      escalationMatrixResult.markdown,
+    );
+
+    const warRoomResult = generateWarRoomSop({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      hypercareDurationDays,
+      warRoomHours: answers['hypercare.cadence.warRoomHours'] as string | undefined,
+      hypercareLeadName: answers['hypercare.team.hypercareLeadName'] as string | undefined,
+      dailyStandupTime: answers['hypercare.cadence.dailyStandupTime'] as string | undefined,
+    });
+    await fs.writeFile(path.join(hypercareDir, 'War_Room_SOP.md'), warRoomResult.markdown);
+
+    const transitionResult = generateTransitionToSupportPlan({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      sustainmentOwner: answers['hypercare.team.sustainmentOwner'] as string | undefined,
+      hypercareLeadName: answers['hypercare.team.hypercareLeadName'] as string | undefined,
+      hypercareDurationDays,
+      targetGoLiveDate: answers['kickoff.mandate.targetGoLiveDate'] as string | undefined,
+    });
+    await fs.writeFile(
+      path.join(hypercareDir, 'Transition_To_Support_Plan.md'),
+      transitionResult.markdown,
+    );
+
+    const kpiDashboardResult = generateHypercareKpiDashboard({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      hypercareLeadName: answers['hypercare.team.hypercareLeadName'] as string | undefined,
+      integrationsList: hypercareIntegrations.length > 0 ? hypercareIntegrations : undefined,
+    });
+    await fs.writeFile(
+      path.join(hypercareDir, 'Hypercare_KPI_Dashboard.md'),
+      kpiDashboardResult.markdown,
+    );
+
+    // Power-user office hours — workstream scope reuses the same
+    // detection logic as Pack U / KT checklist.
+    const hypercareWorkstreams: string[] = [];
+    if (Object.keys(answers).some((k) => k.startsWith('r2r.'))) hypercareWorkstreams.push('R2R');
+    if (Object.keys(answers).some((k) => k.startsWith('p2p.'))) hypercareWorkstreams.push('P2P');
+    if (Object.keys(answers).some((k) => k.startsWith('o2c.'))) hypercareWorkstreams.push('O2C');
+    if (
+      Object.keys(answers).some(
+        (k) => k.startsWith('odoo.inventory.') || k === 'o2c.fulfillment.multipleLocations',
+      )
+    )
+      hypercareWorkstreams.push('INV');
+    if (Object.keys(answers).some((k) => k.startsWith('mfg.') || k.startsWith('odoo.mfg.')))
+      hypercareWorkstreams.push('MFG');
+    if (Object.keys(answers).some((k) => k.startsWith('rtn.') || k.startsWith('odoo.returns.')))
+      hypercareWorkstreams.push('RTN');
+    if (answers['odoo.operations.crmInScope'] === true) hypercareWorkstreams.push('CRM');
+    if (answers['odoo.operations.hrInScope'] === true) hypercareWorkstreams.push('HR');
+    if (answers['ns.foundation.ssoInScope'] === true) hypercareWorkstreams.push('IT');
+
+    const officeHoursResult = generatePowerUserOfficeHours({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      hypercareDurationDays,
+      hypercareLeadName: answers['hypercare.team.hypercareLeadName'] as string | undefined,
+      workstreamsInScope: hypercareWorkstreams,
+    });
+    await fs.writeFile(
+      path.join(hypercareDir, 'Power_User_Office_Hours.md'),
+      officeHoursResult.markdown,
+    );
+
     const sddData = {
       clientName: eng.clientName as string,
       adaptor: adaptorCtx,
@@ -993,6 +1143,12 @@ export async function processJob(jobId: string, db: DbModule) {
           artefactCount: 7,
           path: 'Documentation/Cutover/',
           cutoverStyle: runbookResult.resolvedStyle,
+        },
+        hypercare: {
+          // Pack X — 7 artefacts under Documentation/Hypercare/.
+          artefactCount: 7,
+          path: 'Documentation/Hypercare/',
+          durationDays: hypercareDurationDays,
         },
         ...(isNetSuite ? { sdf: 'SDF/', suiteScript: 'SuiteScript/' } : {}),
       },

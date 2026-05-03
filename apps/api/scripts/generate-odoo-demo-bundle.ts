@@ -42,6 +42,13 @@ import { generatePostCutoverSmoke } from '../src/services/generators/postCutover
 import { generateCutoverCommPlan } from '../src/services/generators/cutoverCommPlanGenerator.js';
 import { generateDryRunPlan } from '../src/services/generators/dryRunPlanGenerator.js';
 import { generateCutoverTeamRoster } from '../src/services/generators/cutoverTeamRosterGenerator.js';
+import { generateHypercarePlan } from '../src/services/generators/hypercarePlanGenerator.js';
+import { generateDailyReadinessChecklist } from '../src/services/generators/dailyReadinessChecklistGenerator.js';
+import { generateIssueEscalationMatrix } from '../src/services/generators/issueEscalationMatrixGenerator.js';
+import { generateWarRoomSop } from '../src/services/generators/warRoomSopGenerator.js';
+import { generateTransitionToSupportPlan } from '../src/services/generators/transitionToSupportPlanGenerator.js';
+import { generateHypercareKpiDashboard } from '../src/services/generators/hypercareKpiDashboardGenerator.js';
+import { generatePowerUserOfficeHours } from '../src/services/generators/powerUserOfficeHoursGenerator.js';
 import odooAdaptor from '@ofoq/adaptor-odoo';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -401,6 +408,41 @@ const answers: Record<string, unknown> = {
     'Odoo Support (OdooSH): if database recovery needed during cutover\n' +
     'Banking partner (Emirates NBD): if intercompany payment files fail\n' +
     'External auditor (BDO): if IFRS consolidation issues persist',
+
+  // Pack X — HYPERCARE flow (cross-platform). Sahel exercises a 14-day
+  // hypercare with a 3-person team, STANDARD_4_LEVEL severity, KSA
+  // business hours.
+  'hypercare.team.hypercareLeadName': 'Aisha Khalid',
+  'hypercare.team.hypercareTeamRoster':
+    'Aisha Khalid | Hypercare Lead — Odoo Senior Consultant | Sun-Thu 08:00-18:00 GMT+4 | +971-50-xxx-2001\n' +
+    'Mariam Saeed | Functional Lead — Group Controller | Sun-Thu 08:00-17:00 GMT+4 | +971-50-xxx-2002\n' +
+    'Omar Reda | Inventory + MRP Power-User Coach | Sun-Thu 09:00-17:00 GMT+4 | +971-50-xxx-2003',
+  'hypercare.team.sustainmentOwner':
+    'Sahel Logistics Internal IT — Sara Mahmoud (Head of IT) + 2-person ops team',
+  'hypercare.sla.hypercareDurationDays': 14,
+  'hypercare.sla.severityDefinitions':
+    'S1 | Production halted, no workaround | Period close blocked, IFRS consolidation broken\n' +
+    'S2 | Major function impaired, workaround exists | Lot tracking misaligned, Studio dashboard wrong\n' +
+    'S3 | Minor function impaired or single-user | Field validation issue, single user permission gap\n' +
+    'S4 | Cosmetic or enhancement | Label typo, dashboard color',
+  'hypercare.sla.responseTimeBySeverity':
+    'S1 | 30 minutes | 4 hours\n' +
+    'S2 | 2 business hours | 1 business day\n' +
+    'S3 | 1 business day | 5 business days\n' +
+    'S4 | 5 business days | Backlog',
+  'hypercare.sla.businessHoursDefinition':
+    'Sun-Thu 08:00-17:00 GMT+4 (UAE business hours). Fri-Sat off. After-hours on-call only for S1.',
+  'hypercare.cadence.dailyStandupTime': '09:30 GMT+4 daily',
+  'hypercare.cadence.weeklyReviewTime': 'Thu 14:00 GMT+4',
+  'hypercare.cadence.warRoomHours':
+    'T+1 to T+5: full team in war-room 08:00-18:00 GMT+4. T+6 to T+10: war-room 09:00-13:00 GMT+4. T+11 to T+14: standup-only, async on Slack.',
+  'hypercare.cadence.hypercareExitCriteria':
+    'Zero S1 open for 5 consecutive business days\n' +
+    'Zero S2 open more than 5 business days\n' +
+    'First month-end IFRS close completed within 5 business days\n' +
+    'Lot/serial tracking integrity verified across 14.5k SKUs\n' +
+    'User adoption ≥ 85% of named users posting at least 1 transaction in trailing 7 days\n' +
+    'Sponsor (Yousef Al-Rashid) sign-off captured',
 };
 const comments = [
   { sectionKey: 'license', text: 'Enterprise edition confirmed; Studio + Documents required for approval matrix + contract storage. MRP + Quality modules for the two production lines.' },
@@ -589,6 +631,65 @@ const teamRosterResult = generateCutoverTeamRoster({
   targetGoLiveDate: answers['kickoff.mandate.targetGoLiveDate'] as string,
 });
 
+// ── Pack X — Hypercare Program (cross-platform — runs on Odoo too) ──────────
+const hypercareDurationDays = (answers['hypercare.sla.hypercareDurationDays'] as number) ?? 14;
+const hypercarePlanResult = generateHypercarePlan({
+  clientName,
+  adaptorName: 'Odoo',
+  hypercareLeadName: answers['hypercare.team.hypercareLeadName'] as string,
+  hypercareTeamRoster: answers['hypercare.team.hypercareTeamRoster'] as string,
+  sustainmentOwner: answers['hypercare.team.sustainmentOwner'] as string,
+  hypercareDurationDays,
+  severityDefinitions: answers['hypercare.sla.severityDefinitions'] as string,
+  responseTimeBySeverity: answers['hypercare.sla.responseTimeBySeverity'] as string,
+  businessHoursDefinition: answers['hypercare.sla.businessHoursDefinition'] as string,
+  dailyStandupTime: answers['hypercare.cadence.dailyStandupTime'] as string,
+  weeklyReviewTime: answers['hypercare.cadence.weeklyReviewTime'] as string,
+  warRoomHours: answers['hypercare.cadence.warRoomHours'] as string,
+  hypercareExitCriteria: answers['hypercare.cadence.hypercareExitCriteria'] as string,
+  targetGoLiveDate: answers['kickoff.mandate.targetGoLiveDate'] as string,
+});
+const dailyReadinessResult = generateDailyReadinessChecklist({
+  clientName,
+  adaptorName: 'Odoo',
+  hypercareDurationDays,
+});
+const escalationMatrixResult = generateIssueEscalationMatrix({
+  clientName,
+  adaptorName: 'Odoo',
+  hypercareLeadName: answers['hypercare.team.hypercareLeadName'] as string,
+  severityDefinitions: answers['hypercare.sla.severityDefinitions'] as string,
+  responseTimeBySeverity: answers['hypercare.sla.responseTimeBySeverity'] as string,
+});
+const warRoomResult = generateWarRoomSop({
+  clientName,
+  adaptorName: 'Odoo',
+  hypercareDurationDays,
+  warRoomHours: answers['hypercare.cadence.warRoomHours'] as string,
+  hypercareLeadName: answers['hypercare.team.hypercareLeadName'] as string,
+  dailyStandupTime: answers['hypercare.cadence.dailyStandupTime'] as string,
+});
+const transitionResult = generateTransitionToSupportPlan({
+  clientName,
+  adaptorName: 'Odoo',
+  sustainmentOwner: answers['hypercare.team.sustainmentOwner'] as string,
+  hypercareLeadName: answers['hypercare.team.hypercareLeadName'] as string,
+  hypercareDurationDays,
+  targetGoLiveDate: answers['kickoff.mandate.targetGoLiveDate'] as string,
+});
+const kpiDashboardResult = generateHypercareKpiDashboard({
+  clientName,
+  adaptorName: 'Odoo',
+  hypercareLeadName: answers['hypercare.team.hypercareLeadName'] as string,
+});
+const officeHoursResult = generatePowerUserOfficeHours({
+  clientName,
+  adaptorName: 'Odoo',
+  hypercareDurationDays,
+  hypercareLeadName: answers['hypercare.team.hypercareLeadName'] as string,
+  workstreamsInScope: ['R2R', 'P2P', 'O2C', 'INV', 'MFG', 'RTN', 'CRM', 'HR'],
+});
+
 const writes: Array<[string, string]> = [
   ['Project_Kickoff.md', generateKickoff(kickoffData)],
   ['Project_Kickoff.html', generateKickoffHtml(kickoffData)],
@@ -677,6 +778,23 @@ const cutoverWrites: Array<[string, string]> = [
 for (const [filename, content] of cutoverWrites) {
   await fs.writeFile(path.join(cutoverDir, filename), content, 'utf8');
   process.stdout.write(`  ✓ Cutover/${filename}\n`);
+}
+
+// Pack X — Hypercare/ subfolder (7 hypercare artefacts).
+const hypercareDir = path.join(docDir, 'Hypercare');
+await fs.mkdir(hypercareDir, { recursive: true });
+const hypercareWrites: Array<[string, string]> = [
+  ['Hypercare_Plan.md', hypercarePlanResult.markdown],
+  ['Daily_Readiness_Checklist.md', dailyReadinessResult.markdown],
+  ['Issue_Escalation_Matrix.md', escalationMatrixResult.markdown],
+  ['War_Room_SOP.md', warRoomResult.markdown],
+  ['Transition_To_Support_Plan.md', transitionResult.markdown],
+  ['Hypercare_KPI_Dashboard.md', kpiDashboardResult.markdown],
+  ['Power_User_Office_Hours.md', officeHoursResult.markdown],
+];
+for (const [filename, content] of hypercareWrites) {
+  await fs.writeFile(path.join(hypercareDir, filename), content, 'utf8');
+  process.stdout.write(`  ✓ Hypercare/${filename}\n`);
 }
 
 // ── Banlist verification ────────────────────────────────────────────────────

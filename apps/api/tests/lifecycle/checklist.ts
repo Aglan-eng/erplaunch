@@ -1157,6 +1157,13 @@ const PHASE_7_CUTOVER: Phase = {
 };
 
 // ─── Phase 8 — Hypercare ─────────────────────────────────────────────────────
+//
+// Pack X closure — pre-Pack-X this rubric was 3 placeholder checks
+// scoring 0/10 on both adaptors (no Hypercare_Plan.md was generated;
+// the bundleContains "Daily Readiness" / "Escalation Matrix" keywords
+// never matched anything in the bundle). Pack X emits 7 dedicated
+// artefacts under Documentation/Hypercare/ that drive a 10-check
+// rubric. Both adaptors should now hit 10/10.
 
 const PHASE_8_HYPERCARE: Phase = {
   number: 8,
@@ -1164,19 +1171,128 @@ const PHASE_8_HYPERCARE: Phase = {
   checks: [
     {
       id: 'p8.hypercare-plan-exists',
-      description: 'Hypercare_Plan.md is generated (gap — not currently produced)',
-      evaluator: (s) => docs(s).has('Hypercare_Plan.md'),
+      description: 'Documentation/Hypercare/Hypercare_Plan.md exists',
+      evaluator: (s) => docs(s).has('Hypercare/Hypercare_Plan.md'),
     },
     {
-      id: 'p8.daily-readiness',
-      description: 'Daily readiness template (gap)',
-      evaluator: (s) =>
-        bundleContains(docs(s), 'Daily Readiness') || bundleContains(docs(s), 'Daily readiness'),
+      id: 'p8.hypercare-plan-has-team-roster',
+      description:
+        'Hypercare_Plan.md contains a parsed team table with ≥ 3 rows including Phone column',
+      evaluator: (s) => {
+        const c = docs(s).get('Hypercare/Hypercare_Plan.md');
+        if (!c) return false;
+        // Roster row pattern: "| Name | Role | Coverage | Phone |".
+        const roleRows = (c.match(/^\| [^|]+ \| [^|]+ \| [^|]+ \| [^|]+ \|/gm) ?? [])
+          .filter((r) => !/^\| Name \| Role/i.test(r) && !/^\| ---/.test(r))
+          .filter((r) => !/_\[ASSIGN\]_/.test(r));
+        return roleRows.length >= 3;
+      },
     },
     {
-      id: 'p8.escalation-matrix',
-      description: 'Escalation matrix (gap)',
-      evaluator: (s) => bundleContains(docs(s), 'Escalation Matrix'),
+      id: 'p8.hypercare-plan-has-exit-criteria',
+      description:
+        'Hypercare_Plan.md exit-criteria section has ≥ 4 bullets, at least one with a numeric threshold',
+      evaluator: (s) => {
+        const c = docs(s).get('Hypercare/Hypercare_Plan.md');
+        if (!c) return false;
+        // Find the section between "## 7. Exit Criteria" and "## 8."
+        const m = c.match(/## 7\. Exit Criteria([\s\S]*?)## 8\./);
+        if (!m) return false;
+        const block = m[1];
+        const bullets = (block.match(/^- /gm) ?? []).length;
+        const numericLine = /\d/.test(block);
+        return bullets >= 4 && numericLine;
+      },
+    },
+    {
+      id: 'p8.daily-readiness-checklist-exists',
+      description:
+        'Documentation/Hypercare/Daily_Readiness_Checklist.md exists with checkbox content',
+      evaluator: (s) => {
+        const c = docs(s).get('Hypercare/Daily_Readiness_Checklist.md');
+        if (!c) return false;
+        const checkboxes = (c.match(/^- \[ \]/gm) ?? []).length;
+        return checkboxes >= 5;
+      },
+    },
+    {
+      id: 'p8.escalation-matrix-has-severity-tiers',
+      description:
+        'Issue_Escalation_Matrix.md has S1-S4 (or equivalent) with response & resolution SLAs',
+      evaluator: (s) => {
+        const c = docs(s).get('Hypercare/Issue_Escalation_Matrix.md');
+        if (!c) return false;
+        // Severity tiers can be S1-S4 or custom (Critical/Major/Minor) —
+        // require SLA grid with at least 4 rows showing response + resolution.
+        const slaRows = (c.match(/^\| \*\*[^|]+\*\* \| [^|]+ \| [^|]+ \|/gm) ?? []).length;
+        return slaRows >= 4;
+      },
+    },
+    {
+      id: 'p8.escalation-matrix-references-vendor-channel',
+      description:
+        'Issue_Escalation_Matrix.md names the platform-specific vendor support channel (NetSuite Customer Care / OdooSH Support / etc.)',
+      evaluator: (s) => {
+        const c = docs(s).get('Hypercare/Issue_Escalation_Matrix.md');
+        if (!c) return false;
+        if (s.adaptor === 'netsuite') {
+          return c.includes('NetSuite Customer Care') && c.includes('system.netsuite.com');
+        }
+        if (s.adaptor === 'odoo') {
+          return c.includes('OdooSH Support') && c.includes('odoo.sh');
+        }
+        return /vendor support channel|customer care|support ticket/i.test(c);
+      },
+    },
+    {
+      id: 'p8.war-room-sop-has-standup-structure',
+      description:
+        'War_Room_SOP.md has 15-minute standup format + 5-Whys RCA template',
+      evaluator: (s) => {
+        const c = docs(s).get('Hypercare/War_Room_SOP.md');
+        if (!c) return false;
+        return /15 minutes|15-minute|15 minute/i.test(c) && /5-Whys|5 Whys|five whys/i.test(c);
+      },
+    },
+    {
+      id: 'p8.transition-plan-names-sustainment-owner',
+      description:
+        'Transition_To_Support_Plan.md cites the parsed sustainmentOwner verbatim (no [ASSIGN] placeholder)',
+      evaluator: (s) => {
+        const c = docs(s).get('Hypercare/Transition_To_Support_Plan.md');
+        if (!c) return false;
+        // The plan must EITHER cite a real sustainment owner OR placeholder.
+        // The check fires when no [ASSIGN] sustainment-owner placeholder appears.
+        return !c.includes('_[ASSIGN sustainment owner]_');
+      },
+    },
+    {
+      id: 'p8.kpi-dashboard-defines-traffic-lights',
+      description:
+        'Hypercare_KPI_Dashboard.md defines green/yellow/red bands for open issues + integration health + adoption',
+      evaluator: (s) => {
+        const c = docs(s).get('Hypercare/Hypercare_KPI_Dashboard.md');
+        if (!c) return false;
+        // Look for green/yellow/red column headers OR explicit thresholds.
+        const hasGYR = /green band|🟢|GREEN/i.test(c) && /yellow band|🟡|YELLOW/i.test(c) && /red band|🔴|RED/i.test(c);
+        const hasOpenIssues = /Open Issues by Severity/i.test(c);
+        const hasIntegrationHealth = /Integration Health/i.test(c);
+        const hasAdoption = /User Adoption/i.test(c);
+        return hasGYR && hasOpenIssues && hasIntegrationHealth && hasAdoption;
+      },
+    },
+    {
+      id: 'p8.power-user-office-hours-scheduled',
+      description:
+        'Power_User_Office_Hours.md gives concrete cadence (≥ 1 session per week with explicit taper)',
+      evaluator: (s) => {
+        const c = docs(s).get('Hypercare/Power_User_Office_Hours.md');
+        if (!c) return false;
+        // Look for the cadence keywords + taper schedule pattern.
+        const hasCadence = /sessions per week|session per week/i.test(c);
+        const hasTaperSchedule = /Early hypercare|Late hypercare/i.test(c);
+        return hasCadence && hasTaperSchedule;
+      },
     },
   ],
 };
