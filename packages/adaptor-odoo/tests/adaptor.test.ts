@@ -20,16 +20,19 @@ describe('odooAdaptor: manifest', () => {
 });
 
 describe('odooAdaptor: schema', () => {
-  it('exposes the canonical Odoo App-shaped flow order (with KICKOFF first + STABILIZATION last)', () => {
+  it('exposes the canonical Odoo App-shaped flow order (with KICKOFF first + STABILIZATION last; Pack ZZ inserts INTEGRATIONS between RETURNS and MIGRATION)', () => {
     const ids = odooAdaptor.schema.flows.map((f) => f.id);
     // Cross-platform pack ordering — universal lifecycle phases append
     // in lifecycle order. T → Phase 5, U → Phase 6, V → Phase 7,
-    // X → Phase 8, Y → Phase 9.
+    // X → Phase 8, Y → Phase 9. Pack Z keeps MIGRATION's existing
+    // position (after RETURNS / before TESTING). Pack ZZ inserts
+    // INTEGRATIONS BEFORE MIGRATION (build-phase concern that
+    // precedes data migration).
     expect(ids).toEqual([
       'KICKOFF',
       'FOUNDATION', 'ACCOUNTING', 'TAX', 'LOCALIZATION', 'INVENTORY',
       'P2P', 'O2C', 'REVENUE_APPS', 'OPERATIONS_APPS',
-      'MANUFACTURING', 'RETURNS', 'MIGRATION',
+      'MANUFACTURING', 'RETURNS', 'INTEGRATIONS', 'MIGRATION',
       'TESTING', 'TRAINING', 'CUTOVER', 'HYPERCARE', 'STABILIZATION',
     ]);
   });
@@ -43,7 +46,7 @@ describe('odooAdaptor: schema', () => {
     }
   });
 
-  it('question IDs are namespaced under "odoo." or universal "kickoff." / "testing." / "training." / "cutover." / "hypercare." / "stabilization." / "migration." and unique', () => {
+  it('question IDs are namespaced under "odoo." or universal "kickoff." / "testing." / "training." / "cutover." / "hypercare." / "stabilization." / "migration." / "integrations." and unique', () => {
     const seen = new Set<string>();
     for (const flow of odooAdaptor.schema.flows) {
       for (const section of flow.sections) {
@@ -56,6 +59,7 @@ describe('odooAdaptor: schema', () => {
           //   - hypercare.*     (Pack X — Hypercare Program)
           //   - stabilization.* (Pack Y — Stabilization Roadmap)
           //   - migration.*     (Pack Z — Data Migration Assets)
+          //   - integrations.*  (Pack ZZ — Integration Runbooks)
           // Everything else stays adaptor-scoped under odoo.*.
           const valid =
             q.id.startsWith('odoo.') ||
@@ -65,10 +69,11 @@ describe('odooAdaptor: schema', () => {
             q.id.startsWith('cutover.') ||
             q.id.startsWith('hypercare.') ||
             q.id.startsWith('stabilization.') ||
-            q.id.startsWith('migration.');
+            q.id.startsWith('migration.') ||
+            q.id.startsWith('integrations.');
           expect(
             valid,
-            `question ${q.id} not namespaced under odoo. / kickoff. / testing. / training. / cutover. / hypercare. / stabilization. / migration.`,
+            `question ${q.id} not namespaced under odoo. / kickoff. / testing. / training. / cutover. / hypercare. / stabilization. / migration. / integrations.`,
           ).toBe(true);
           expect(seen.has(q.id), `duplicate question id: ${q.id}`).toBe(false);
           seen.add(q.id);
@@ -2525,9 +2530,10 @@ describe('odooAdaptor: Pack 7 — MIGRATION flow shape', () => {
     expect(mig!.description).toMatch(/volume|source|history|cutover|reconciliation/i);
   });
 
-  it('MIGRATION sits AFTER RETURNS (and BEFORE TESTING which Pack T appends last)', () => {
+  it('MIGRATION sits AFTER INTEGRATIONS which sits AFTER RETURNS (Pack ZZ inserted INTEGRATIONS between RETURNS and MIGRATION)', () => {
     const ids = odooAdaptor.schema.flows.map((f) => f.id);
-    expect(ids.indexOf('MIGRATION')).toBe(ids.indexOf('RETURNS') + 1);
+    expect(ids.indexOf('INTEGRATIONS')).toBe(ids.indexOf('RETURNS') + 1);
+    expect(ids.indexOf('MIGRATION')).toBe(ids.indexOf('INTEGRATIONS') + 1);
     // Pack T appended TESTING after MIGRATION; pre-Pack-T this test
     // asserted MIGRATION was the array tail, which the new TESTING flow
     // (cross-platform, mirrored in adaptor-netsuite) supersedes.
@@ -4291,5 +4297,73 @@ describe('odooAdaptor: Pack Y — STABILIZATION flow shape', () => {
   it('STABILIZATION flow contributes 13 questions total', () => {
     const total = stab!.sections.reduce((sum, s) => sum + s.questions.length, 0);
     expect(total).toBe(13);
+  });
+});
+
+// ─── Pack ZZ — INTEGRATIONS flow shape (cross-platform: same questions on NetSuite) ──
+
+describe('odooAdaptor: Pack ZZ — INTEGRATIONS flow shape', () => {
+  const integrations = odooAdaptor.schema.flows.find((f) => f.id === 'INTEGRATIONS');
+
+  it('INTEGRATIONS flow exists with the expected label', () => {
+    expect(integrations).toBeDefined();
+    expect(integrations!.label).toBe('Integrations');
+  });
+
+  it('INTEGRATIONS sits between RETURNS and MIGRATION (Pack ZZ build-phase position)', () => {
+    const ids = odooAdaptor.schema.flows.map((f) => f.id);
+    expect(ids.indexOf('INTEGRATIONS')).toBe(ids.indexOf('RETURNS') + 1);
+    expect(ids.indexOf('INTEGRATIONS')).toBe(ids.indexOf('MIGRATION') - 1);
+  });
+
+  it('INTEGRATIONS has 3 sections in canonical order — catalog / reliability / support', () => {
+    const sectionIds = integrations!.sections.map((s) => s.id);
+    expect(sectionIds).toEqual(['catalog', 'reliability', 'support']);
+  });
+
+  it('Section 1 (catalog) carries 2 cross-platform questions', () => {
+    const cat = integrations!.sections.find((s) => s.id === 'catalog')!;
+    expect(cat.label).toBe('Integration Catalog');
+    const ids = cat.questions.map((q) => q.id).sort();
+    expect(ids).toEqual([
+      'integrations.catalog.integrationCatalog',
+      'integrations.catalog.integrationOwnersByName',
+    ]);
+  });
+
+  it('Section 2 (reliability) carries 3 cross-platform questions', () => {
+    const rel = integrations!.sections.find((s) => s.id === 'reliability')!;
+    expect(rel.label).toBe('Integration Reliability');
+    const ids = rel.questions.map((q) => q.id).sort();
+    expect(ids).toEqual([
+      'integrations.reliability.integrationAuthMethods',
+      'integrations.reliability.integrationErrorPatterns',
+      'integrations.reliability.integrationMonitoring',
+    ]);
+  });
+
+  it('Section 3 (support) carries 3 cross-platform questions', () => {
+    const sup = integrations!.sections.find((s) => s.id === 'support')!;
+    expect(sup.label).toBe('Integration Support');
+    const ids = sup.questions.map((q) => q.id).sort();
+    expect(ids).toEqual([
+      'integrations.support.integrationCutoverSmokeTests',
+      'integrations.support.integrationReconciliation',
+      'integrations.support.integrationVendorContacts',
+    ]);
+  });
+
+  it('all questions are TEXTAREA + non-required', () => {
+    for (const section of integrations!.sections) {
+      for (const q of section.questions) {
+        expect(q.inputType, `${q.id} should be TEXTAREA`).toBe('TEXTAREA');
+        expect(q.required, `${q.id} should be optional`).toBe(false);
+      }
+    }
+  });
+
+  it('INTEGRATIONS flow contributes 8 questions total (2 + 3 + 3)', () => {
+    const total = integrations!.sections.reduce((sum, s) => sum + s.questions.length, 0);
+    expect(total).toBe(8);
   });
 });

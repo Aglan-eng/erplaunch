@@ -126,6 +126,13 @@ function buildSchema(): QuestionnaireSchema {
       ...['O2C', 'PRODUCTION', 'RETURNS']
         .map((id) => flows[id])
         .filter((f): f is FlowDefinition => !!f),
+      // Pack ZZ — INTEGRATIONS flow renders AFTER RETURNS and BEFORE
+      // MIGRATION. Build-phase concern (integrations are wired during
+      // Build) that precedes Phase 5+ data migration. Cross-platform
+      // pack — mirrored verbatim in adaptor-odoo. Holds the 8
+      // cross-platform `integrations.catalog.*` / `integrations.reliability.*`
+      // / `integrations.support.*` questions.
+      buildIntegrationsFlow(),
       // Pack Z — MIGRATION flow renders AFTER RETURNS and BEFORE
       // TESTING (mirrors Odoo's flow order). NetSuite engagements
       // didn't have a dedicated MIGRATION flow before Pack Z; this
@@ -1906,6 +1913,97 @@ function buildStabilizationFlow(): FlowDefinition {
             required: false,
             label:
               'Pre-captured lessons-learned items (one per line — \'<Theme> | <What happened> | <So what> | <Now what>\')',
+          },
+        ],
+      },
+    ],
+  };
+}
+
+// ─── Pack ZZ — INTEGRATIONS flow (CROSS-PLATFORM, mirrored on Odoo) ─────────
+//
+// New flow added for Pack ZZ. Lives between RETURNS and MIGRATION in
+// the canonical flow order. Holds 8 questions across 3 sections:
+//   - catalog: integrationCatalog + integrationOwnersByName
+//   - reliability: integrationAuthMethods + integrationMonitoring + integrationErrorPatterns
+//   - support: integrationVendorContacts + integrationReconciliation + integrationCutoverSmokeTests
+//
+// All questions are TEXTAREA + non-required so the floor stays green
+// when overlay is sparse. Each generator pre-seeds adaptor-canonical
+// integrations (NetSuite: Avalara/Salesforce/HSBC/etc; Odoo: ZATCA/SNB/SARIE/Salla/etc).
+function buildIntegrationsFlow(): FlowDefinition {
+  return {
+    id: 'INTEGRATIONS',
+    label: 'Integrations',
+    description:
+      'Per-integration catalog, auth methods + secret rotation, monitoring thresholds, error patterns, vendor support contacts, reconciliation cadence, and cutover smoke tests. Drives Documentation/Integrations/ artefacts: integration catalog, per-integration runbook bundle, health dashboard, reconciliation procedures, vendor escalation matrix, integration test plan, and integrations index.',
+    sections: [
+      {
+        id: 'catalog',
+        label: 'Integration Catalog',
+        order: 1,
+        questions: [
+          {
+            id: 'integrations.catalog.integrationCatalog',
+            label: 'Integration catalog (one per line: Name | Type | Direction | Frequency | Tooling | Vendor)',
+            inputType: 'TEXTAREA',
+            required: false,
+          },
+          {
+            id: 'integrations.catalog.integrationOwnersByName',
+            label: 'Integration owners (one per line: Name | Internal owner | Backup)',
+            inputType: 'TEXTAREA',
+            required: false,
+          },
+        ],
+      },
+      {
+        id: 'reliability',
+        label: 'Integration Reliability',
+        order: 2,
+        questions: [
+          {
+            id: 'integrations.reliability.integrationAuthMethods',
+            label: 'Auth methods + secret rotation (one per line: Name | Auth method | Rotation cadence | Secret owner)',
+            inputType: 'TEXTAREA',
+            required: false,
+          },
+          {
+            id: 'integrations.reliability.integrationMonitoring',
+            label: 'Monitoring thresholds (one per line: Name | Health metric | Green | Yellow | Red)',
+            inputType: 'TEXTAREA',
+            required: false,
+          },
+          {
+            id: 'integrations.reliability.integrationErrorPatterns',
+            label: 'Error patterns + resolutions (one per line: Name | Error category | Resolution pattern)',
+            inputType: 'TEXTAREA',
+            required: false,
+          },
+        ],
+      },
+      {
+        id: 'support',
+        label: 'Integration Support',
+        order: 3,
+        questions: [
+          {
+            id: 'integrations.support.integrationVendorContacts',
+            label: 'Vendor support contacts (one per line: Name | Channel | SLA | Escalation path)',
+            inputType: 'TEXTAREA',
+            required: false,
+          },
+          {
+            id: 'integrations.support.integrationReconciliation',
+            label: 'Reconciliation cadence + owner (one per line: Name | Cadence | Owner)',
+            inputType: 'TEXTAREA',
+            required: false,
+          },
+          {
+            id: 'integrations.support.integrationCutoverSmokeTests',
+            label: 'Cutover smoke tests (one per line: Name | Pre-cutover test | Post-cutover test)',
+            inputType: 'TEXTAREA',
+            required: false,
           },
         ],
       },

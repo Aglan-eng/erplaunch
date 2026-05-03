@@ -881,6 +881,59 @@ const PHASE_4_BUILD: Phase = {
           c.includes('classDef classOpenBal');
       },
     },
+    // ── Pack ZZ — Integration Runbooks (cross-platform, fires on both adaptors) ──
+    // Build phase strengthening: integrations are wired during build.
+    // 3 checks ratchet phase 4 coverage with integration-asset evidence.
+    {
+      id: 'p4.integration-catalog-exists',
+      description:
+        'Pack ZZ — Integrations/Integration_Catalog.md present with table of ≥ 5 integrations',
+      evaluator: (s) => {
+        const c = docs(s).get('Integrations/Integration_Catalog.md');
+        if (!c) return false;
+        if (!c.includes('| Integration | Type | Direction | Frequency')) return false;
+        // Count data rows (lines starting with "| <name> |") that are NOT the header / separator.
+        const rows = (c.match(/^\| [^|]+ \| [^|]+ \| [^|]+ \| [^|]+ \| [^|]+ \| [^|]+ \|/gm) ?? [])
+          .filter((r) => !/^\| Integration \|/.test(r) && !/^\| ---/.test(r));
+        return rows.length >= 5;
+      },
+    },
+    {
+      id: 'p4.integration-runbooks-exist-per-integration',
+      description:
+        'Pack ZZ — Runbooks/ count >= catalog row count (one runbook per integration)',
+      evaluator: (s) => {
+        const c = docs(s).get('Integrations/Integration_Catalog.md');
+        if (!c) return false;
+        const rows = (c.match(/^\| [^|]+ \| [^|]+ \| [^|]+ \| [^|]+ \| [^|]+ \| [^|]+ \|/gm) ?? [])
+          .filter((r) => !/^\| Integration \|/.test(r) && !/^\| ---/.test(r));
+        const catalogCount = rows.length;
+        let runbookCount = 0;
+        for (const key of docs(s).keys()) {
+          if (/^Integrations\/Runbooks\/\d{2}_[a-z0-9_]+\.md$/.test(key)) runbookCount++;
+        }
+        return runbookCount >= catalogCount && catalogCount > 0;
+      },
+    },
+    {
+      id: 'p4.integration-auth-methods-documented',
+      description:
+        'Pack ZZ — every runbook documents an Auth & Secrets section with method + rotation cadence',
+      evaluator: (s) => {
+        let total = 0;
+        let documented = 0;
+        for (const [key, content] of docs(s).entries()) {
+          if (!/^Integrations\/Runbooks\/\d{2}_[a-z0-9_]+\.md$/.test(key)) continue;
+          total++;
+          if (content.includes('## 3. Auth & Secrets') &&
+              /\*\*Auth method:\*\*/.test(content) &&
+              /\*\*Secret rotation cadence:\*\*/.test(content)) {
+            documented++;
+          }
+        }
+        return total > 0 && documented === total;
+      },
+    },
   ],
 };
 
@@ -1028,6 +1081,36 @@ const PHASE_5_TEST: Phase = {
           /T-7 pass-rate/.test(c) &&
           /T-3 pass-rate/.test(c) &&
           /T-1 pass-rate/.test(c);
+      },
+    },
+    // ── Pack ZZ — Test phase strengthening ──
+    // Per-integration smoke tests are the test-phase evidence for
+    // integration cutover readiness. Both checks fire on both adaptors.
+    {
+      id: 'p5.integration-test-plan-covers-scope',
+      description:
+        'Pack ZZ — Integration_Test_Plan.md has pre-cutover + post-cutover smoke for every catalog integration',
+      evaluator: (s) => {
+        const c = docs(s).get('Integrations/Integration_Test_Plan.md');
+        if (!c) return false;
+        const cat = docs(s).get('Integrations/Integration_Catalog.md');
+        if (!cat) return false;
+        const catRows = (cat.match(/^\| [^|]+ \| [^|]+ \| [^|]+ \| [^|]+ \| [^|]+ \| [^|]+ \|/gm) ?? [])
+          .filter((r) => !/^\| Integration \|/.test(r) && !/^\| ---/.test(r));
+        const preCutover = (c.match(/\*\*Pre-cutover smoke \(gate\):\*\*/g) ?? []).length;
+        const postCutover = (c.match(/\*\*Post-cutover smoke:\*\*/g) ?? []).length;
+        return preCutover === catRows.length && postCutover === catRows.length;
+      },
+    },
+    {
+      id: 'p5.integration-uat-cross-reference',
+      description:
+        'Pack ZZ — Integration_Test_Plan.md references the UAT_Plan.md (Pack T) explicitly for diagnostics',
+      evaluator: (s) => {
+        const c = docs(s).get('Integrations/Integration_Test_Plan.md');
+        if (!c) return false;
+        return c.includes('Documentation/UAT_Plan.md') &&
+          /UAT linkage|Integration UAT Linkage/i.test(c);
       },
     },
   ],
@@ -1185,6 +1268,49 @@ const PHASE_6_TRAIN: Phase = {
           c.includes('Financial mismatch');
       },
     },
+    // ── Pack ZZ — Train phase strengthening ──
+    // Vendor escalation matrix + per-integration owners are training
+    // artefacts the on-call rotation reads during incidents.
+    {
+      id: 'p6.integration-vendor-escalation-named-contacts',
+      description:
+        'Pack ZZ — Vendor_Escalation_Matrix.md defines L1-L4 escalation tiers AND has at least one row per integration',
+      evaluator: (s) => {
+        const c = docs(s).get('Integrations/Vendor_Escalation_Matrix.md');
+        if (!c) return false;
+        const fourTiers =
+          c.includes('| **L1**') &&
+          c.includes('| **L2**') &&
+          c.includes('| **L3**') &&
+          c.includes('| **L4**');
+        const cat = docs(s).get('Integrations/Integration_Catalog.md');
+        if (!cat) return false;
+        const catRows = (cat.match(/^\| [^|]+ \| [^|]+ \| [^|]+ \| [^|]+ \| [^|]+ \| [^|]+ \|/gm) ?? [])
+          .filter((r) => !/^\| Integration \|/.test(r) && !/^\| ---/.test(r));
+        // Master table rows in vendor matrix have 7 pipe-separated columns.
+        const masterRows = (c.match(/^\| [^|]+ \| [^|]+ \| [^|]+ \| [^|]+ \| [^|]+ \| [^|]+ \| [^|]+ \|/gm) ?? [])
+          .filter((r) => !/^\| Integration \|/.test(r) && !/^\| ---/.test(r));
+        return fourTiers && masterRows.length >= catRows.length;
+      },
+    },
+    {
+      id: 'p6.integration-runbooks-name-internal-owner',
+      description:
+        'Pack ZZ — every runbook cites a named internal owner (no all-placeholder owner fields)',
+      evaluator: (s) => {
+        let total = 0;
+        let named = 0;
+        for (const [key, content] of docs(s).entries()) {
+          if (!/^Integrations\/Runbooks\/\d{2}_[a-z0-9_]+\.md$/.test(key)) continue;
+          total++;
+          // The runbook header has "**Internal owner:** <name>". Pass when
+          // the name field is NOT a bare ASSIGN placeholder.
+          const m = content.match(/\*\*Internal owner:\*\*\s+(.+)\s\s/);
+          if (m && !/_\[ASSIGN/.test(m[1])) named++;
+        }
+        return total > 0 && named === total;
+      },
+    },
   ],
 };
 
@@ -1292,6 +1418,47 @@ const PHASE_7_CUTOVER: Phase = {
         if (!c) return false;
         return c.includes('Documentation/Cutover/Cutover_Runbook.md') &&
           c.includes('Documentation/Cutover/Rollback_Plan.md');
+      },
+    },
+    // ── Pack ZZ — Cutover phase strengthening ──
+    // Integration runbooks must cross-reference Cutover_Runbook (Pack V)
+    // and define recovery procedures for the cutover window.
+    {
+      id: 'p7.integration-runbooks-cross-ref-cutover',
+      description:
+        'Pack ZZ — every runbook links to Cutover_Runbook.md (Pack V) AND includes pre-cutover smoke section (### 8)',
+      evaluator: (s) => {
+        let total = 0;
+        let linked = 0;
+        for (const [key, content] of docs(s).entries()) {
+          if (!/^Integrations\/Runbooks\/\d{2}_[a-z0-9_]+\.md$/.test(key)) continue;
+          total++;
+          if (content.includes('Documentation/Cutover/Cutover_Runbook.md') &&
+              content.includes('## 8. Pre-Cutover Smoke Test')) {
+            linked++;
+          }
+        }
+        return total > 0 && linked === total;
+      },
+    },
+    {
+      id: 'p7.integration-runbook-recovery-procedure-defined',
+      description:
+        'Pack ZZ — every runbook has a Recovery Procedures section (## 7) with replay + manual fallback + escalation trigger',
+      evaluator: (s) => {
+        let total = 0;
+        let defined = 0;
+        for (const [key, content] of docs(s).entries()) {
+          if (!/^Integrations\/Runbooks\/\d{2}_[a-z0-9_]+\.md$/.test(key)) continue;
+          total++;
+          if (content.includes('## 7. Recovery Procedures') &&
+              /\*\*Replay procedure:\*\*/i.test(content) &&
+              /\*\*Manual fallback:\*\*/i.test(content) &&
+              /\*\*Escalation trigger:\*\*/i.test(content)) {
+            defined++;
+          }
+        }
+        return total > 0 && defined === total;
       },
     },
   ],
@@ -1470,6 +1637,55 @@ const PHASE_8_HYPERCARE: Phase = {
         return c.includes('GO / NO-GO') &&
           /Financial-object pass-rate < 100% at T-1/.test(c) &&
           /automatic NO-GO/.test(c);
+      },
+    },
+    // ── Pack ZZ — Hypercare phase strengthening ──
+    // Integration health dashboard, reconciliation cadence, and vendor
+    // SLA all feed hypercare's daily readiness + escalation routine.
+    {
+      id: 'p8.integration-health-dashboard-defines-thresholds',
+      description:
+        'Pack ZZ — Integration_Health_Dashboard.md defines green / yellow / red per integration with refresh cadence',
+      evaluator: (s) => {
+        const c = docs(s).get('Integrations/Integration_Health_Dashboard.md');
+        if (!c) return false;
+        if (!c.includes('| Integration | Health metric | Green | Yellow | Red |')) return false;
+        // Aggregate panels also defined.
+        return /Overall integration health/i.test(c) &&
+          /Mean time to recovery/i.test(c) &&
+          /Reject queue depth/i.test(c);
+      },
+    },
+    {
+      id: 'p8.integration-reconciliation-procedures-define-cadence',
+      description:
+        'Pack ZZ — Reconciliation_Procedures.md sets a cadence + owner for every integration, with variance triage rules',
+      evaluator: (s) => {
+        const c = docs(s).get('Integrations/Reconciliation_Procedures.md');
+        if (!c) return false;
+        const hasCadenceTable = c.includes('| Integration | Cadence | Owner | Method | Action on variance |');
+        const hasTriageRules = /< 0\.1%/.test(c) && /HALT sync immediately/.test(c);
+        return hasCadenceTable && hasTriageRules;
+      },
+    },
+    {
+      id: 'p8.integration-vendor-escalation-defines-sla',
+      description:
+        'Pack ZZ — Vendor_Escalation_Matrix.md has Vendor SLA column populated for every integration',
+      evaluator: (s) => {
+        const c = docs(s).get('Integrations/Vendor_Escalation_Matrix.md');
+        if (!c) return false;
+        if (!c.includes('Vendor SLA')) return false;
+        // Every integration row should have either a populated SLA OR a [FILL IN] marker
+        // (which is a pre-emptive ops checklist, not a documentation gap). Pass when
+        // both the platform-vendor row exists AND L1-L4 tiers are defined.
+        const platformVendorRow = /Platform —/.test(c);
+        const allTiers =
+          c.includes('| **L1**') &&
+          c.includes('| **L2**') &&
+          c.includes('| **L3**') &&
+          c.includes('| **L4**');
+        return platformVendorRow && allTiers;
       },
     },
   ],

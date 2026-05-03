@@ -65,6 +65,14 @@ import { generateMigrationLoadSequencing } from '../src/services/generators/migr
 import { generateMigrationRunbook } from '../src/services/generators/migrationRunbookGenerator.js';
 import { generateRejectHandlingPlaybook } from '../src/services/generators/rejectHandlingPlaybookGenerator.js';
 import { generateDataQualityScorecard } from '../src/services/generators/dataQualityScorecardGenerator.js';
+// Pack ZZ — Integration Runbooks (cross-platform).
+import { generateIntegrationCatalog } from '../src/services/generators/integrationCatalogGenerator.js';
+import { generateIntegrationRunbookBundle } from '../src/services/generators/integrationRunbookBundleGenerator.js';
+import { generateIntegrationHealthDashboard } from '../src/services/generators/integrationHealthDashboardGenerator.js';
+import { generateIntegrationReconciliationProcedures } from '../src/services/generators/integrationReconciliationProceduresGenerator.js';
+import { generateIntegrationVendorEscalationMatrix } from '../src/services/generators/integrationVendorEscalationMatrixGenerator.js';
+import { generateIntegrationTestPlan } from '../src/services/generators/integrationTestPlanGenerator.js';
+import { generateIntegrationsIndex } from '../src/services/generators/integrationsIndexGenerator.js';
 import odooAdaptor from '@ofoq/adaptor-odoo';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -557,6 +565,62 @@ const answers: Record<string, unknown> = {
     'BOMs | Omar Reda | Khaled Mansour',
   'migration.readiness.migrationCutoffDate':
     '2026-09-10 — last business day before go-live; final source extracts pulled at 16:00 GST',
+
+  // ── Pack ZZ — Integration Runbooks (cross-platform, KSA-specific) ───────────
+  // Sahel runs a KSA-localized integration set: ZATCA Phase 2 e-invoicing
+  // (mandatory), SNB bank statement + SARIE payment file, Salla e-commerce
+  // (KSA marketplace), Power BI for reporting, native Odoo Sign for
+  // contracts. No NetSuite-specific tooling.
+  'integrations.catalog.integrationCatalog':
+    'ZATCA E-Invoicing Phase 2 | Transactional API | Outbound | Realtime per invoice | Native Odoo KSA localization + ZATCA SDK | Saudi Government (ZATCA)\n' +
+    'Saudi National Bank Statement | File drop | Inbound | Daily | SFTP + Odoo bank statement import | SNB\n' +
+    'SARIE Payment File | File drop | Outbound | Daily | Odoo SEPA-style payment module + SARIE format export | SAMA\n' +
+    'Salla E-commerce Orders | Transactional | Inbound | Realtime via webhook | Odoo Salla connector | Salla\n' +
+    'Power BI Reporting | Master-data + Transactional | Outbound | Hourly | PostgreSQL views + Power BI gateway | Microsoft\n' +
+    'Native Odoo Sign | Event | Internal | On-demand per SO | OOTB | Odoo SA',
+  'integrations.catalog.integrationOwnersByName':
+    'ZATCA E-Invoicing Phase 2 | Aisha Khalid | Yousef Al-Rashid\n' +
+    'Saudi National Bank Statement | Aisha Khalid | AP clerk\n' +
+    'SARIE Payment File | Aisha Khalid | Yousef Al-Rashid\n' +
+    'Salla E-commerce Orders | Mariam Saeed | Aisha Khalid\n' +
+    'Power BI Reporting | Sara Mahmoud | Aisha Khalid\n' +
+    'Native Odoo Sign | Mariam Saeed | Aisha Khalid',
+  'integrations.reliability.integrationAuthMethods':
+    'ZATCA E-Invoicing Phase 2 | Cryptographic stamp identifier (CSID) per device | Annual ZATCA renewal | Aisha Khalid\n' +
+    'Saudi National Bank Statement | SFTP password | 90 days | Sara Mahmoud\n' +
+    'SARIE Payment File | SFTP key pair | 180 days | Sara Mahmoud\n' +
+    'Salla E-commerce Orders | OAuth 2.0 + webhook signature | 365 days | Mariam Saeed\n' +
+    'Power BI Reporting | PostgreSQL service account password | 90 days | Sara Mahmoud',
+  'integrations.reliability.integrationMonitoring':
+    'ZATCA E-Invoicing Phase 2 | Clearance rate | 100% | 99-100% | < 99%\n' +
+    'Saudi National Bank Statement | Daily file received by 08:00 KSA | yes | delayed < 2h | missing or > 2h\n' +
+    'SARIE Payment File | File transmission ack | < 30min | 30min-2h | > 2h\n' +
+    'Salla E-commerce Orders | Webhook delivery success | > 99% | 95-99% | < 95%\n' +
+    'Power BI Reporting | Hourly refresh success | yes | 1 miss | 2+ misses',
+  'integrations.reliability.integrationErrorPatterns':
+    'ZATCA E-Invoicing Phase 2 | Clearance rejected (validation) | Read ZATCA error code; correct invoice; resubmit; if structural issue page Aisha Khalid\n' +
+    "ZATCA E-Invoicing Phase 2 | Clearance timeout | Retry per ZATCA backoff guidance; queue invoice as pending clearance (allowed for limited window per ZATCA rules)\n" +
+    'Saudi National Bank Statement | File format change | Compare file vs. last known good; contact SNB; pause auto-import until format adapter updated\n' +
+    'SARIE Payment File | Beneficiary IBAN rejected | Page Aisha Khalid; verify IBAN against bank pre-validation; correct vendor master + retry\n' +
+    'Salla E-commerce Orders | Currency mismatch | Salla in SAR only; flag and quarantine non-SAR orders\n' +
+    'Power BI Reporting | Schema drift | Power BI dataset refresh fails; Sara Mahmoud reviews source view changes; update dataset or rollback',
+  'integrations.support.integrationVendorContacts':
+    'ZATCA E-Invoicing Phase 2 | https://zatca.gov.sa support portal + 19993 | 24h business | None - government channel only\n' +
+    'Saudi National Bank Statement | SNB Corporate Service +966-9200-1000 | 4h business hours | RM Khalid Al-Mutairi\n' +
+    'SARIE Payment File | SNB Treasury / SAMA SARIE support | 4h business hours | RM Khalid Al-Mutairi\n' +
+    'Salla E-commerce Orders | Salla Merchant Support via dashboard | 8h business | Account manager Tariq Al-Harbi\n' +
+    'Power BI Reporting | Microsoft 365 admin support | 8h | TAM via M365 admin center',
+  'integrations.support.integrationReconciliation':
+    'ZATCA E-Invoicing Phase 2 | Daily clearance vs. invoiced | Aisha Khalid\n' +
+    'Saudi National Bank Statement | Daily | AP clerk\n' +
+    'SARIE Payment File | Per file + Weekly settlement match | Aisha Khalid\n' +
+    'Salla E-commerce Orders | Daily order count + sum | Mariam Saeed\n' +
+    'Power BI Reporting | Daily refresh log audit | Sara Mahmoud',
+  'integrations.support.integrationCutoverSmokeTests':
+    'ZATCA E-Invoicing Phase 2 | Clear 1 test invoice in sandbox | Confirm first 10 production invoices clear within ZATCA SLA\n' +
+    "Saudi National Bank Statement | Receive + parse 1 historical SNB file | Confirm first production day's file received by 09:00 KSA\n" +
+    'SARIE Payment File | Generate + transmit 1 zero-amount file | Confirm first production payment run cleared\n' +
+    'Salla E-commerce Orders | Sync 1 test order | Confirm first 24h of orders reconcile order-for-order',
 };
 const comments = [
   { sectionKey: 'license', text: 'Enterprise edition confirmed; Studio + Documents required for approval matrix + contract storage. MRP + Quality modules for the two production lines.' },
@@ -1066,18 +1130,97 @@ await fs.writeFile(
 );
 process.stdout.write(`  ✓ Data_Migration/Templates/README.md\n`);
 
+// Pack ZZ — Integrations/ subfolder (6 markdown + Runbooks/ with one .md per integration).
+const integrationsDir = path.join(docDir, 'Integrations');
+const integrationsRunbooksDir = path.join(integrationsDir, 'Runbooks');
+await fs.mkdir(integrationsRunbooksDir, { recursive: true });
+
+const integrationsIndexResult = generateIntegrationsIndex({
+  clientName,
+  adaptorName: 'Odoo',
+  answers,
+  integrationOwnersByName: answers['integrations.catalog.integrationOwnersByName'] as string,
+  integrationVendorContacts: answers['integrations.support.integrationVendorContacts'] as string,
+});
+const integrationCatalogResult = generateIntegrationCatalog({
+  clientName,
+  adaptorName: 'Odoo',
+  answers,
+  integrationOwnersByName: answers['integrations.catalog.integrationOwnersByName'] as string,
+  integrationVendorContacts: answers['integrations.support.integrationVendorContacts'] as string,
+});
+const integrationHealthResult = generateIntegrationHealthDashboard({
+  clientName,
+  adaptorName: 'Odoo',
+  answers,
+  integrationMonitoring: answers['integrations.reliability.integrationMonitoring'] as string,
+  integrationOwnersByName: answers['integrations.catalog.integrationOwnersByName'] as string,
+});
+const integrationReconResult = generateIntegrationReconciliationProcedures({
+  clientName,
+  adaptorName: 'Odoo',
+  answers,
+  integrationReconciliation: answers['integrations.support.integrationReconciliation'] as string,
+  integrationOwnersByName: answers['integrations.catalog.integrationOwnersByName'] as string,
+});
+const integrationVendorEscResult = generateIntegrationVendorEscalationMatrix({
+  clientName,
+  adaptorName: 'Odoo',
+  answers,
+  integrationVendorContacts: answers['integrations.support.integrationVendorContacts'] as string,
+  integrationOwnersByName: answers['integrations.catalog.integrationOwnersByName'] as string,
+});
+const integrationTestPlanResult = generateIntegrationTestPlan({
+  clientName,
+  adaptorName: 'Odoo',
+  answers,
+  integrationCutoverSmokeTests: answers['integrations.support.integrationCutoverSmokeTests'] as string,
+});
+const integrationRunbooksResult = generateIntegrationRunbookBundle({
+  clientName,
+  adaptorName: 'Odoo',
+  answers,
+  integrationOwnersByName: answers['integrations.catalog.integrationOwnersByName'] as string,
+  integrationAuthMethods: answers['integrations.reliability.integrationAuthMethods'] as string,
+  integrationMonitoring: answers['integrations.reliability.integrationMonitoring'] as string,
+  integrationErrorPatterns: answers['integrations.reliability.integrationErrorPatterns'] as string,
+  integrationVendorContacts: answers['integrations.support.integrationVendorContacts'] as string,
+  integrationReconciliation: answers['integrations.support.integrationReconciliation'] as string,
+  integrationCutoverSmokeTests: answers['integrations.support.integrationCutoverSmokeTests'] as string,
+});
+
+const integrationsWrites: Array<[string, string]> = [
+  ['README.md', integrationsIndexResult.markdown],
+  ['Integration_Catalog.md', integrationCatalogResult.markdown],
+  ['Integration_Health_Dashboard.md', integrationHealthResult.markdown],
+  ['Reconciliation_Procedures.md', integrationReconResult.markdown],
+  ['Vendor_Escalation_Matrix.md', integrationVendorEscResult.markdown],
+  ['Integration_Test_Plan.md', integrationTestPlanResult.markdown],
+];
+for (const [filename, content] of integrationsWrites) {
+  await fs.writeFile(path.join(integrationsDir, filename), content, 'utf8');
+  process.stdout.write(`  ✓ Integrations/${filename}\n`);
+}
+const integrationRunbookWrites: Array<[string, string]> = Object.entries(
+  integrationRunbooksResult.files,
+);
+for (const [filename, content] of integrationRunbookWrites) {
+  await fs.writeFile(path.join(integrationsRunbooksDir, filename), content, 'utf8');
+  process.stdout.write(`  ✓ Integrations/Runbooks/${filename}\n`);
+}
+
 // ── Banlist verification ────────────────────────────────────────────────────
 // Scope intentionally limited to the top-level docs + Pack Z's new
-// data-migration set. Each prior pack's subfolder content (Cutover/,
-// Hypercare/, Stabilization/) is covered by its own generator-level
-// unit tests that gate non-leakage; expanding the bundle-driver scan to
-// those folders surfaced pre-existing prose touches that are outside
-// Pack Z's surface.
+// data-migration set + Pack ZZ's integration set. Each prior pack's
+// subfolder content (Cutover/, Hypercare/, Stabilization/) is covered
+// by its own generator-level unit tests that gate non-leakage.
 const BANNED = ['NetSuite', 'SuiteScript', 'SDF', 'subsidiary', 'OneWorld'];
 let banlistViolations = 0;
 const banlistScans: Array<[string, Array<[string, string]>]> = [
   ['top-level docs', writes],
   ['Data_Migration/', dataMigrationWrites],
+  ['Integrations/', integrationsWrites],
+  ['Integrations/Runbooks/', integrationRunbookWrites],
 ];
 for (const [folder, scanList] of banlistScans) {
   for (const [filename, content] of scanList) {

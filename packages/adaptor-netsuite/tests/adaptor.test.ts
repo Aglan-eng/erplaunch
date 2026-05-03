@@ -20,20 +20,20 @@ describe('netsuiteAdaptor: manifest', () => {
 });
 
 describe('netsuiteAdaptor: schema', () => {
-  it('exposes 17 flows in the canonical order — adds MIGRATION between RETURNS and TESTING (Pack Z)', () => {
+  it('exposes 18 flows in the canonical order — adds INTEGRATIONS between RETURNS and MIGRATION (Pack ZZ)', () => {
     const ids = netsuiteAdaptor.schema.flows.map((f) => f.id);
     // Cross-platform pack ordering — universal lifecycle phases
     // append in lifecycle order. T → Phase 5, U → Phase 6, V → Phase 7,
     // X → Phase 8, Y → Phase 9. Pack Z inserts MIGRATION (cross-cutting
-    // hardener) between RETURNS and TESTING — mirrors Odoo's flow
-    // position. NS engagements didn't have a dedicated MIGRATION flow
-    // before; the new flow holds the cross-platform `migration.*`
-    // questions (details + readiness).
+    // hardener) between RETURNS and TESTING. Pack ZZ inserts INTEGRATIONS
+    // (second cross-cutting hardener) between RETURNS and MIGRATION —
+    // build-phase concern that precedes data migration. Mirrors Odoo's
+    // flow position.
     expect(ids).toEqual([
       'KICKOFF',
       'FOUNDATION', 'TAX', 'LOCALIZATION', 'SOLUTION_DESIGN',
       'R2R', 'P2P', 'APPROVALS', 'O2C', 'PRODUCTION', 'RETURNS',
-      'MIGRATION', 'TESTING', 'TRAINING', 'CUTOVER', 'HYPERCARE', 'STABILIZATION',
+      'INTEGRATIONS', 'MIGRATION', 'TESTING', 'TRAINING', 'CUTOVER', 'HYPERCARE', 'STABILIZATION',
     ]);
   });
 
@@ -2384,10 +2384,13 @@ describe('netsuiteAdaptor: Pack Z — MIGRATION flow shape', () => {
     expect(mig!.label).toBe('Data Migration');
   });
 
-  it('MIGRATION sits between RETURNS and TESTING (mirrors Odoo flow position)', () => {
+  it('MIGRATION sits between INTEGRATIONS and TESTING (Pack ZZ inserted INTEGRATIONS between RETURNS and MIGRATION)', () => {
     const ids = netsuiteAdaptor.schema.flows.map((f) => f.id);
-    expect(ids.indexOf('MIGRATION')).toBe(ids.indexOf('RETURNS') + 1);
+    expect(ids.indexOf('MIGRATION')).toBe(ids.indexOf('INTEGRATIONS') + 1);
     expect(ids.indexOf('MIGRATION')).toBe(ids.indexOf('TESTING') - 1);
+    // RETURNS still earlier in the chain — proves Pack Z's "MIGRATION sits
+    // after RETURNS" contract still holds even though it's no longer adjacent.
+    expect(ids.indexOf('MIGRATION')).toBeGreaterThan(ids.indexOf('RETURNS'));
   });
 
   it('MIGRATION has 2 sections in canonical order — details / readiness', () => {
@@ -2429,5 +2432,73 @@ describe('netsuiteAdaptor: Pack Z — MIGRATION flow shape', () => {
   it('MIGRATION flow contributes 7 questions total (4 + 3)', () => {
     const total = mig!.sections.reduce((sum, s) => sum + s.questions.length, 0);
     expect(total).toBe(7);
+  });
+});
+
+// ─── Pack ZZ — INTEGRATIONS flow shape (cross-platform: same questions on Odoo) ──
+
+describe('netsuiteAdaptor: Pack ZZ — INTEGRATIONS flow shape', () => {
+  const integrations = netsuiteAdaptor.schema.flows.find((f) => f.id === 'INTEGRATIONS');
+
+  it('INTEGRATIONS flow exists with the expected label', () => {
+    expect(integrations).toBeDefined();
+    expect(integrations!.label).toBe('Integrations');
+  });
+
+  it('INTEGRATIONS sits between RETURNS and MIGRATION (Pack ZZ build-phase position)', () => {
+    const ids = netsuiteAdaptor.schema.flows.map((f) => f.id);
+    expect(ids.indexOf('INTEGRATIONS')).toBe(ids.indexOf('RETURNS') + 1);
+    expect(ids.indexOf('INTEGRATIONS')).toBe(ids.indexOf('MIGRATION') - 1);
+  });
+
+  it('INTEGRATIONS has 3 sections in canonical order — catalog / reliability / support', () => {
+    const sectionIds = integrations!.sections.map((s) => s.id);
+    expect(sectionIds).toEqual(['catalog', 'reliability', 'support']);
+  });
+
+  it('Section 1 (catalog) carries 2 cross-platform questions', () => {
+    const cat = integrations!.sections.find((s) => s.id === 'catalog')!;
+    expect(cat.label).toBe('Integration Catalog');
+    const ids = cat.questions.map((q) => q.id).sort();
+    expect(ids).toEqual([
+      'integrations.catalog.integrationCatalog',
+      'integrations.catalog.integrationOwnersByName',
+    ]);
+  });
+
+  it('Section 2 (reliability) carries 3 cross-platform questions', () => {
+    const rel = integrations!.sections.find((s) => s.id === 'reliability')!;
+    expect(rel.label).toBe('Integration Reliability');
+    const ids = rel.questions.map((q) => q.id).sort();
+    expect(ids).toEqual([
+      'integrations.reliability.integrationAuthMethods',
+      'integrations.reliability.integrationErrorPatterns',
+      'integrations.reliability.integrationMonitoring',
+    ]);
+  });
+
+  it('Section 3 (support) carries 3 cross-platform questions', () => {
+    const sup = integrations!.sections.find((s) => s.id === 'support')!;
+    expect(sup.label).toBe('Integration Support');
+    const ids = sup.questions.map((q) => q.id).sort();
+    expect(ids).toEqual([
+      'integrations.support.integrationCutoverSmokeTests',
+      'integrations.support.integrationReconciliation',
+      'integrations.support.integrationVendorContacts',
+    ]);
+  });
+
+  it('all questions are TEXTAREA + non-required (Pack ZZ keeps the floor green when overlay is sparse)', () => {
+    for (const section of integrations!.sections) {
+      for (const q of section.questions) {
+        expect(q.inputType, `${q.id} should be TEXTAREA`).toBe('TEXTAREA');
+        expect(q.required, `${q.id} should be optional`).toBe(false);
+      }
+    }
+  });
+
+  it('INTEGRATIONS flow contributes 8 questions total (2 + 3 + 3)', () => {
+    const total = integrations!.sections.reduce((sum, s) => sum + s.questions.length, 0);
+    expect(total).toBe(8);
   });
 });

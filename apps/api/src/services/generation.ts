@@ -86,6 +86,14 @@ import { generateMigrationLoadSequencing } from './generators/migrationLoadSeque
 import { generateMigrationRunbook } from './generators/migrationRunbookGenerator.js';
 import { generateRejectHandlingPlaybook } from './generators/rejectHandlingPlaybookGenerator.js';
 import { generateDataQualityScorecard } from './generators/dataQualityScorecardGenerator.js';
+// Pack ZZ — Integration Runbooks (cross-platform — runs for both NetSuite + Odoo).
+import { generateIntegrationCatalog } from './generators/integrationCatalogGenerator.js';
+import { generateIntegrationRunbookBundle } from './generators/integrationRunbookBundleGenerator.js';
+import { generateIntegrationHealthDashboard } from './generators/integrationHealthDashboardGenerator.js';
+import { generateIntegrationReconciliationProcedures } from './generators/integrationReconciliationProceduresGenerator.js';
+import { generateIntegrationVendorEscalationMatrix } from './generators/integrationVendorEscalationMatrixGenerator.js';
+import { generateIntegrationTestPlan } from './generators/integrationTestPlanGenerator.js';
+import { generateIntegrationsIndex } from './generators/integrationsIndexGenerator.js';
 import { convertHtmlToPdf } from './pdfService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1022,6 +1030,118 @@ export async function processJob(jobId: string, db: DbModule) {
       dqScorecardResult.markdown,
     );
 
+    // ── Pack ZZ — Integration Runbooks (CROSS-PLATFORM) ──────────────────────
+    // Seven generators emit to Documentation/Integrations/. The runbook
+    // bundle is multi-file (one .md per integration in scope under
+    // ./Runbooks/). Adaptor-conditional content branches on adaptor name
+    // (NetSuite saved-search refs vs Odoo Studio dashboards / SQL views).
+    const integrationsDir = path.join(docDir, 'Integrations');
+    const integrationsRunbooksDir = path.join(integrationsDir, 'Runbooks');
+    await fs.mkdir(integrationsRunbooksDir, { recursive: true });
+
+    const integrationOwnersByName =
+      (answers['integrations.catalog.integrationOwnersByName'] as string | undefined) ?? '';
+    const integrationAuthMethods =
+      (answers['integrations.reliability.integrationAuthMethods'] as string | undefined) ?? '';
+    const integrationMonitoring =
+      (answers['integrations.reliability.integrationMonitoring'] as string | undefined) ?? '';
+    const integrationErrorPatterns =
+      (answers['integrations.reliability.integrationErrorPatterns'] as string | undefined) ?? '';
+    const integrationVendorContacts =
+      (answers['integrations.support.integrationVendorContacts'] as string | undefined) ?? '';
+    const integrationReconciliation =
+      (answers['integrations.support.integrationReconciliation'] as string | undefined) ?? '';
+    const integrationCutoverSmokeTests =
+      (answers['integrations.support.integrationCutoverSmokeTests'] as string | undefined) ?? '';
+
+    const integrationsIndexResult = generateIntegrationsIndex({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      answers,
+      integrationOwnersByName,
+      integrationVendorContacts,
+    });
+    await fs.writeFile(
+      path.join(integrationsDir, 'README.md'),
+      integrationsIndexResult.markdown,
+    );
+
+    const integrationCatalogResult = generateIntegrationCatalog({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      answers,
+      integrationOwnersByName,
+      integrationVendorContacts,
+    });
+    await fs.writeFile(
+      path.join(integrationsDir, 'Integration_Catalog.md'),
+      integrationCatalogResult.markdown,
+    );
+
+    const integrationHealthResult = generateIntegrationHealthDashboard({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      answers,
+      integrationMonitoring,
+      integrationOwnersByName,
+    });
+    await fs.writeFile(
+      path.join(integrationsDir, 'Integration_Health_Dashboard.md'),
+      integrationHealthResult.markdown,
+    );
+
+    const integrationReconResult = generateIntegrationReconciliationProcedures({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      answers,
+      integrationReconciliation,
+      integrationOwnersByName,
+    });
+    await fs.writeFile(
+      path.join(integrationsDir, 'Reconciliation_Procedures.md'),
+      integrationReconResult.markdown,
+    );
+
+    const integrationVendorEscResult = generateIntegrationVendorEscalationMatrix({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      answers,
+      integrationVendorContacts,
+      integrationOwnersByName,
+    });
+    await fs.writeFile(
+      path.join(integrationsDir, 'Vendor_Escalation_Matrix.md'),
+      integrationVendorEscResult.markdown,
+    );
+
+    const integrationTestPlanResult = generateIntegrationTestPlan({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      answers,
+      integrationCutoverSmokeTests,
+    });
+    await fs.writeFile(
+      path.join(integrationsDir, 'Integration_Test_Plan.md'),
+      integrationTestPlanResult.markdown,
+    );
+
+    // Per-integration runbooks via spread.
+    const integrationRunbooksResult = generateIntegrationRunbookBundle({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      answers,
+      integrationOwnersByName,
+      integrationAuthMethods,
+      integrationMonitoring,
+      integrationErrorPatterns,
+      integrationVendorContacts,
+      integrationReconciliation,
+      integrationCutoverSmokeTests,
+    });
+    for (const [filename, content] of Object.entries(integrationRunbooksResult.files)) {
+      await fs.writeFile(path.join(integrationsRunbooksDir, filename), content);
+    }
+
     const sddData = {
       clientName: eng.clientName as string,
       adaptor: adaptorCtx,
@@ -1432,6 +1552,16 @@ export async function processJob(jobId: string, db: DbModule) {
           templateCount: csvBundleResult.objectCount,
           path: 'Documentation/Data_Migration/',
           templatesPath: 'Documentation/Data_Migration/Templates/',
+        },
+        integrations: {
+          // Pack ZZ — 6 markdown artefacts at the folder root + N
+          // per-integration runbooks under ./Runbooks/. N = catalog
+          // count (11 default for NetSuite, 6 default for Odoo, can vary
+          // per overlay). README.md is the master index.
+          artefactCount: 6,
+          runbookCount: integrationRunbooksResult.runbookCount,
+          path: 'Documentation/Integrations/',
+          runbooksPath: 'Documentation/Integrations/Runbooks/',
         },
         ...(isNetSuite ? { sdf: 'SDF/', suiteScript: 'SuiteScript/' } : {}),
       },

@@ -91,6 +91,14 @@ import { generateMigrationLoadSequencing } from '../src/services/generators/migr
 import { generateMigrationRunbook } from '../src/services/generators/migrationRunbookGenerator.js';
 import { generateRejectHandlingPlaybook } from '../src/services/generators/rejectHandlingPlaybookGenerator.js';
 import { generateDataQualityScorecard } from '../src/services/generators/dataQualityScorecardGenerator.js';
+// Pack ZZ — Integration Runbooks (cross-platform).
+import { generateIntegrationCatalog } from '../src/services/generators/integrationCatalogGenerator.js';
+import { generateIntegrationRunbookBundle } from '../src/services/generators/integrationRunbookBundleGenerator.js';
+import { generateIntegrationHealthDashboard } from '../src/services/generators/integrationHealthDashboardGenerator.js';
+import { generateIntegrationReconciliationProcedures } from '../src/services/generators/integrationReconciliationProceduresGenerator.js';
+import { generateIntegrationVendorEscalationMatrix } from '../src/services/generators/integrationVendorEscalationMatrixGenerator.js';
+import { generateIntegrationTestPlan } from '../src/services/generators/integrationTestPlanGenerator.js';
+import { generateIntegrationsIndex } from '../src/services/generators/integrationsIndexGenerator.js';
 import netsuiteAdaptor from '@ofoq/adaptor-netsuite';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -748,6 +756,94 @@ const answers: Record<string, unknown> = {
   // Pack Z — flag fixed assets in scope so the FA template + load step ship.
   'ns.design.fixedAssetsScope':
     '~120 assets across 4 subsidiaries: leasehold improvements, office equipment, R&D lab equipment. Straight-line depreciation, 60-month useful life standard. Auditor sign-off on opening NBV required before load.',
+
+  // ── Pack ZZ — Integration Runbooks (cross-platform) ─────────────────────────
+  // Atlas runs an enterprise-grade integration set across 4 subsidiaries:
+  // Avalara for tax, Salesforce CPQ for B2B sales, HSBC + Wells Fargo for
+  // banking + ACH, Workday HRIS, Coupa P2P, Shopify D2C, DocuSign,
+  // Concur, Snowflake, and Workato as the iPaaS spine.
+  'integrations.catalog.integrationCatalog':
+    'Avalara Tax | Transactional API | Bidirectional | Realtime per transaction | RESTlet + Avalara AvaTax SDK | Avalara\n' +
+    'Salesforce CPQ | Master-data + Transactional | Bidirectional | 15min batch | Workato | Salesforce\n' +
+    'HSBC Bank Statement (UK + AU) | File drop | Inbound | Daily | SFTP + Map/Reduce | HSBC\n' +
+    'Wells Fargo ACH Origination | File drop | Outbound | Daily | Map/Reduce + SFTP + PGP | Wells Fargo\n' +
+    'Workday HRIS Employee Sync | Master-data | Inbound | Daily | Workday Studio + RESTlet | Workday\n' +
+    'Coupa P2P | Master-data + Transactional | Bidirectional | Hourly | Coupa Connect + RESTlet | Coupa\n' +
+    'Shopify D2C Orders | Transactional | Inbound | Realtime via webhook | Workato | Shopify\n' +
+    'DocuSign Sales Order Signature | Event | Outbound | On-demand per SO | Native NetSuite-DocuSign bundle | DocuSign\n' +
+    'Concur Expense | Transactional | Inbound | Daily | Concur native NetSuite connector | SAP Concur\n' +
+    'Snowflake Reporting Export | Master-data + Transactional | Outbound | Hourly | SuiteAnalytics Connect + Snowpipe | Snowflake\n' +
+    'Workato Orchestration | iPaaS | Bidirectional | Multi-cadence | Workato | Workato',
+  'integrations.catalog.integrationOwnersByName':
+    'Avalara Tax | Sarah Chen | Helena Reyes\n' +
+    'Salesforce CPQ | Mostafa Sherif | Sarah Chen\n' +
+    "HSBC Bank Statement (UK + AU) | Sarah Chen | James O'Brien (AP Manager)\n" +
+    "Wells Fargo ACH Origination | Sarah Chen | James O'Brien\n" +
+    'Workday HRIS Employee Sync | Mostafa Sherif | David Chen\n' +
+    "Coupa P2P | Mostafa Sherif | James O'Brien\n" +
+    'Shopify D2C Orders | Mostafa Sherif | Linda Park\n' +
+    'DocuSign Sales Order Signature | Linda Park | Mostafa Sherif\n' +
+    'Concur Expense | Sarah Chen | Helena Reyes\n' +
+    'Snowflake Reporting Export | David Chen | Mostafa Sherif\n' +
+    'Workato Orchestration | Mostafa Sherif | David Chen',
+  'integrations.reliability.integrationAuthMethods':
+    'Avalara Tax | Account ID + License Key in encrypted custom record | Annual | Sarah Chen\n' +
+    'Salesforce CPQ | OAuth 2.0 connected app | 90 days | Mostafa Sherif\n' +
+    'HSBC Bank Statement (UK + AU) | SFTP key pair | 180 days | David Chen\n' +
+    'Wells Fargo ACH Origination | SFTP key pair + PGP encryption | 180 days | David Chen\n' +
+    'Workday HRIS Employee Sync | OAuth 2.0 service account | 365 days | Mostafa Sherif\n' +
+    'Coupa P2P | OAuth 2.0 + IP allowlist | 90 days | Mostafa Sherif\n' +
+    'Shopify D2C Orders | Webhook HMAC + admin API token | 90 days | Mostafa Sherif\n' +
+    'Snowflake Reporting Export | Key-pair authentication | 180 days | David Chen\n' +
+    'Workato Orchestration | TBA + Workato connection | 365 days | Mostafa Sherif',
+  'integrations.reliability.integrationMonitoring':
+    'Avalara Tax | API success rate | > 99.5% | 99-99.5% | < 99%\n' +
+    'Salesforce CPQ | Sync queue depth | < 100 | 100-500 | > 500\n' +
+    'HSBC Bank Statement (UK + AU) | Daily file received by 09:00 GMT | yes | delayed < 2h | delayed > 2h or missing\n' +
+    'Wells Fargo ACH Origination | File transmission ack | within 30min | 30min-2h | > 2h\n' +
+    'Workday HRIS Employee Sync | Daily diff applied | < 50 | 50-200 | > 200\n' +
+    'Coupa P2P | Hourly sync success | yes | 1 miss | 2+ misses\n' +
+    'Shopify D2C Orders | Webhook delivery success | > 99% | 95-99% | < 95%\n' +
+    'Concur Expense | Daily import success | yes | 1 miss | 2+ misses\n' +
+    'Snowflake Reporting Export | Hourly export latency | < 5min | 5-15min | > 15min',
+  'integrations.reliability.integrationErrorPatterns':
+    'Avalara Tax | Network timeout | Retry with exponential backoff up to 3 attempts; queue for manual review if all fail\n' +
+    'Avalara Tax | Address validation failure | Flag transaction for manual address fix; do not block posting\n' +
+    'Salesforce CPQ | Field mapping mismatch | Log to error queue; notify Mostafa Sherif; quarantine record until source corrected\n' +
+    "HSBC Bank Statement (UK + AU) | File not received by SLA | Page Sarah Chen; check SFTP connectivity; contact HSBC support if confirmed missing\n" +
+    'Wells Fargo ACH Origination | File rejected by bank | Page Sarah Chen; check format errors in NACHA; correct + resubmit\n' +
+    'Workday HRIS Employee Sync | New department not in target | Auto-create department if matches naming convention; else queue for manual creation\n' +
+    'Coupa P2P | PO line tax mismatch | Use Coupa-side tax; flag for review if variance > $10\n' +
+    'Shopify D2C Orders | Customer not in target | Auto-create customer with default entity based on shipping country',
+  'integrations.support.integrationVendorContacts':
+    'Avalara Tax | https://help.avalara.com + 1-877-780-4848 | Standard 4h response | Account team via support portal\n' +
+    'Salesforce CPQ | Salesforce Premier Support | 1h critical / 4h high | TAM Linda Reyes\n' +
+    'HSBC Bank Statement (UK + AU) | HSBCnet support hsbcnet.support@hsbc.com | 4h business hours | RM Mark Edwards\n' +
+    'Wells Fargo ACH Origination | Wells Fargo Treasury Mgmt 1-800-AT-WELLS | 4h business hours | TM consultant Greg Smith\n' +
+    'Workday HRIS Employee Sync | Workday Community + customer.support@workday.com | 8h business / 4h critical | CSM Sarah Lee\n' +
+    'Coupa P2P | Coupa Customer Success Portal | 4h | TAM John Park\n' +
+    'Shopify D2C Orders | Shopify Plus 24/7 support | 1h | Merchant success manager Anna Rodriguez\n' +
+    'DocuSign Sales Order Signature | DocuSign Premier Support | 4h | n/a\n' +
+    'Concur Expense | SAP Concur Customer Support | 4h business / 1h critical | n/a\n' +
+    'Snowflake Reporting Export | Snowflake Premier Support | 1h critical / 4h high | n/a\n' +
+    'Workato Orchestration | Workato Customer Success | 4h | CSM Maya Patel',
+  'integrations.support.integrationReconciliation':
+    'Avalara Tax | Daily | Sarah Chen\n' +
+    'Salesforce CPQ | Daily count + Weekly sum | Mostafa Sherif\n' +
+    "HSBC Bank Statement (UK + AU) | Daily | James O'Brien\n" +
+    "Wells Fargo ACH Origination | Per file + Weekly settlement match | James O'Brien\n" +
+    'Workday HRIS Employee Sync | Weekly headcount match | Mostafa Sherif\n' +
+    'Coupa P2P | Daily PO count + Weekly $ sum | Mostafa Sherif\n' +
+    'Shopify D2C Orders | Daily order count + Weekly $ sum | Linda Park\n' +
+    'Concur Expense | Per import | Sarah Chen\n' +
+    'Snowflake Reporting Export | Daily row count | David Chen',
+  'integrations.support.integrationCutoverSmokeTests':
+    'Avalara Tax | Calculate tax on test SO | Confirm tax on first 5 production SOs matches expected\n' +
+    'Salesforce CPQ | Sync 1 test opportunity → target Estimate | Confirm first 10 production opportunities synced within 30min SLA\n' +
+    "HSBC Bank Statement (UK + AU) | Receive + parse 1 historical test file | Confirm first production day's file received and posted by 10:00 GMT\n" +
+    'Wells Fargo ACH Origination | Generate + transmit 1 zero-amount test file | Confirm first production payment run files transmitted and acknowledged\n' +
+    "Workday HRIS Employee Sync | Sync 1 test employee | Confirm 0 unexpected diffs after first day's run\n" +
+    'Coupa P2P | Sync 1 test PO end-to-end | Confirm first 24h of POs reconcile $-for-$',
 };
 
 const comments = [
@@ -1277,6 +1373,82 @@ await fs.writeFile(
   'utf8',
 );
 process.stdout.write(`  ✓ Data_Migration/Templates/README.md\n`);
+
+// Pack ZZ — Integrations/ subfolder (6 markdown + Runbooks/ with one .md per integration in scope).
+const integrationsDir = path.join(docDir, 'Integrations');
+const integrationsRunbooksDir = path.join(integrationsDir, 'Runbooks');
+await fs.mkdir(integrationsRunbooksDir, { recursive: true });
+
+const integrationsIndexResult = generateIntegrationsIndex({
+  clientName,
+  adaptorName: 'NetSuite',
+  answers,
+  integrationOwnersByName: answers['integrations.catalog.integrationOwnersByName'] as string,
+  integrationVendorContacts: answers['integrations.support.integrationVendorContacts'] as string,
+});
+const integrationCatalogResult = generateIntegrationCatalog({
+  clientName,
+  adaptorName: 'NetSuite',
+  answers,
+  integrationOwnersByName: answers['integrations.catalog.integrationOwnersByName'] as string,
+  integrationVendorContacts: answers['integrations.support.integrationVendorContacts'] as string,
+});
+const integrationHealthResult = generateIntegrationHealthDashboard({
+  clientName,
+  adaptorName: 'NetSuite',
+  answers,
+  integrationMonitoring: answers['integrations.reliability.integrationMonitoring'] as string,
+  integrationOwnersByName: answers['integrations.catalog.integrationOwnersByName'] as string,
+});
+const integrationReconResult = generateIntegrationReconciliationProcedures({
+  clientName,
+  adaptorName: 'NetSuite',
+  answers,
+  integrationReconciliation: answers['integrations.support.integrationReconciliation'] as string,
+  integrationOwnersByName: answers['integrations.catalog.integrationOwnersByName'] as string,
+});
+const integrationVendorEscResult = generateIntegrationVendorEscalationMatrix({
+  clientName,
+  adaptorName: 'NetSuite',
+  answers,
+  integrationVendorContacts: answers['integrations.support.integrationVendorContacts'] as string,
+  integrationOwnersByName: answers['integrations.catalog.integrationOwnersByName'] as string,
+});
+const integrationTestPlanResult = generateIntegrationTestPlan({
+  clientName,
+  adaptorName: 'NetSuite',
+  answers,
+  integrationCutoverSmokeTests: answers['integrations.support.integrationCutoverSmokeTests'] as string,
+});
+const integrationRunbooksResult = generateIntegrationRunbookBundle({
+  clientName,
+  adaptorName: 'NetSuite',
+  answers,
+  integrationOwnersByName: answers['integrations.catalog.integrationOwnersByName'] as string,
+  integrationAuthMethods: answers['integrations.reliability.integrationAuthMethods'] as string,
+  integrationMonitoring: answers['integrations.reliability.integrationMonitoring'] as string,
+  integrationErrorPatterns: answers['integrations.reliability.integrationErrorPatterns'] as string,
+  integrationVendorContacts: answers['integrations.support.integrationVendorContacts'] as string,
+  integrationReconciliation: answers['integrations.support.integrationReconciliation'] as string,
+  integrationCutoverSmokeTests: answers['integrations.support.integrationCutoverSmokeTests'] as string,
+});
+
+const integrationsWrites: Array<[string, string]> = [
+  ['README.md', integrationsIndexResult.markdown],
+  ['Integration_Catalog.md', integrationCatalogResult.markdown],
+  ['Integration_Health_Dashboard.md', integrationHealthResult.markdown],
+  ['Reconciliation_Procedures.md', integrationReconResult.markdown],
+  ['Vendor_Escalation_Matrix.md', integrationVendorEscResult.markdown],
+  ['Integration_Test_Plan.md', integrationTestPlanResult.markdown],
+];
+for (const [filename, content] of integrationsWrites) {
+  await fs.writeFile(path.join(integrationsDir, filename), content, 'utf8');
+  process.stdout.write(`  ✓ Integrations/${filename}\n`);
+}
+for (const [filename, content] of Object.entries(integrationRunbooksResult.files)) {
+  await fs.writeFile(path.join(integrationsRunbooksDir, filename), content, 'utf8');
+  process.stdout.write(`  ✓ Integrations/Runbooks/${filename}\n`);
+}
 
 // ── Real-code generation: SDF bundle ────────────────────────────────────────
 // Every NetSuite Account Customization Project needs three things at the
