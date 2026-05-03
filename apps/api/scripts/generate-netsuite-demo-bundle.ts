@@ -44,6 +44,9 @@ import { generateRoles } from '../src/services/generators/sdfRoleGenerator.js';
 import { generateAccountingPreferences } from '../src/services/generators/sdfAccountingPreferencesGenerator.js';
 import { generateCompanyInformation } from '../src/services/generators/sdfCompanyInformationGenerator.js';
 import { generateGeneralPreferences } from '../src/services/generators/sdfGeneralPreferencesGenerator.js';
+import { generateTaxTypes } from '../src/services/generators/sdfTaxTypeGenerator.js';
+import { generateTaxCodes } from '../src/services/generators/sdfTaxCodeGenerator.js';
+import { generateTaxSchedules } from '../src/services/generators/sdfTaxScheduleGenerator.js';
 import { validateSDFBundle } from '../src/services/generators/sdfValidator.js';
 import netsuiteAdaptor from '@ofoq/adaptor-netsuite';
 
@@ -175,6 +178,37 @@ const answers: Record<string, unknown> = {
   'ns.tax.multiJurisdictionReporting': true,
   'ns.tax.salesTaxAutomation': true,
   'ns.tax.salesTaxAutomationProvider': 'Avalara AvaTax',
+
+  // Pack D — Tax code matrix. Format: '<jurisdiction>: <type>: <rate>%: <name>'.
+  // Starter library auto-supplements common rates for jurisdictions in
+  // nexusList (GB Standard/Reduced/Zero, AU GST 10%, DE 19%/7%, etc.) so
+  // we only need to declare the US-state-specific lines here.
+  'ns.tax.taxCodeMatrix':
+    'US/CA: SALES_TAX: 7.25: California State Sales Tax\n' +
+    'US/CA: SALES_TAX: 9.5: California Local Sales Tax (LA County)\n' +
+    'US/NY: SALES_TAX: 4: New York State Sales Tax\n' +
+    'US/NY: SALES_TAX: 8.875: New York City Sales Tax\n' +
+    'US/TX: SALES_TAX: 6.25: Texas State Sales Tax\n' +
+    'US/TX: SALES_TAX: 8.25: Texas Local Sales Tax (Dallas)\n' +
+    'US: USE_TAX: 7.25: California Use Tax (out-of-state purchases)\n' +
+    'GB: REVERSE_CHARGE: 0: UK Reverse Charge (intra-EU services)\n' +
+    'DE: REVERSE_CHARGE: 0: Germany Reverse Charge (intra-EU)\n' +
+    'GB: WITHHOLDING: 20: UK CIS Withholding (construction services)',
+
+  // Pack D — Tax schedule matrix. Wires tax codes to transactions per
+  // nexus. Generator finds matching emitted tax code by display-name
+  // substring + jurisdiction.
+  'ns.tax.taxScheduleMatrix':
+    'Sales Order: California State Sales Tax: US/CA\n' +
+    'Sales Order: New York State Sales Tax: US/NY\n' +
+    'Sales Order: Texas State Sales Tax: US/TX\n' +
+    'Invoice: California State Sales Tax: US/CA\n' +
+    'Invoice: New York State Sales Tax: US/NY\n' +
+    'Purchase Order: California Use Tax: US\n' +
+    'Vendor Bill: VAT 20% UK Standard: GB\n' +
+    'Vendor Bill: VAT 19% Germany Standard: DE\n' +
+    'Sales Order: GST 10% AU Standard: AU\n' +
+    'Vendor Bill: GST 10% AU Standard: AU',
 
   // NS Pack 3 — Localization & SuiteSuccess
   'ns.localization.bundlePerSubsidiary':
@@ -510,6 +544,25 @@ const generalPreferencesXml = generateGeneralPreferences({
       : undefined,
 });
 
+// Pack D — Tax engine generators run in dependency order: types →
+// codes → schedules. Tax codes reference tax type scriptids; tax
+// schedules reference tax code scriptids.
+const taxTypesResult = generateTaxTypes({
+  taxCodeMatrix: answers['ns.tax.taxCodeMatrix'] as string | undefined,
+  nexusList: answers['ns.tax.nexusList'] as string | undefined,
+  withholdingInScope: answers['ns.tax.withholdingInScope'] === true,
+  useTaxInScope: answers['ns.tax.useTaxInScope'] === true,
+  reverseChargeInScope: answers['ns.tax.reverseChargeInScope'] === true,
+});
+const taxCodesResult = generateTaxCodes({
+  taxCodeMatrix: answers['ns.tax.taxCodeMatrix'] as string | undefined,
+  nexusList: answers['ns.tax.nexusList'] as string | undefined,
+});
+const taxSchedulesResult = generateTaxSchedules({
+  taxScheduleMatrix: answers['ns.tax.taxScheduleMatrix'] as string | undefined,
+  taxCodes: taxCodesResult.emitted,
+});
+
 // Pack A — Manifest derives feature dependencies from the wizard
 // answers (was hardcoded to {CUSTOMRECORDS, SERVERSIDESCRIPTING}).
 // Drives SUBSIDIARIES / INTERCOMPANY / MULTICURRENCY / etc. on
@@ -609,6 +662,9 @@ const allSdfFiles: Record<string, string> = {
   'AccountConfiguration/accountingpreferences.xml': accountingPreferencesXml,
   'AccountConfiguration/companyinformation.xml': companyInformationXml,
   'AccountConfiguration/generalpreferences.xml': generalPreferencesXml,
+  ...taxTypesResult.files,
+  ...taxCodesResult.files,
+  ...taxSchedulesResult.files,
 };
 const validation = validateSDFBundle(allSdfFiles);
 if (!validation.ok) {
@@ -735,6 +791,25 @@ await fs.writeFile(
 );
 process.stdout.write(`  ✓ SDF/AccountConfiguration/generalpreferences.xml\n`);
 
+for (const [relPath, content] of Object.entries(taxTypesResult.files)) {
+  const fullPath = path.join(sdfRoot, relPath);
+  await fs.mkdir(path.dirname(fullPath), { recursive: true });
+  await fs.writeFile(fullPath, content, 'utf8');
+  process.stdout.write(`  ✓ SDF/${relPath}\n`);
+}
+for (const [relPath, content] of Object.entries(taxCodesResult.files)) {
+  const fullPath = path.join(sdfRoot, relPath);
+  await fs.mkdir(path.dirname(fullPath), { recursive: true });
+  await fs.writeFile(fullPath, content, 'utf8');
+  process.stdout.write(`  ✓ SDF/${relPath}\n`);
+}
+for (const [relPath, content] of Object.entries(taxSchedulesResult.files)) {
+  const fullPath = path.join(sdfRoot, relPath);
+  await fs.mkdir(path.dirname(fullPath), { recursive: true });
+  await fs.writeFile(fullPath, content, 'utf8');
+  process.stdout.write(`  ✓ SDF/${relPath}\n`);
+}
+
 // ── Real-logic SuiteScript: PO approval User Event ──────────────────────────
 // First real-LOGIC SuiteScript file. Reads the wizard's free-text
 // p2p.purchasing.poApprovalTiers answer and emits a deployable User Event
@@ -789,7 +864,10 @@ console.log(
     `${wfaScriptsResult.emitted.length} WFA script(s) + ` +
     `${savedSearchesResult.emitted.length} saved search(es) + ` +
     `${dashboardsResult.emitted.length} dashboard(s) + ` +
-    `${rolesResult.emitted.length} role(s) + 3 AccountConfiguration files`,
+    `${rolesResult.emitted.length} role(s) + 3 AccountConfiguration files + ` +
+    `${taxTypesResult.emitted.length} tax type(s) + ` +
+    `${taxCodesResult.emitted.length} tax code(s) + ` +
+    `${taxSchedulesResult.emitted.length} tax schedule(s)`,
 );
 if (missingTerms === 0) {
   // eslint-disable-next-line no-console

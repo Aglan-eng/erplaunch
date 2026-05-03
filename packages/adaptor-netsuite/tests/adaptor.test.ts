@@ -1836,3 +1836,48 @@ describe('netsuiteAdaptor: NS Pack F — Reporting questions in SOLUTION_DESIGN'
     expect(q!.inputType).toBe('SINGLE_SELECT');
   });
 });
+
+// ─── NS Pack D — Tax matrix questions ──────────────────────────────────────
+
+describe('netsuiteAdaptor: NS Pack D — Tax engine questions', () => {
+  const tax = netsuiteAdaptor.schema.flows.find((f) => f.id === 'TAX');
+  const engine = tax!.sections.find((s) => s.id === 'engine')!;
+
+  it('engine section contains ns.tax.taxCodeMatrix (TEXTAREA)', () => {
+    const q = engine.questions.find((q) => q.id === 'ns.tax.taxCodeMatrix');
+    expect(q, 'taxCodeMatrix question must exist').toBeDefined();
+    expect(q!.inputType).toBe('TEXTAREA');
+  });
+
+  it('engine section contains ns.tax.taxScheduleMatrix (TEXTAREA)', () => {
+    const q = engine.questions.find((q) => q.id === 'ns.tax.taxScheduleMatrix');
+    expect(q, 'taxScheduleMatrix question must exist').toBeDefined();
+    expect(q!.inputType).toBe('TEXTAREA');
+  });
+
+  it('taxCodeMatrix label mentions the jurisdiction:type:rate format', () => {
+    const q = engine.questions.find((q) => q.id === 'ns.tax.taxCodeMatrix')!;
+    expect(q.label).toMatch(/jurisdiction/i);
+    expect(q.label).toMatch(/rate/i);
+  });
+
+  it('taxScheduleMatrix label mentions transaction type wiring', () => {
+    const q = engine.questions.find((q) => q.id === 'ns.tax.taxScheduleMatrix')!;
+    expect(q.label.toLowerCase()).toContain('transaction');
+  });
+
+  it('both new questions are non-required', () => {
+    const m = engine.questions.find((q) => q.id === 'ns.tax.taxCodeMatrix')!;
+    const s = engine.questions.find((q) => q.id === 'ns.tax.taxScheduleMatrix')!;
+    expect(m.required).toBe(false);
+    expect(s.required).toBe(false);
+  });
+
+  it('existing tax engine questions still in place (Pack D adds, does not replace)', () => {
+    const ids = engine.questions.map((q) => q.id);
+    expect(ids).toContain('ns.tax.engine');
+    expect(ids).toContain('ns.tax.itemPriceMode');
+    expect(ids).toContain('ns.tax.defaultSalesTaxCode');
+    expect(ids).toContain('ns.tax.defaultPurchaseTaxCode');
+  });
+});

@@ -530,6 +530,30 @@ function buildTaxFlow(): FlowDefinition {
             required: true,
             label: 'Default Purchase Tax Code',
           },
+          {
+            id: 'ns.tax.taxCodeMatrix',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Tax code matrix (one per line — '<jurisdiction>: <type>: <rate>%: <display name>'; e.g., 'AE: VAT: 5: VAT 5% UAE Standard', 'SA: VAT: 15: VAT 15% KSA Standard', 'AE: VAT: 0: VAT 0% UAE Zero-rated', 'US/CA: SALES_TAX: 7.25: California State Sales Tax')",
+            help: {
+              title: 'How this drives the bundle',
+              body:
+                'Jurisdiction format matches nexusList — country code or country/region. Type is one of VAT, SALES_TAX, GST, WITHHOLDING, USE_TAX, REVERSE_CHARGE. Generator emits one taxcode XML per line; smart starter library auto-supplements common rates for major jurisdictions (AE/SA/EG/GB/AU/DE/FR/IT) when not explicitly listed.',
+            },
+          },
+          {
+            id: 'ns.tax.taxScheduleMatrix',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Tax schedule mapping (one per line — '<transaction type>: <tax code display name>: <jurisdiction>'; e.g., 'Sales Order: VAT 5% UAE Standard: AE', 'Purchase Order: VAT 5% UAE Standard: AE', 'Sales Order: California State Sales Tax: US/CA'). Wires tax codes to transactions per nexus.",
+            help: {
+              title: 'Transaction-to-code wiring',
+              body:
+                'Transaction type is one of: Sales Order, Purchase Order, Invoice, Vendor Bill, Cash Sale, Estimate. Generator emits taxschedule XMLs binding the named tax code to the transaction type within the jurisdiction. Tax code display name must match a name from the taxCodeMatrix or starter library.',
+            },
+          },
         ],
       },
       {

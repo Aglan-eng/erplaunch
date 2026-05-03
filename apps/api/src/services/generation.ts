@@ -27,6 +27,9 @@ import { generateRoles } from './generators/sdfRoleGenerator.js';
 import { generateAccountingPreferences } from './generators/sdfAccountingPreferencesGenerator.js';
 import { generateCompanyInformation } from './generators/sdfCompanyInformationGenerator.js';
 import { generateGeneralPreferences } from './generators/sdfGeneralPreferencesGenerator.js';
+import { generateTaxTypes } from './generators/sdfTaxTypeGenerator.js';
+import { generateTaxCodes } from './generators/sdfTaxCodeGenerator.js';
+import { generateTaxSchedules } from './generators/sdfTaxScheduleGenerator.js';
 import { validateSDFBundle, isValidationEnabled } from './generators/sdfValidator.js';
 import { generateScripts } from './generators/scriptGenerator.js';
 import { generateRiskRegister } from './generators/riskGenerator.js';
@@ -435,6 +438,36 @@ export async function processJob(jobId: string, db: DbModule) {
             ? (answers['ns.design.auditLogRetentionMonths'] as number)
             : undefined,
       });
+
+      // Pack D — Tax engine. Three generators run in dependency order:
+      //   1. Tax types (always emit VAT + Sales Tax + flag-conditional
+      //      withholding/use-tax/reverse-charge + matrix-detected GST).
+      //   2. Tax codes (parse matrix; auto-supplement starter library
+      //      for nexusList countries; reference tax type scriptids
+      //      from step 1).
+      //   3. Tax schedules (parse matrix; resolve display-name +
+      //      jurisdiction → tax code scriptid from step 2; emit
+      //      taxschedule XMLs binding code to transaction type).
+      const taxTypesResult = generateTaxTypes({
+        taxCodeMatrix: answers['ns.tax.taxCodeMatrix'] as string | undefined,
+        nexusList: answers['ns.tax.nexusList'] as string | undefined,
+        withholdingInScope: answers['ns.tax.withholdingInScope'] === true,
+        useTaxInScope: answers['ns.tax.useTaxInScope'] === true,
+        reverseChargeInScope: answers['ns.tax.reverseChargeInScope'] === true,
+      });
+      Object.assign(sdfFiles, taxTypesResult.files);
+
+      const taxCodesResult = generateTaxCodes({
+        taxCodeMatrix: answers['ns.tax.taxCodeMatrix'] as string | undefined,
+        nexusList: answers['ns.tax.nexusList'] as string | undefined,
+      });
+      Object.assign(sdfFiles, taxCodesResult.files);
+
+      const taxSchedulesResult = generateTaxSchedules({
+        taxScheduleMatrix: answers['ns.tax.taxScheduleMatrix'] as string | undefined,
+        taxCodes: taxCodesResult.emitted,
+      });
+      Object.assign(sdfFiles, taxSchedulesResult.files);
 
       // Pack A — Manifest now derives features from wizard answers
       // (was hardcoded to {CUSTOMRECORDS, SERVERSIDESCRIPTING}). The
