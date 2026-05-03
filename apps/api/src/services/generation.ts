@@ -23,6 +23,10 @@ import { generateWorkflows } from './generators/sdfWorkflowGenerator.js';
 import { generateWorkflowActionScripts } from './generators/sdfWorkflowActionScriptGenerator.js';
 import { generateSavedSearches } from './generators/sdfSavedSearchGenerator.js';
 import { generateDashboards } from './generators/sdfDashboardGenerator.js';
+import { generateRoles } from './generators/sdfRoleGenerator.js';
+import { generateAccountingPreferences } from './generators/sdfAccountingPreferencesGenerator.js';
+import { generateCompanyInformation } from './generators/sdfCompanyInformationGenerator.js';
+import { generateGeneralPreferences } from './generators/sdfGeneralPreferencesGenerator.js';
 import { validateSDFBundle, isValidationEnabled } from './generators/sdfValidator.js';
 import { generateScripts } from './generators/scriptGenerator.js';
 import { generateRiskRegister } from './generators/riskGenerator.js';
@@ -393,6 +397,44 @@ export async function processJob(jobId: string, db: DbModule) {
         savedSearches: savedSearchesResult.emitted,
       });
       Object.assign(sdfFiles, dashboardsResult.files);
+
+      // Pack C — Roles + Permissions + Account Preferences. Role
+      // generation reads ns.design.standardRoleCustomization and emits
+      // one customrole_*.xml per declared role with starter perms +
+      // customization-notes overlay. Three AccountConfiguration files
+      // (companyinformation / accountingpreferences / generalpreferences)
+      // ride alongside under SDF/AccountConfiguration/.
+      const rolesResult = generateRoles({
+        standardRoleCustomization: answers['ns.design.standardRoleCustomization'] as string | undefined,
+      });
+      Object.assign(sdfFiles, rolesResult.files);
+
+      // Base currency for companyinformation derives from the FIRST
+      // parsed subsidiary (the root tenant subsidiary). Fall back to
+      // USD when no subsidiary parsed (single-tenant / no foundation
+      // subsidiary list).
+      const firstSubsidiary = subsidiariesResult.emitted.find((s) => !s.isElimination);
+      const baseCurrency = firstSubsidiary?.currency ?? 'USD';
+
+      sdfFiles['AccountConfiguration/accountingpreferences.xml'] = generateAccountingPreferences({
+        multiBookAccounting: answers['ns.foundation.multiBookAccounting'] === true,
+        advancedRevRecInScope: answers['ns.foundation.advancedRevRecInScope'] === true,
+        sodMatrixRequired: answers['ns.design.sodMatrixRequired'] === true,
+      });
+      sdfFiles['AccountConfiguration/companyinformation.xml'] = generateCompanyInformation({
+        clientName: eng.clientName as string,
+        primaryCountry: (answers['ns.foundation.primaryCountry'] as string | undefined) ?? '',
+        fiscalYearStart: (answers['ns.foundation.fiscalYearStart'] as string | undefined) ?? '01-01',
+        baseCurrency,
+      });
+      sdfFiles['AccountConfiguration/generalpreferences.xml'] = generateGeneralPreferences({
+        ssoInScope: answers['ns.foundation.ssoInScope'] === true,
+        customRolesRequired: answers['ns.foundation.customRolesRequired'] === true,
+        auditLogRetentionMonths:
+          typeof answers['ns.design.auditLogRetentionMonths'] === 'number'
+            ? (answers['ns.design.auditLogRetentionMonths'] as number)
+            : undefined,
+      });
 
       // Pack A — Manifest now derives features from wizard answers
       // (was hardcoded to {CUSTOMRECORDS, SERVERSIDESCRIPTING}). The

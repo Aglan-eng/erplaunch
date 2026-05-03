@@ -100,10 +100,18 @@ describe('sdfValidator: deploy.xml rules', () => {
     expect(errs.map((e) => e.rule)).toContain('deploy.path.relative');
   });
 
-  it('rejects a deploy that still references AccountConfiguration (Fix #3 closeout)', () => {
-    const xml = `<deploy><configuration><path>~/AccountConfiguration/features.xml</path></configuration></deploy>`;
+  it('Pack C: accepts a deploy that references AccountConfiguration (companyinformation / preferences are valid)', () => {
+    // Pre-Pack-C, this rule rejected ALL AccountConfiguration paths
+    // because the legacy features.xml emission had the wrong shape
+    // (Fix #3). Pack C ships VALID accountconfig content
+    // (companyinformation / accountingpreferences / generalpreferences
+    // — distinct from the rejected features.xml), so the path is now
+    // allowed in deploy.xml. The narrower invariant that features.xml
+    // specifically must not appear is still enforceable downstream
+    // (no current call site emits features.xml).
+    const xml = `<deploy><configuration><path>~/AccountConfiguration/*</path></configuration></deploy>`;
     const errs = validateSDFFile('deploy.xml', xml);
-    expect(errs.map((e) => e.rule)).toContain('deploy.accountconfig.dropped');
+    expect(errs).toEqual([]);
   });
 });
 

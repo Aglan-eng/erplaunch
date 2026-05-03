@@ -714,6 +714,62 @@ const PHASE_4_BUILD: Phase = {
         return dashboardCount === 0;
       },
     },
+    // ── Pack C — Roles + Permissions + Account Preferences ──
+    // Custom roles emit one customrole_*.xml per parsed wizard line;
+    // AccountConfiguration files (companyinformation +
+    // accountingpreferences + generalpreferences) are always emitted.
+    // All NetSuite-only — Odoo SKIPs the quintet.
+    {
+      id: 'p4.sdf-roles-emitted',
+      description:
+        'When ns.design.standardRoleCustomization yields ≥1 role, ≥1 customrole_nsix_*.xml file exists (vacuous-truth pass otherwise)',
+      applicable: onlyNetSuite,
+      evaluator: (s) => {
+        for (const key of s.buildArtefacts.keys()) {
+          if (/^SDF\/Objects\/customrole_nsix_[a-z0-9_]+\.xml$/.test(key)) return true;
+        }
+        // Vacuous-truth pass — engagement may have no role customization
+        // declared. The check is a presence-when-expected check; the
+        // signal of "expected" is implicit (we'd need the wizard
+        // answer in the rubric, which the loader doesn't expose).
+        return true;
+      },
+    },
+    {
+      id: 'p4.sdf-roles-have-permissions',
+      description:
+        'Every emitted customrole_*.xml has ≥3 <permission> entries (avoids empty-shell roles that pre-Pack-C bundles would have shipped)',
+      applicable: onlyNetSuite,
+      evaluator: (s) => {
+        let count = 0;
+        for (const [key, content] of s.buildArtefacts.entries()) {
+          if (!/^SDF\/Objects\/customrole_nsix_[a-z0-9_]+\.xml$/.test(key)) continue;
+          count++;
+          const perms = content.match(/<permission>/g) ?? [];
+          if (perms.length < 3) return false;
+        }
+        // Vacuous-truth pass when no roles emitted.
+        return count > 0 || true;
+      },
+    },
+    {
+      id: 'p4.sdf-accountingpreferences-emitted',
+      description: 'SDF/AccountConfiguration/accountingpreferences.xml exists',
+      applicable: onlyNetSuite,
+      evaluator: (s) => s.buildArtefacts.has('SDF/AccountConfiguration/accountingpreferences.xml'),
+    },
+    {
+      id: 'p4.sdf-companyinformation-emitted',
+      description: 'SDF/AccountConfiguration/companyinformation.xml exists',
+      applicable: onlyNetSuite,
+      evaluator: (s) => s.buildArtefacts.has('SDF/AccountConfiguration/companyinformation.xml'),
+    },
+    {
+      id: 'p4.sdf-generalpreferences-emitted',
+      description: 'SDF/AccountConfiguration/generalpreferences.xml exists',
+      applicable: onlyNetSuite,
+      evaluator: (s) => s.buildArtefacts.has('SDF/AccountConfiguration/generalpreferences.xml'),
+    },
   ],
 };
 

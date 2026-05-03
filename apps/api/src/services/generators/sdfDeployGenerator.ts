@@ -22,11 +22,21 @@
 
 /**
  * Emit the deploy.xml body. Static content — the demo bundle ships
- * scripts under ~/FileCabinet/SuiteScripts/* and objects under
- * ~/Objects/*. No parameters needed today; if a future pack needs a
- * different layout (e.g. multiple FileCabinet subdirs or a Translations
- * folder) we can grow this signature, but right now every ACP we ship
- * has the same two-path shape.
+ * scripts under ~/FileCabinet/SuiteScripts/*, objects under
+ * ~/Objects/*, and account-config files under
+ * ~/AccountConfiguration/* (Pack C).
+ *
+ * Pack C history note: pre-Pack-C the validator rejected
+ * AccountConfiguration paths in deploy.xml because the original
+ * features.xml file emitted by the heavy generateSDFPackage path had
+ * the wrong shape (Fix #3). Pack C ships VALID accountconfig files
+ * (companyinformation / accountingpreferences / generalpreferences)
+ * so the path is back in. The validator's old rule was relaxed to
+ * accept correctly-shaped accountconfig content — see sdfValidator.ts.
+ *
+ * No parameters needed today; if a future pack needs a different
+ * layout (e.g. multiple FileCabinet subdirs or a Translations folder)
+ * we can grow this signature.
  */
 export function generateSdfDeploy(): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -37,6 +47,9 @@ export function generateSdfDeploy(): string {
   <objects>
     <path>~/Objects/*</path>
   </objects>
+  <configuration>
+    <path>~/AccountConfiguration/*</path>
+  </configuration>
 </deploy>
 `;
 }

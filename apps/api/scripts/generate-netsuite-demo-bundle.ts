@@ -40,6 +40,10 @@ import { generateWorkflows } from '../src/services/generators/sdfWorkflowGenerat
 import { generateWorkflowActionScripts } from '../src/services/generators/sdfWorkflowActionScriptGenerator.js';
 import { generateSavedSearches } from '../src/services/generators/sdfSavedSearchGenerator.js';
 import { generateDashboards } from '../src/services/generators/sdfDashboardGenerator.js';
+import { generateRoles } from '../src/services/generators/sdfRoleGenerator.js';
+import { generateAccountingPreferences } from '../src/services/generators/sdfAccountingPreferencesGenerator.js';
+import { generateCompanyInformation } from '../src/services/generators/sdfCompanyInformationGenerator.js';
+import { generateGeneralPreferences } from '../src/services/generators/sdfGeneralPreferencesGenerator.js';
 import { validateSDFBundle } from '../src/services/generators/sdfValidator.js';
 import netsuiteAdaptor from '@ofoq/adaptor-netsuite';
 
@@ -478,6 +482,34 @@ const dashboardsResult = generateDashboards({
   savedSearches: savedSearchesResult.emitted,
 });
 
+// Pack C — Roles + AccountConfiguration. Roles use the wizard's
+// standardRoleCustomization answer (NS Pack 3 SD); AccountConfiguration
+// files are derived from foundation + design flags.
+const rolesResult = generateRoles({
+  standardRoleCustomization: answers['ns.design.standardRoleCustomization'] as string | undefined,
+});
+const firstSubsidiary = subsidiariesResult.emitted.find((s) => !s.isElimination);
+const baseCurrency = firstSubsidiary?.currency ?? 'USD';
+const accountingPreferencesXml = generateAccountingPreferences({
+  multiBookAccounting: answers['ns.foundation.multiBookAccounting'] === true,
+  advancedRevRecInScope: answers['ns.foundation.advancedRevRecInScope'] === true,
+  sodMatrixRequired: answers['ns.design.sodMatrixRequired'] === true,
+});
+const companyInformationXml = generateCompanyInformation({
+  clientName,
+  primaryCountry: (answers['ns.foundation.primaryCountry'] as string | undefined) ?? '',
+  fiscalYearStart: (answers['ns.foundation.fiscalYearStart'] as string | undefined) ?? '01-01',
+  baseCurrency,
+});
+const generalPreferencesXml = generateGeneralPreferences({
+  ssoInScope: answers['ns.foundation.ssoInScope'] === true,
+  customRolesRequired: answers['ns.foundation.customRolesRequired'] === true,
+  auditLogRetentionMonths:
+    typeof answers['ns.design.auditLogRetentionMonths'] === 'number'
+      ? (answers['ns.design.auditLogRetentionMonths'] as number)
+      : undefined,
+});
+
 // Pack A — Manifest derives feature dependencies from the wizard
 // answers (was hardcoded to {CUSTOMRECORDS, SERVERSIDESCRIPTING}).
 // Drives SUBSIDIARIES / INTERCOMPANY / MULTICURRENCY / etc. on
@@ -573,6 +605,10 @@ const allSdfFiles: Record<string, string> = {
   ...workflowsResult.files,
   ...savedSearchesResult.files,
   ...dashboardsResult.files,
+  ...rolesResult.files,
+  'AccountConfiguration/accountingpreferences.xml': accountingPreferencesXml,
+  'AccountConfiguration/companyinformation.xml': companyInformationXml,
+  'AccountConfiguration/generalpreferences.xml': generalPreferencesXml,
 };
 const validation = validateSDFBundle(allSdfFiles);
 if (!validation.ok) {
@@ -668,6 +704,37 @@ for (const [relPath, content] of Object.entries(dashboardsResult.files)) {
   process.stdout.write(`  ✓ SDF/${relPath}\n`);
 }
 
+for (const [relPath, content] of Object.entries(rolesResult.files)) {
+  const fullPath = path.join(sdfRoot, relPath);
+  await fs.mkdir(path.dirname(fullPath), { recursive: true });
+  await fs.writeFile(fullPath, content, 'utf8');
+  process.stdout.write(`  ✓ SDF/${relPath}\n`);
+}
+
+// Pack C — AccountConfiguration files. Sit alongside Objects/ as a
+// peer directory. The deploy.xml's <configuration><path>~/AccountConfiguration/*</path></configuration>
+// block (Pack C deploy update) tells SuiteCloud CLI to push these.
+const accountConfigDir = path.join(sdfRoot, 'AccountConfiguration');
+await fs.mkdir(accountConfigDir, { recursive: true });
+await fs.writeFile(
+  path.join(accountConfigDir, 'accountingpreferences.xml'),
+  accountingPreferencesXml,
+  'utf8',
+);
+process.stdout.write(`  ✓ SDF/AccountConfiguration/accountingpreferences.xml\n`);
+await fs.writeFile(
+  path.join(accountConfigDir, 'companyinformation.xml'),
+  companyInformationXml,
+  'utf8',
+);
+process.stdout.write(`  ✓ SDF/AccountConfiguration/companyinformation.xml\n`);
+await fs.writeFile(
+  path.join(accountConfigDir, 'generalpreferences.xml'),
+  generalPreferencesXml,
+  'utf8',
+);
+process.stdout.write(`  ✓ SDF/AccountConfiguration/generalpreferences.xml\n`);
+
 // ── Real-logic SuiteScript: PO approval User Event ──────────────────────────
 // First real-LOGIC SuiteScript file. Reads the wizard's free-text
 // p2p.purchasing.poApprovalTiers answer and emits a deployable User Event
@@ -721,7 +788,8 @@ console.log(
     `${workflowsResult.emitted.length} workflow(s) + ` +
     `${wfaScriptsResult.emitted.length} WFA script(s) + ` +
     `${savedSearchesResult.emitted.length} saved search(es) + ` +
-    `${dashboardsResult.emitted.length} dashboard(s)`,
+    `${dashboardsResult.emitted.length} dashboard(s) + ` +
+    `${rolesResult.emitted.length} role(s) + 3 AccountConfiguration files`,
 );
 if (missingTerms === 0) {
   // eslint-disable-next-line no-console

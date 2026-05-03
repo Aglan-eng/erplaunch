@@ -105,11 +105,17 @@ function validateDeploy(file: string, xml: string): ValidationError[] {
       errs.push({ file, rule: 'deploy.path.relative', detail: `deploy <path> must start with ~/ (got: ${p})` });
     }
   }
-  // Post-Fix-#3: AccountConfiguration/* path should NOT appear anymore —
-  // we no longer emit anything account-config-level.
-  if (pathValues.some((p) => /AccountConfiguration/i.test(p))) {
-    errs.push({ file, rule: 'deploy.accountconfig.dropped', detail: 'deploy.xml should not reference AccountConfiguration after Fix #3 dropped features.xml' });
-  }
+  // Pack C history: the legacy Fix #3 rule blocked AccountConfiguration
+  // paths in deploy.xml because the OLD features.xml file emitted by
+  // the heavy generator had the wrong shape (<feature id="X">T</feature>
+  // instead of the valid <feature label="..."><id>X</id><status>ENABLED
+  // </status></feature> form). Pack C ships VALID AccountConfiguration
+  // content (companyinformation / accountingpreferences /
+  // generalpreferences — distinct from the rejected features.xml), so
+  // the AccountConfiguration path is now allowed in deploy.xml. The
+  // narrower invariant — features.xml MUST NOT appear under
+  // AccountConfiguration — is captured by validateAccountConfigFeaturesXml
+  // (no current call site emits features.xml; the rule is forward-looking).
   return errs;
 }
 

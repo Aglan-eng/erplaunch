@@ -46,9 +46,18 @@ describe('generateSdfDeploy — path shape (validator contract)', () => {
     }
   });
 
-  it('does not reference AccountConfiguration (post-Fix-#3 contract)', () => {
+  it('Pack C: references AccountConfiguration via the <configuration> block (companyinformation + prefs land there)', () => {
     const xml = generateSdfDeploy();
-    expect(xml).not.toMatch(/AccountConfiguration/i);
+    expect(xml).toContain('<configuration>');
+    expect(xml).toContain('<path>~/AccountConfiguration/*</path>');
+    expect(xml).toContain('</configuration>');
+  });
+
+  it('files / objects / configuration paths all appear in the same deploy.xml', () => {
+    const xml = generateSdfDeploy();
+    expect(xml).toContain('<files>');
+    expect(xml).toContain('<objects>');
+    expect(xml).toContain('<configuration>');
   });
 
   it('files path points at FileCabinet/SuiteScripts', () => {
