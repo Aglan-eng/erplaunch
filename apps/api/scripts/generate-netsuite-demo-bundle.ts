@@ -61,6 +61,13 @@ import { generateQuickReferenceCards } from '../src/services/generators/quickRef
 import { generateTrainingMatrix } from '../src/services/generators/trainingMatrixGenerator.js';
 import { generateTrainingSchedule } from '../src/services/generators/trainingScheduleGenerator.js';
 import { generateKnowledgeTransferChecklist } from '../src/services/generators/knowledgeTransferChecklistGenerator.js';
+import { generateCutoverRunbook } from '../src/services/generators/cutoverRunbookGenerator.js';
+import { generateGoNoGoMatrix } from '../src/services/generators/goNoGoMatrixGenerator.js';
+import { generateRollbackPlan } from '../src/services/generators/rollbackPlanGenerator.js';
+import { generatePostCutoverSmoke } from '../src/services/generators/postCutoverSmokeGenerator.js';
+import { generateCutoverCommPlan } from '../src/services/generators/cutoverCommPlanGenerator.js';
+import { generateDryRunPlan } from '../src/services/generators/dryRunPlanGenerator.js';
+import { generateCutoverTeamRoster } from '../src/services/generators/cutoverTeamRosterGenerator.js';
 import netsuiteAdaptor from '@ofoq/adaptor-netsuite';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -518,6 +525,58 @@ const answers: Record<string, unknown> = {
   'training.schedule.deliveryMode': 'HYBRID',
   'training.assessment.assessmentRequired': true,
   'training.assessment.assessmentFormat': 'LIVE_DEMO',
+
+  // Pack V — CUTOVER flow (cross-platform). Atlas exercises BIG_BANG
+  // cutover with 48h window, 7-person team across 4 subsidiaries,
+  // 3 dry runs.
+  'cutover.team.cutoverTeamRoster':
+    'Hesham Aglan: Consultant PM (overall command): T-1 → T+5 days continuous\n' +
+    'David Chen: Client PM: T-1 → T+5 days\n' +
+    'Sarah Chen: Migration lead — financials: T0 → T+2 days continuous\n' +
+    'Mostafa Sherif: IT lead — OneWorld + integrations: T-1 → T+2 days\n' +
+    'Sophie Müller: Functional lead — EU subsidiaries: T0 → T+5 days\n' +
+    'Tom Wilson: Functional lead — US + AU subsidiaries: T0 → T+5 days\n' +
+    'Priya Patel: Functional lead — Revenue Recognition / ARM: T0 → T+3 days',
+  'cutover.team.dryRunCount': 3,
+  'cutover.team.dryRunDates':
+    'Dry Run 1: 2026-09-13: Data migration only — extract + transform + load across all 4 subsidiaries\n' +
+    'Dry Run 2: 2026-10-04: Full end-to-end with users — multi-currency consolidation focus\n' +
+    'Dry Run 3: 2026-10-25: Final rehearsal — identical to production',
+  'cutover.decisions.goNoGoCriteria':
+    'Migration tie-out: 100% TB match across all 4 subsidiaries\n' +
+    'Smoke test pass rate: 100% of P0 scenarios green\n' +
+    'No Critical defects open: zero\n' +
+    'Performance benchmarks: all met under simulated peak load (per Performance_Test_Plan)\n' +
+    'ASC 606 reporting: revenue schedules tie to legacy snapshot per subsidiary\n' +
+    'Multi-currency revaluation: reval entries match legacy + variance < $0.01\n' +
+    'Custom workflows deployed: all 7 SuiteFlow workflows active + tested',
+  'cutover.decisions.goNoGoOwners':
+    'Migration data: Sarah Chen (Migration lead)\n' +
+    'Functional readiness — financials: Sophie Müller (EU lead)\n' +
+    'Functional readiness — operations: Tom Wilson (US/AU lead)\n' +
+    'Revenue recognition: Priya Patel (ARM lead)\n' +
+    'Technical readiness: Hesham Aglan (Consultant PM)\n' +
+    'Final go/no-go: Helena Reyes (CFO / Sponsor)',
+  'cutover.decisions.rollbackTriggers':
+    'Critical defect found in core finance flow with no workaround\n' +
+    'Migration tie-out fails for >1% of records and cannot be reconciled within 2h\n' +
+    'NetSuite production unavailable for >30 min during cutover window\n' +
+    'ASC 606 revenue recognition consolidation fails to balance and root cause not identified within 4h\n' +
+    'SDF deploy fails on any of the 4 subsidiary configurations',
+  'cutover.communication.cutoverMilestones':
+    'Pre-freeze starts: All users + Sponsor\n' +
+    'Cutover begins: Steering + Sponsor + Department Heads + Auditor (KPMG)\n' +
+    'Migration complete: Steering + IT\n' +
+    'Smoke pass / go declared: All users + Sponsor + Sales channel + Auditor\n' +
+    'Day 1 hypercare check-in: Steering + IT\n' +
+    'Day 7 hypercare review: Steering + Sponsor\n' +
+    'Day 30 hypercare exit: All stakeholders + Auditor sign-off',
+  'cutover.communication.escalationContacts':
+    'Robert Atlas (Group CEO): only if rollback triggered\n' +
+    'NetSuite Customer Care (SuiteCloud Plus): if SDF deploy fails or platform issue exceeds 30 min\n' +
+    'Avalara support: if tax-engine integration fails during cutover\n' +
+    'Banking partners (US + UK + AU + DE): if intercompany payment files fail\n' +
+    'External auditor (KPMG): if SOX walkthrough triggered or ASC 606 issues persist',
 };
 
 const comments = [
@@ -654,6 +713,75 @@ const ktResult = generateKnowledgeTransferChecklist({
     .join('\n'),
 });
 
+// ── Pack V — Cutover Runbook (cross-platform — runs on NetSuite too) ────────
+// Atlas: BIG_BANG cutover, 48h window, 4 subsidiaries.
+const cutoverWindowHoursAtlas = 48;
+const cutoverPreFreezeDaysAtlas = 3;
+
+const runbookResult = generateCutoverRunbook({
+  clientName,
+  adaptorName: 'NetSuite',
+  cutoverStyle: 'BIG_BANG',
+  cutoverWindowHours: cutoverWindowHoursAtlas,
+  preFreezeDays: cutoverPreFreezeDaysAtlas,
+  cutoverTeamRoster: answers['cutover.team.cutoverTeamRoster'] as string,
+  targetGoLiveDate: answers['kickoff.mandate.targetGoLiveDate'] as string,
+  dryRunDates: answers['cutover.team.dryRunDates'] as string,
+});
+const goNoGoResult = generateGoNoGoMatrix({
+  clientName,
+  adaptorName: 'NetSuite',
+  goNoGoCriteria: answers['cutover.decisions.goNoGoCriteria'] as string,
+  goNoGoOwners: answers['cutover.decisions.goNoGoOwners'] as string,
+  cutoverWindowHours: cutoverWindowHoursAtlas,
+});
+const rollbackResult = generateRollbackPlan({
+  clientName,
+  adaptorName: 'NetSuite',
+  rollbackTriggers: answers['cutover.decisions.rollbackTriggers'] as string,
+  cutoverStyle: 'BIG_BANG',
+});
+const atlasCutoverRoles = (answers['training.curriculum.trainingPerRole'] as string)
+  .split(/\r?\n/)
+  .map((l) => l.trim())
+  .filter((l) => l.length > 0)
+  .map((l) => {
+    const idx = l.indexOf(':');
+    return idx < 0 ? l : l.slice(0, idx).trim();
+  });
+const smokeResult = generatePostCutoverSmoke({
+  clientName,
+  adaptorName: 'NetSuite',
+  regressionSmokeScenarios: answers['testing.regression.regressionSmokeScenarios'] as string,
+  poApprovalInScope: answers['ns.approvals.poApprovalInScope'] === true,
+  vbApprovalInScope: answers['ns.approvals.vbApprovalInScope'] === true,
+  ssoInScope: answers['ns.foundation.ssoInScope'] === true,
+  multiCurrencyInScope: answers['ns.foundation.multiCurrencyInScope'] === true,
+  roles: atlasCutoverRoles,
+});
+const commPlanResult = generateCutoverCommPlan({
+  clientName,
+  adaptorName: 'NetSuite',
+  cutoverMilestones: answers['cutover.communication.cutoverMilestones'] as string,
+  escalationContacts: answers['cutover.communication.escalationContacts'] as string,
+  cutoverTeamRoster: answers['cutover.team.cutoverTeamRoster'] as string,
+  targetGoLiveDate: answers['kickoff.mandate.targetGoLiveDate'] as string,
+  cutoverWindowHours: cutoverWindowHoursAtlas,
+});
+const dryRunResult = generateDryRunPlan({
+  clientName,
+  adaptorName: 'NetSuite',
+  dryRunCount: answers['cutover.team.dryRunCount'] as number,
+  dryRunDates: answers['cutover.team.dryRunDates'] as string,
+  cutoverStyle: 'BIG_BANG',
+});
+const teamRosterResult = generateCutoverTeamRoster({
+  clientName,
+  adaptorName: 'NetSuite',
+  cutoverTeamRoster: answers['cutover.team.cutoverTeamRoster'] as string,
+  targetGoLiveDate: answers['kickoff.mandate.targetGoLiveDate'] as string,
+});
+
 const writes: Array<[string, string]> = [
   ['Project_Kickoff.md', generateKickoff(kickoffData)],
   ['Project_Kickoff.html', generateKickoffHtml(kickoffData)],
@@ -718,6 +846,24 @@ for (const [bundlePath, content] of Object.entries(qrcResult.files)) {
   await fs.mkdir(path.dirname(fullPath), { recursive: true });
   await fs.writeFile(fullPath, content, 'utf8');
   process.stdout.write(`  ✓ ${rel}\n`);
+}
+
+// Pack V — Cutover/ subfolder (7 cutover artefacts).
+const cutoverDir = path.join(docDir, 'Cutover');
+await fs.mkdir(cutoverDir, { recursive: true });
+const cutoverWrites: Array<[string, string]> = [
+  ['Cutover_Runbook.md', runbookResult.markdown],
+  ['Cutover_Runbook.html', runbookResult.html],
+  ['Go_No_Go_Matrix.md', goNoGoResult.markdown],
+  ['Rollback_Plan.md', rollbackResult.markdown],
+  ['Post_Cutover_Smoke.md', smokeResult.markdown],
+  ['Communication_Plan.md', commPlanResult.markdown],
+  ['Dry_Run_Plan.md', dryRunResult.markdown],
+  ['Cutover_Team_Roster.md', teamRosterResult.markdown],
+];
+for (const [filename, content] of cutoverWrites) {
+  await fs.writeFile(path.join(cutoverDir, filename), content, 'utf8');
+  process.stdout.write(`  ✓ Cutover/${filename}\n`);
 }
 
 // ── Real-code generation: SDF bundle ────────────────────────────────────────

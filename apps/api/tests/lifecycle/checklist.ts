@@ -1076,32 +1076,82 @@ const PHASE_6_TRAIN: Phase = {
 };
 
 // ─── Phase 7 — Cutover ───────────────────────────────────────────────────────
+//
+// Pack V closure — pre-Pack-V this rubric was 4 checks scoring 2.5/10
+// on Odoo and 0/10 on NetSuite (no Cutover_Runbook.md was generated;
+// only "Rollback" / "Smoke" keywords accidentally matched in other docs).
+// Pack V emits 7 dedicated artefacts under Documentation/Cutover/ that
+// drive an 8-check rubric. Both adaptors should now hit 8/8.
 
 const PHASE_7_CUTOVER: Phase = {
   number: 7,
   name: 'Cutover',
   checks: [
     {
-      id: 'p7.cutover-runbook-exists',
-      description: 'Cutover_Runbook.md is generated (gap — not currently produced)',
-      evaluator: (s) => docs(s).has('Cutover_Runbook.md'),
+      id: 'p7.cutover-runbook-emitted',
+      description: 'Documentation/Cutover/Cutover_Runbook.md exists',
+      evaluator: (s) => docs(s).has('Cutover/Cutover_Runbook.md'),
     },
     {
-      id: 'p7.go-no-go',
-      description: '"Go/No-Go" section in cutover artefact (gap)',
-      evaluator: (s) =>
-        bundleContains(docs(s), 'Go/No-Go') || bundleContains(docs(s), 'Go / No-Go'),
+      id: 'p7.cutover-runbook-has-hour-by-hour',
+      description:
+        'Cutover_Runbook.md contains an hour-by-hour table (T+0:00 / T+H:MM rows OR per-wave entity/module sequence)',
+      evaluator: (s) => {
+        const c = docs(s).get('Cutover/Cutover_Runbook.md');
+        if (!c) return false;
+        // BIG_BANG / PARALLEL_RUN: explicit T+H:MM rows in the table.
+        // PHASED_ENTITY / PHASED_MODULE: wave-table rows like "| 1 |".
+        return /\| T\+\d+:\d{2}/.test(c) || /\bWave Schedule\b/.test(c) || /Per-Entity Wave Pattern/.test(c);
+      },
     },
     {
-      id: 'p7.rollback',
-      description: '"Rollback" section in cutover artefact (gap)',
-      evaluator: (s) => bundleContains(docs(s), 'Rollback'),
+      id: 'p7.go-no-go-matrix-emitted',
+      description:
+        'Documentation/Cutover/Go_No_Go_Matrix.md exists with at least 3 criteria rows',
+      evaluator: (s) => {
+        const c = docs(s).get('Cutover/Go_No_Go_Matrix.md');
+        if (!c) return false;
+        // Decision-row pattern: "| Area | Threshold | Owner | ⏳ |".
+        const rows = (c.match(/^\| [^|]+ \| [^|]+ \| [^|]+ \| ⏳ \|/gm) ?? []).length;
+        return rows >= 3;
+      },
     },
     {
-      id: 'p7.smoke-checklist',
-      description: 'Smoke checklist in cutover artefact (gap)',
-      evaluator: (s) =>
-        bundleContains(docs(s), 'Smoke Test') || bundleContains(docs(s), 'Smoke checklist'),
+      id: 'p7.rollback-plan-emitted',
+      description:
+        'Documentation/Cutover/Rollback_Plan.md exists with at least 1 numbered trigger',
+      evaluator: (s) => {
+        const c = docs(s).get('Cutover/Rollback_Plan.md');
+        if (!c) return false;
+        return /^\d+\.\s+\*\*/m.test(c);
+      },
+    },
+    {
+      id: 'p7.post-cutover-smoke-emitted',
+      description: 'Documentation/Cutover/Post_Cutover_Smoke.md exists',
+      evaluator: (s) => docs(s).has('Cutover/Post_Cutover_Smoke.md'),
+    },
+    {
+      id: 'p7.communication-plan-emitted',
+      description: 'Documentation/Cutover/Communication_Plan.md exists',
+      evaluator: (s) => docs(s).has('Cutover/Communication_Plan.md'),
+    },
+    {
+      id: 'p7.dry-run-plan-emitted',
+      description: 'Documentation/Cutover/Dry_Run_Plan.md exists',
+      evaluator: (s) => docs(s).has('Cutover/Dry_Run_Plan.md'),
+    },
+    {
+      id: 'p7.team-roster-emitted',
+      description:
+        'Documentation/Cutover/Cutover_Team_Roster.md exists with at least 3 roster rows',
+      evaluator: (s) => {
+        const c = docs(s).get('Cutover/Cutover_Team_Roster.md');
+        if (!c) return false;
+        // Roster row pattern: "| Name | Role | Window | Phone | Backup |".
+        const rows = (c.match(/^\| [^|]+ \| [^|]+ \| [^|]+ \| _______ \| _______ \|/gm) ?? []).length;
+        return rows >= 3;
+      },
     },
   ],
 };

@@ -35,6 +35,13 @@ import { generateQuickReferenceCards } from '../src/services/generators/quickRef
 import { generateTrainingMatrix } from '../src/services/generators/trainingMatrixGenerator.js';
 import { generateTrainingSchedule } from '../src/services/generators/trainingScheduleGenerator.js';
 import { generateKnowledgeTransferChecklist } from '../src/services/generators/knowledgeTransferChecklistGenerator.js';
+import { generateCutoverRunbook } from '../src/services/generators/cutoverRunbookGenerator.js';
+import { generateGoNoGoMatrix } from '../src/services/generators/goNoGoMatrixGenerator.js';
+import { generateRollbackPlan } from '../src/services/generators/rollbackPlanGenerator.js';
+import { generatePostCutoverSmoke } from '../src/services/generators/postCutoverSmokeGenerator.js';
+import { generateCutoverCommPlan } from '../src/services/generators/cutoverCommPlanGenerator.js';
+import { generateDryRunPlan } from '../src/services/generators/dryRunPlanGenerator.js';
+import { generateCutoverTeamRoster } from '../src/services/generators/cutoverTeamRosterGenerator.js';
 import odooAdaptor from '@ofoq/adaptor-odoo';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -351,6 +358,49 @@ const answers: Record<string, unknown> = {
   'training.schedule.deliveryMode': 'HYBRID',
   'training.assessment.assessmentRequired': true,
   'training.assessment.assessmentFormat': 'LIVE_DEMO',
+
+  // Pack V — CUTOVER flow (cross-platform). Sahel exercises BIG_BANG
+  // cutover with 36h window, 5-person team, 3 dry runs.
+  'cutover.team.cutoverTeamRoster':
+    'Hesham Aglan: Consultant PM (overall command): T-1 → T+5 days continuous\n' +
+    'Layla Hassan: Client PM: T-1 → T+5 days\n' +
+    'Aisha Khalid: Migration lead: T0 → T+2 days continuous\n' +
+    'Omar Reda: IT lead: T-1 → T+2 days\n' +
+    'Mariam Saeed: Functional lead — finance: T0 → T+5 days',
+  'cutover.team.dryRunCount': 3,
+  'cutover.team.dryRunDates':
+    'Dry Run 1: 2026-08-01: Data migration only — extract + transform + load\n' +
+    'Dry Run 2: 2026-08-15: Full end-to-end with users\n' +
+    'Dry Run 3: 2026-08-22: Final rehearsal — identical to production',
+  'cutover.decisions.goNoGoCriteria':
+    'Migration tie-out: 100% TB match across both entities\n' +
+    'Smoke test pass rate: 100% of P0 scenarios green\n' +
+    'No Critical defects open: zero\n' +
+    'Performance benchmarks: all met under simulated peak load\n' +
+    'IFRS reporting: consolidated TB reconciles to legacy snapshot\n' +
+    'Lot tracking: pharma lot history complete + queryable',
+  'cutover.decisions.goNoGoOwners':
+    'Migration data: Mariam Saeed (Group Controller)\n' +
+    'Functional readiness: Layla Hassan (Client PM)\n' +
+    'Technical readiness: Hesham Aglan (Consultant PM)\n' +
+    'Final go/no-go: Yousef Al-Rashid (CFO / Sponsor)',
+  'cutover.decisions.rollbackTriggers':
+    'Critical defect found in core finance flow with no workaround\n' +
+    'Migration tie-out fails for >1% of records and cannot be reconciled within 2h\n' +
+    'System unavailable for >30 min during cutover window\n' +
+    'IFRS consolidation fails to balance and root cause not identified within 4h',
+  'cutover.communication.cutoverMilestones':
+    'Pre-freeze starts: All users + Sponsor\n' +
+    'Cutover begins: Steering + Sponsor + Department Heads\n' +
+    'Migration complete: Steering + IT\n' +
+    'Smoke pass / go declared: All users + Sponsor + Sales channel\n' +
+    'Day 1 hypercare check-in: Steering + IT\n' +
+    'Day 7 hypercare review: Steering + Sponsor',
+  'cutover.communication.escalationContacts':
+    'Tariq Al-Otaibi (Group CEO): only if rollback triggered\n' +
+    'Odoo Support (OdooSH): if database recovery needed during cutover\n' +
+    'Banking partner (Emirates NBD): if intercompany payment files fail\n' +
+    'External auditor (BDO): if IFRS consolidation issues persist',
 };
 const comments = [
   { sectionKey: 'license', text: 'Enterprise edition confirmed; Studio + Documents required for approval matrix + contract storage. MRP + Quality modules for the two production lines.' },
@@ -470,6 +520,75 @@ const ktResult = generateKnowledgeTransferChecklist({
   workstreamsInScope: ['R2R', 'P2P', 'O2C', 'INV', 'MFG', 'RTN', 'CRM', 'HR'],
 });
 
+// ── Pack V — Cutover Runbook (cross-platform — runs on Odoo too) ────────────
+const cutoverStyle = (answers['odoo.migration.cutoverStyle'] as string) ?? 'BIG_BANG';
+const cutoverWindowHours =
+  (answers['odoo.migration.cutoverWindowHours'] as number | undefined) ?? 36;
+const cutoverPreFreezeDays = (answers['odoo.migration.preFreezeDays'] as number | undefined) ?? 3;
+
+const runbookResult = generateCutoverRunbook({
+  clientName,
+  adaptorName: 'Odoo',
+  cutoverStyle,
+  cutoverWindowHours,
+  preFreezeDays: cutoverPreFreezeDays,
+  cutoverTeamRoster: answers['cutover.team.cutoverTeamRoster'] as string,
+  targetGoLiveDate: answers['kickoff.mandate.targetGoLiveDate'] as string,
+  dryRunDates: answers['cutover.team.dryRunDates'] as string,
+});
+const goNoGoResult = generateGoNoGoMatrix({
+  clientName,
+  adaptorName: 'Odoo',
+  goNoGoCriteria: answers['cutover.decisions.goNoGoCriteria'] as string,
+  goNoGoOwners: answers['cutover.decisions.goNoGoOwners'] as string,
+  cutoverWindowHours,
+});
+const rollbackResult = generateRollbackPlan({
+  clientName,
+  adaptorName: 'Odoo',
+  rollbackTriggers: answers['cutover.decisions.rollbackTriggers'] as string,
+  cutoverStyle,
+});
+const cutoverRoles = (answers['training.curriculum.trainingPerRole'] as string)
+  .split(/\r?\n/)
+  .map((l) => l.trim())
+  .filter((l) => l.length > 0)
+  .map((l) => {
+    const idx = l.indexOf(':');
+    return idx < 0 ? l : l.slice(0, idx).trim();
+  });
+const smokeResult = generatePostCutoverSmoke({
+  clientName,
+  adaptorName: 'Odoo',
+  regressionSmokeScenarios: answers['testing.regression.regressionSmokeScenarios'] as string,
+  poApprovalInScope: true,
+  multiCurrencyInScope: answers['odoo.foundation.multiCurrency'] === true,
+  ssoInScope: false,
+  roles: cutoverRoles,
+});
+const commPlanResult = generateCutoverCommPlan({
+  clientName,
+  adaptorName: 'Odoo',
+  cutoverMilestones: answers['cutover.communication.cutoverMilestones'] as string,
+  escalationContacts: answers['cutover.communication.escalationContacts'] as string,
+  cutoverTeamRoster: answers['cutover.team.cutoverTeamRoster'] as string,
+  targetGoLiveDate: answers['kickoff.mandate.targetGoLiveDate'] as string,
+  cutoverWindowHours,
+});
+const dryRunResult = generateDryRunPlan({
+  clientName,
+  adaptorName: 'Odoo',
+  dryRunCount: answers['cutover.team.dryRunCount'] as number,
+  dryRunDates: answers['cutover.team.dryRunDates'] as string,
+  cutoverStyle,
+});
+const teamRosterResult = generateCutoverTeamRoster({
+  clientName,
+  adaptorName: 'Odoo',
+  cutoverTeamRoster: answers['cutover.team.cutoverTeamRoster'] as string,
+  targetGoLiveDate: answers['kickoff.mandate.targetGoLiveDate'] as string,
+});
+
 const writes: Array<[string, string]> = [
   ['Project_Kickoff.md', generateKickoff(kickoffData)],
   ['Project_Kickoff.html', generateKickoffHtml(kickoffData)],
@@ -540,6 +659,24 @@ for (const [bundlePath, content] of Object.entries(qrcResult.files)) {
   await fs.mkdir(path.dirname(fullPath), { recursive: true });
   await fs.writeFile(fullPath, content, 'utf8');
   process.stdout.write(`  ✓ ${rel}\n`);
+}
+
+// Pack V — Cutover/ subfolder (7 cutover artefacts).
+const cutoverDir = path.join(docDir, 'Cutover');
+await fs.mkdir(cutoverDir, { recursive: true });
+const cutoverWrites: Array<[string, string]> = [
+  ['Cutover_Runbook.md', runbookResult.markdown],
+  ['Cutover_Runbook.html', runbookResult.html],
+  ['Go_No_Go_Matrix.md', goNoGoResult.markdown],
+  ['Rollback_Plan.md', rollbackResult.markdown],
+  ['Post_Cutover_Smoke.md', smokeResult.markdown],
+  ['Communication_Plan.md', commPlanResult.markdown],
+  ['Dry_Run_Plan.md', dryRunResult.markdown],
+  ['Cutover_Team_Roster.md', teamRosterResult.markdown],
+];
+for (const [filename, content] of cutoverWrites) {
+  await fs.writeFile(path.join(cutoverDir, filename), content, 'utf8');
+  process.stdout.write(`  ✓ Cutover/${filename}\n`);
 }
 
 // ── Banlist verification ────────────────────────────────────────────────────

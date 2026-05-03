@@ -53,6 +53,14 @@ import { generateQuickReferenceCards } from './generators/quickReferenceCardGene
 import { generateTrainingMatrix } from './generators/trainingMatrixGenerator.js';
 import { generateTrainingSchedule } from './generators/trainingScheduleGenerator.js';
 import { generateKnowledgeTransferChecklist } from './generators/knowledgeTransferChecklistGenerator.js';
+// Pack V — Cutover Runbook (cross-platform — runs for both NetSuite + Odoo).
+import { generateCutoverRunbook } from './generators/cutoverRunbookGenerator.js';
+import { generateGoNoGoMatrix } from './generators/goNoGoMatrixGenerator.js';
+import { generateRollbackPlan } from './generators/rollbackPlanGenerator.js';
+import { generatePostCutoverSmoke } from './generators/postCutoverSmokeGenerator.js';
+import { generateCutoverCommPlan } from './generators/cutoverCommPlanGenerator.js';
+import { generateDryRunPlan } from './generators/dryRunPlanGenerator.js';
+import { generateCutoverTeamRoster } from './generators/cutoverTeamRosterGenerator.js';
 import { convertHtmlToPdf } from './pdfService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -477,6 +485,125 @@ export async function processJob(jobId: string, db: DbModule) {
     });
     await fs.writeFile(path.join(docDir, 'KT_Checklist.md'), ktResult.markdown);
 
+    // ── Pack V — Cutover Runbook (CROSS-PLATFORM) ────────────────────────────
+    // Seven generators emit to Documentation/Cutover/. Reuses migration
+    // inputs (cutoverStyle / cutoverWindowHours / preFreezeDays) across
+    // both adaptors via the namespaces NS uses (ns.foundation.* +
+    // p2p.* etc) and Odoo uses (odoo.migration.*). All Pack V wizard
+    // answers live under cutover.{team,decisions,communication}.*.
+    const cutoverDir = path.join(docDir, 'Cutover');
+    await fs.mkdir(cutoverDir, { recursive: true });
+
+    // cutoverStyle resolution — Odoo has the explicit answer; NS demos
+    // typically use BIG_BANG by default (no NS-equivalent answer today).
+    const cutoverStyleAnswer =
+      (answers['odoo.migration.cutoverStyle'] as string | undefined) ??
+      (answers['cutover.style'] as string | undefined) ??
+      'BIG_BANG';
+    const cutoverWindowHours =
+      (typeof answers['odoo.migration.cutoverWindowHours'] === 'number'
+        ? (answers['odoo.migration.cutoverWindowHours'] as number)
+        : undefined) ?? 36;
+    const preFreezeDays =
+      (typeof answers['odoo.migration.preFreezeDays'] === 'number'
+        ? (answers['odoo.migration.preFreezeDays'] as number)
+        : undefined) ?? 3;
+    const parallelRunDays =
+      typeof answers['odoo.migration.parallelRunDays'] === 'number'
+        ? (answers['odoo.migration.parallelRunDays'] as number)
+        : undefined;
+
+    const runbookResult = generateCutoverRunbook({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      cutoverStyle: cutoverStyleAnswer,
+      cutoverWindowHours,
+      preFreezeDays,
+      parallelRunDays,
+      cutoverTeamRoster: answers['cutover.team.cutoverTeamRoster'] as string | undefined,
+      targetGoLiveDate: answers['kickoff.mandate.targetGoLiveDate'] as string | undefined,
+      dryRunDates: answers['cutover.team.dryRunDates'] as string | undefined,
+    });
+    await fs.writeFile(path.join(cutoverDir, 'Cutover_Runbook.md'), runbookResult.markdown);
+    await fs.writeFile(path.join(cutoverDir, 'Cutover_Runbook.html'), runbookResult.html);
+
+    const goNoGoResult = generateGoNoGoMatrix({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      goNoGoCriteria: answers['cutover.decisions.goNoGoCriteria'] as string | undefined,
+      goNoGoOwners: answers['cutover.decisions.goNoGoOwners'] as string | undefined,
+      cutoverWindowHours,
+    });
+    await fs.writeFile(path.join(cutoverDir, 'Go_No_Go_Matrix.md'), goNoGoResult.markdown);
+
+    const rollbackResult = generateRollbackPlan({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      rollbackTriggers: answers['cutover.decisions.rollbackTriggers'] as string | undefined,
+      cutoverStyle: cutoverStyleAnswer,
+    });
+    await fs.writeFile(path.join(cutoverDir, 'Rollback_Plan.md'), rollbackResult.markdown);
+
+    // Post-cutover smoke pulls roles from Pack U trainingPerRole if
+    // populated; falls back to ns.design.standardRoleCustomization.
+    const cutoverRoles: string[] = [];
+    const trpr = (answers['training.curriculum.trainingPerRole'] as string | undefined) ?? '';
+    for (const line of trpr.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (trimmed.length === 0) continue;
+      const colonIdx = trimmed.indexOf(':');
+      if (colonIdx < 0) continue;
+      cutoverRoles.push(trimmed.slice(0, colonIdx).trim());
+    }
+    const smokeResult = generatePostCutoverSmoke({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      regressionSmokeScenarios:
+        answers['testing.regression.regressionSmokeScenarios'] as string | undefined,
+      poApprovalInScope: answers['ns.approvals.poApprovalInScope'] === true,
+      vbApprovalInScope: answers['ns.approvals.vbApprovalInScope'] === true,
+      ssoInScope: answers['ns.foundation.ssoInScope'] === true,
+      multiCurrencyInScope:
+        answers['ns.foundation.multiCurrencyInScope'] === true ||
+        answers['odoo.foundation.multiCurrency'] === true,
+      roles: cutoverRoles,
+    });
+    await fs.writeFile(path.join(cutoverDir, 'Post_Cutover_Smoke.md'), smokeResult.markdown);
+
+    const commPlanResult = generateCutoverCommPlan({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      cutoverMilestones: answers['cutover.communication.cutoverMilestones'] as string | undefined,
+      escalationContacts: answers['cutover.communication.escalationContacts'] as string | undefined,
+      cutoverTeamRoster: answers['cutover.team.cutoverTeamRoster'] as string | undefined,
+      targetGoLiveDate: answers['kickoff.mandate.targetGoLiveDate'] as string | undefined,
+      cutoverWindowHours,
+    });
+    await fs.writeFile(path.join(cutoverDir, 'Communication_Plan.md'), commPlanResult.markdown);
+
+    const dryRunResult = generateDryRunPlan({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      dryRunCount:
+        typeof answers['cutover.team.dryRunCount'] === 'number'
+          ? (answers['cutover.team.dryRunCount'] as number)
+          : undefined,
+      dryRunDates: answers['cutover.team.dryRunDates'] as string | undefined,
+      cutoverStyle: cutoverStyleAnswer,
+    });
+    await fs.writeFile(path.join(cutoverDir, 'Dry_Run_Plan.md'), dryRunResult.markdown);
+
+    const teamRosterResult = generateCutoverTeamRoster({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      cutoverTeamRoster: answers['cutover.team.cutoverTeamRoster'] as string | undefined,
+      targetGoLiveDate: answers['kickoff.mandate.targetGoLiveDate'] as string | undefined,
+    });
+    await fs.writeFile(
+      path.join(cutoverDir, 'Cutover_Team_Roster.md'),
+      teamRosterResult.markdown,
+    );
+
     const sddData = {
       clientName: eng.clientName as string,
       adaptor: adaptorCtx,
@@ -860,6 +987,12 @@ export async function processJob(jobId: string, db: DbModule) {
           perRoleGuides: perRoleResult.emitted.length,
           quickReferenceCards: qrcResult.emitted.length,
           path: 'Documentation/Training/',
+        },
+        cutover: {
+          // Pack V — 7 artefacts under Documentation/Cutover/.
+          artefactCount: 7,
+          path: 'Documentation/Cutover/',
+          cutoverStyle: runbookResult.resolvedStyle,
         },
         ...(isNetSuite ? { sdf: 'SDF/', suiteScript: 'SuiteScript/' } : {}),
       },

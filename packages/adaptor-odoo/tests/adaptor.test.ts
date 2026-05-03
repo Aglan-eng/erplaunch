@@ -20,23 +20,17 @@ describe('odooAdaptor: manifest', () => {
 });
 
 describe('odooAdaptor: schema', () => {
-  it('exposes the canonical Odoo App-shaped flow order (with KICKOFF first + TRAINING last)', () => {
+  it('exposes the canonical Odoo App-shaped flow order (with KICKOFF first + CUTOVER last)', () => {
     const ids = odooAdaptor.schema.flows.map((f) => f.id);
-    // Kickoff Pack — UNIVERSAL pack renders FIRST. Mandate, governance,
-    //   communication. Mirrored verbatim into adaptor-netsuite.
-    // Pack R — Restructure to Odoo App shape.
-    // Pack 8 — REVENUE_APPS (POS + eCommerce + Subscriptions).
-    // Pack 9 — OPERATIONS_APPS (HR + Project + CRM).
-    // Pack T — TESTING universal pack (cross-platform — same flow
-    //   mirrored in adaptor-netsuite). Drives Phase 5 artefacts.
-    // Pack U — TRAINING universal pack (cross-platform). Drives Phase 6
-    //   training collateral.
+    // Cross-platform pack ordering — universal lifecycle phases append
+    // in lifecycle order. Pack T (TESTING) → Phase 5,
+    // Pack U (TRAINING) → Phase 6, Pack V (CUTOVER) → Phase 7.
     expect(ids).toEqual([
       'KICKOFF',
       'FOUNDATION', 'ACCOUNTING', 'TAX', 'LOCALIZATION', 'INVENTORY',
       'P2P', 'O2C', 'REVENUE_APPS', 'OPERATIONS_APPS',
       'MANUFACTURING', 'RETURNS', 'MIGRATION',
-      'TESTING', 'TRAINING',
+      'TESTING', 'TRAINING', 'CUTOVER',
     ]);
   });
 
@@ -49,7 +43,7 @@ describe('odooAdaptor: schema', () => {
     }
   });
 
-  it('question IDs are namespaced under "odoo." or universal "kickoff." / "testing." / "training." and unique', () => {
+  it('question IDs are namespaced under "odoo." or universal "kickoff." / "testing." / "training." / "cutover." and unique', () => {
     const seen = new Set<string>();
     for (const flow of odooAdaptor.schema.flows) {
       for (const section of flow.sections) {
@@ -58,15 +52,17 @@ describe('odooAdaptor: schema', () => {
           //   - kickoff.*  (Project Kickoff)
           //   - testing.*  (Pack T — Test Artifacts)
           //   - training.* (Pack U — Training Collateral)
+          //   - cutover.*  (Pack V — Cutover Runbook)
           // Everything else stays adaptor-scoped under odoo.*.
           const valid =
             q.id.startsWith('odoo.') ||
             q.id.startsWith('kickoff.') ||
             q.id.startsWith('testing.') ||
-            q.id.startsWith('training.');
+            q.id.startsWith('training.') ||
+            q.id.startsWith('cutover.');
           expect(
             valid,
-            `question ${q.id} not namespaced under odoo. / kickoff. / testing. / training.`,
+            `question ${q.id} not namespaced under odoo. / kickoff. / testing. / training. / cutover.`,
           ).toBe(true);
           expect(seen.has(q.id), `duplicate question id: ${q.id}`).toBe(false);
           seen.add(q.id);
@@ -3896,10 +3892,10 @@ describe('odooAdaptor: Pack U — TRAINING flow shape', () => {
     expect(training!.label).toBe('Training & Knowledge Transfer');
   });
 
-  it('TRAINING sits LAST in the flow order (after TESTING)', () => {
+  it('TRAINING sits AFTER TESTING (and BEFORE CUTOVER which Pack V appends last)', () => {
     const ids = odooAdaptor.schema.flows.map((f) => f.id);
-    expect(ids[ids.length - 1]).toBe('TRAINING');
     expect(ids.indexOf('TRAINING')).toBeGreaterThan(ids.indexOf('TESTING'));
+    expect(ids.indexOf('TRAINING')).toBeLessThan(ids.indexOf('CUTOVER'));
   });
 
   it('TRAINING has the 3 sections in canonical order — curriculum / schedule / assessment', () => {
@@ -3991,5 +3987,94 @@ describe('odooAdaptor: Pack U — TRAINING flow shape', () => {
   it('TRAINING flow contributes 7 questions total (3 + 2 + 2)', () => {
     const total = training!.sections.reduce((sum, s) => sum + s.questions.length, 0);
     expect(total).toBe(7);
+  });
+});
+
+// ─── Pack V — CUTOVER flow shape (cross-platform parity with NetSuite) ──────
+
+describe('odooAdaptor: Pack V — CUTOVER flow shape', () => {
+  const cutover = odooAdaptor.schema.flows.find((f) => f.id === 'CUTOVER');
+
+  it('CUTOVER flow exists with the expected label', () => {
+    expect(cutover).toBeDefined();
+    expect(cutover!.label).toBe('Cutover & Go-Live');
+  });
+
+  it('CUTOVER sits LAST in the flow order (after TRAINING)', () => {
+    const ids = odooAdaptor.schema.flows.map((f) => f.id);
+    expect(ids[ids.length - 1]).toBe('CUTOVER');
+    expect(ids.indexOf('CUTOVER')).toBeGreaterThan(ids.indexOf('TRAINING'));
+  });
+
+  it('CUTOVER has 3 sections in canonical order — team / decisions / communication', () => {
+    const sectionIds = cutover!.sections.map((s) => s.id);
+    expect(sectionIds).toEqual(['team', 'decisions', 'communication']);
+  });
+
+  it('Section 1 (team) carries the 3 team questions', () => {
+    const team = cutover!.sections.find((s) => s.id === 'team')!;
+    const ids = team.questions.map((q) => q.id);
+    expect(ids).toEqual([
+      'cutover.team.cutoverTeamRoster',
+      'cutover.team.dryRunCount',
+      'cutover.team.dryRunDates',
+    ]);
+  });
+
+  it('Section 2 (decisions) carries the 3 decision questions', () => {
+    const dec = cutover!.sections.find((s) => s.id === 'decisions')!;
+    const ids = dec.questions.map((q) => q.id);
+    expect(ids).toEqual([
+      'cutover.decisions.goNoGoCriteria',
+      'cutover.decisions.goNoGoOwners',
+      'cutover.decisions.rollbackTriggers',
+    ]);
+  });
+
+  it('Section 3 (communication) carries the 2 comms questions', () => {
+    const comm = cutover!.sections.find((s) => s.id === 'communication')!;
+    const ids = comm.questions.map((q) => q.id);
+    expect(ids).toEqual([
+      'cutover.communication.cutoverMilestones',
+      'cutover.communication.escalationContacts',
+    ]);
+  });
+
+  it('dryRunCount is a NUMBER input', () => {
+    const q = cutover!
+      .sections.find((s) => s.id === 'team')!
+      .questions.find((qq) => qq.id === 'cutover.team.dryRunCount')!;
+    expect(q.inputType).toBe('NUMBER');
+  });
+
+  it('all TEXTAREA questions are non-required', () => {
+    for (const section of cutover!.sections) {
+      for (const q of section.questions) {
+        if (q.inputType === 'TEXTAREA') {
+          expect(q.required, `${q.id} should be optional`).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('flow description references the cutover artefacts', () => {
+    expect(cutover!.description ?? '').toMatch(/runbook/);
+    expect(cutover!.description ?? '').toMatch(/go\/no-go/i);
+    expect(cutover!.description ?? '').toMatch(/rollback/);
+    expect(cutover!.description ?? '').toMatch(/smoke/i);
+    expect(cutover!.description ?? '').toMatch(/team roster/i);
+  });
+
+  it('question IDs use the cutover.* universal namespace', () => {
+    for (const section of cutover!.sections) {
+      for (const q of section.questions) {
+        expect(q.id).toMatch(/^cutover\./);
+      }
+    }
+  });
+
+  it('CUTOVER flow contributes 8 questions total', () => {
+    const total = cutover!.sections.reduce((sum, s) => sum + s.questions.length, 0);
+    expect(total).toBe(8);
   });
 });

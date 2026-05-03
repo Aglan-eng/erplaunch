@@ -149,6 +149,12 @@ const schema: QuestionnaireSchema = {
     // Pack U — TRAINING flow renders AFTER TESTING (Phase 6 follows
     // Phase 5 in the lifecycle). Same cross-platform pattern.
     buildTrainingFlow(),
+    // Pack V — CUTOVER flow renders AFTER TRAINING (Phase 7 follows
+    // Phase 6). Cross-platform pack — mirrored verbatim in
+    // adaptor-netsuite. Reuses cutoverStyle / cutoverWindowHours /
+    // preFreezeDays / parallelRunDays from the existing odoo.migration
+    // flow.
+    buildCutoverFlow(),
   ],
 };
 
@@ -2291,6 +2297,105 @@ function buildTrainingFlow(): FlowDefinition {
               },
               { value: 'NONE', label: 'No assessment (training is informational only)' },
             ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+// ─── Pack V — CUTOVER flow (CROSS-PLATFORM, mirrored in adaptor-netsuite) ───
+//
+// Cutover team, dry runs, go/no-go criteria, rollback triggers, comms.
+// Same 8 questions in both adaptors. Reuses cutoverStyle /
+// cutoverWindowHours / preFreezeDays from the existing odoo.migration
+// flow.
+//
+// Sources:
+//   - ITIL change-management cutover patterns.
+//   - Standard ERP cutover runbooks (SuiteSuccess, SAP Activate, Odoo
+//     Implementation Methodology cutover guide).
+//   - ASTM E2842 — relevant for regulated / life-sciences engagements.
+function buildCutoverFlow(): FlowDefinition {
+  return {
+    id: 'CUTOVER',
+    label: 'Cutover & Go-Live',
+    description:
+      'Cutover team, dry runs, go/no-go criteria, rollback triggers, communication plan. Drives Documentation/Cutover/ artefacts: hour-by-hour runbook, go/no-go matrix, rollback plan, post-cutover smoke, communication plan, dry run plan, and team roster.',
+    sections: [
+      {
+        id: 'team',
+        label: 'Cutover Team & Dry Runs',
+        order: 1,
+        questions: [
+          {
+            id: 'cutover.team.cutoverTeamRoster',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Cutover team roster (one per line — '<name>: <role>: <on-call window>'; e.g., 'Mariam Hassan: Consultant PM (overall command): T-1 → T+3 days continuous', 'Aisha Othman: Client PM: T0 → T+5 days', 'Daniel Sterling: US R&D Finance lead: T0 → T+1 day')",
+          },
+          {
+            id: 'cutover.team.dryRunCount',
+            inputType: 'NUMBER',
+            required: false,
+            label: 'Number of dry runs before actual cutover (typical 2-3)',
+          },
+          {
+            id: 'cutover.team.dryRunDates',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Dry run schedule (one per line — '<run #>: <date>: <focus>'; e.g., 'Dry Run 1: 2026-12-14: Data migration only', 'Dry Run 2: 2027-01-04: Full end-to-end with users', 'Dry Run 3: 2027-01-11: Final rehearsal — same as production')",
+          },
+        ],
+      },
+      {
+        id: 'decisions',
+        label: 'Go/No-Go & Rollback',
+        order: 2,
+        questions: [
+          {
+            id: 'cutover.decisions.goNoGoCriteria',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Go/No-Go criteria (one per line — '<criterion>: <pass threshold>'; e.g., 'Migration tie-out: 100% TB match across all entities', 'Smoke test pass rate: 100% of P0 scenarios green', 'No Critical defects open: zero', 'Performance benchmarks: all met under simulated peak load')",
+          },
+          {
+            id: 'cutover.decisions.goNoGoOwners',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Go/No-Go decision owners (one per line — '<area>: <owner_name + role>'; e.g., 'Migration data: Karim Yaseen (Group CFO)', 'Functional readiness: Aisha Othman (Client PM)', 'Technical readiness: Mariam Hassan (Consultant PM)', 'Final go/no-go: Dr. Layla Al-Mansoori (Group COO / Sponsor)')",
+          },
+          {
+            id: 'cutover.decisions.rollbackTriggers',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Rollback triggers (one per line — conditions that force a rollback; e.g., 'Critical defect found in core finance flow with no workaround', 'Migration tie-out fails for >1% of records and cannot be reconciled within 2h', 'System unavailable for >30 min during cutover window')",
+          },
+        ],
+      },
+      {
+        id: 'communication',
+        label: 'Communication Plan',
+        order: 3,
+        questions: [
+          {
+            id: 'cutover.communication.cutoverMilestones',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Cutover milestones requiring communication (one per line — '<milestone>: <recipients>'; e.g., 'Pre-freeze starts: All users + Sponsor', 'Cutover begins: Steering + Sponsor + Department Heads', 'Migration complete: Steering + IT', 'Smoke pass / go declared: All users + Sponsor + Sales channel')",
+          },
+          {
+            id: 'cutover.communication.escalationContacts',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Cutover escalation contacts beyond the team roster (one per line — '<contact>: <when to call>'; e.g., 'Group CEO: only if rollback triggered', 'External SuiteCloud Support: if SDF deploy fails', 'Banking partner contact: if intercompany payment files fail')",
           },
         ],
       },

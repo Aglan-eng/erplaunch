@@ -20,26 +20,16 @@ describe('netsuiteAdaptor: manifest', () => {
 });
 
 describe('netsuiteAdaptor: schema', () => {
-  it('exposes 13 flows in the canonical order — KICKOFF + FOUNDATION + TAX + LOCALIZATION + SOLUTION_DESIGN + the legacy 5 + TESTING + TRAINING', () => {
+  it('exposes 14 flows in the canonical order — KICKOFF + FOUNDATION + TAX + LOCALIZATION + SOLUTION_DESIGN + the legacy 5 + TESTING + TRAINING + CUTOVER', () => {
     const ids = netsuiteAdaptor.schema.flows.map((f) => f.id);
-    // Kickoff Pack — UNIVERSAL pack renders FIRST.
-    // NS Pack 1 added FOUNDATION.
-    // NS Pack 2 inserted TAX.
-    // NS Pack 3 inserted LOCALIZATION.
-    // NS SD Depth Pack inserts SOLUTION_DESIGN after LOCALIZATION,
-    // before R2R — closes the Phase 3 lifecycle-harness gap (4/10 → 9+).
-    // NS Pack W inserts APPROVALS between P2P and O2C — drives the
-    // SuiteFlow workflow + WFA script generators.
-    // Pack T appends TESTING after RETURNS (cross-platform — same flow
-    // mirrored verbatim in adaptor-odoo) — drives Phase 5 artefacts.
-    // Pack U appends TRAINING after TESTING (cross-platform) — drives
-    // Phase 6 training collateral. Closes Phase 6 gap (5/10 Odoo →
-    // 9+/10).
+    // Cross-platform pack ordering — universal lifecycle phases
+    // append in lifecycle order. Pack T (TESTING) → Phase 5,
+    // Pack U (TRAINING) → Phase 6, Pack V (CUTOVER) → Phase 7.
     expect(ids).toEqual([
       'KICKOFF',
       'FOUNDATION', 'TAX', 'LOCALIZATION', 'SOLUTION_DESIGN',
       'R2R', 'P2P', 'APPROVALS', 'O2C', 'PRODUCTION', 'RETURNS',
-      'TESTING', 'TRAINING',
+      'TESTING', 'TRAINING', 'CUTOVER',
     ]);
   });
 
@@ -2000,10 +1990,12 @@ describe('netsuiteAdaptor: Pack U — TRAINING flow shape', () => {
     expect(training!.label).toBe('Training & Knowledge Transfer');
   });
 
-  it('TRAINING sits LAST in the flow order (after TESTING)', () => {
+  it('TRAINING sits AFTER TESTING (and BEFORE CUTOVER which Pack V appends last)', () => {
     const ids = netsuiteAdaptor.schema.flows.map((f) => f.id);
-    expect(ids[ids.length - 1]).toBe('TRAINING');
     expect(ids.indexOf('TRAINING')).toBeGreaterThan(ids.indexOf('TESTING'));
+    // Pack V appended CUTOVER after TRAINING; pre-Pack-V this test
+    // asserted TRAINING was the array tail.
+    expect(ids.indexOf('TRAINING')).toBeLessThan(ids.indexOf('CUTOVER'));
   });
 
   it('TRAINING has the 3 sections in canonical order — curriculum / schedule / assessment', () => {
@@ -2095,5 +2087,95 @@ describe('netsuiteAdaptor: Pack U — TRAINING flow shape', () => {
   it('TRAINING flow contributes 7 questions total (3 + 2 + 2)', () => {
     const total = training!.sections.reduce((sum, s) => sum + s.questions.length, 0);
     expect(total).toBe(7);
+  });
+});
+
+// ─── Pack V — CUTOVER flow shape ─────────────────────────────────────────────
+
+describe('netsuiteAdaptor: Pack V — CUTOVER flow shape', () => {
+  const cutover = netsuiteAdaptor.schema.flows.find((f) => f.id === 'CUTOVER');
+
+  it('CUTOVER flow exists with the expected label', () => {
+    expect(cutover).toBeDefined();
+    expect(cutover!.label).toBe('Cutover & Go-Live');
+  });
+
+  it('CUTOVER sits LAST in the flow order (after TRAINING)', () => {
+    const ids = netsuiteAdaptor.schema.flows.map((f) => f.id);
+    expect(ids[ids.length - 1]).toBe('CUTOVER');
+    expect(ids.indexOf('CUTOVER')).toBeGreaterThan(ids.indexOf('TRAINING'));
+  });
+
+  it('CUTOVER has the 3 sections in canonical order — team / decisions / communication', () => {
+    const sectionIds = cutover!.sections.map((s) => s.id);
+    expect(sectionIds).toEqual(['team', 'decisions', 'communication']);
+  });
+
+  it('Section 1 (team) carries the 3 team questions', () => {
+    const team = cutover!.sections.find((s) => s.id === 'team')!;
+    const ids = team.questions.map((q) => q.id);
+    expect(ids).toEqual([
+      'cutover.team.cutoverTeamRoster',
+      'cutover.team.dryRunCount',
+      'cutover.team.dryRunDates',
+    ]);
+  });
+
+  it('Section 2 (decisions) carries the 3 decision questions', () => {
+    const dec = cutover!.sections.find((s) => s.id === 'decisions')!;
+    const ids = dec.questions.map((q) => q.id);
+    expect(ids).toEqual([
+      'cutover.decisions.goNoGoCriteria',
+      'cutover.decisions.goNoGoOwners',
+      'cutover.decisions.rollbackTriggers',
+    ]);
+  });
+
+  it('Section 3 (communication) carries the 2 comms questions', () => {
+    const comm = cutover!.sections.find((s) => s.id === 'communication')!;
+    const ids = comm.questions.map((q) => q.id);
+    expect(ids).toEqual([
+      'cutover.communication.cutoverMilestones',
+      'cutover.communication.escalationContacts',
+    ]);
+  });
+
+  it('dryRunCount is a NUMBER input', () => {
+    const q = cutover!
+      .sections.find((s) => s.id === 'team')!
+      .questions.find((qq) => qq.id === 'cutover.team.dryRunCount')!;
+    expect(q.inputType).toBe('NUMBER');
+  });
+
+  it('all TEXTAREA questions are non-required (consultant skip-friendly)', () => {
+    for (const section of cutover!.sections) {
+      for (const q of section.questions) {
+        if (q.inputType === 'TEXTAREA') {
+          expect(q.required, `${q.id} should be optional`).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('flow description references the cutover artefacts the generators emit', () => {
+    expect(cutover!.description ?? '').toMatch(/runbook/);
+    expect(cutover!.description ?? '').toMatch(/go\/no-go/i);
+    expect(cutover!.description ?? '').toMatch(/rollback/);
+    expect(cutover!.description ?? '').toMatch(/smoke/i);
+    expect(cutover!.description ?? '').toMatch(/team roster/i);
+    expect(cutover!.description ?? '').toMatch(/dry run/i);
+  });
+
+  it('question IDs use the cutover.* universal namespace (cross-platform — same on Odoo)', () => {
+    for (const section of cutover!.sections) {
+      for (const q of section.questions) {
+        expect(q.id).toMatch(/^cutover\./);
+      }
+    }
+  });
+
+  it('CUTOVER flow contributes 8 questions total (3 + 3 + 2)', () => {
+    const total = cutover!.sections.reduce((sum, s) => sum + s.questions.length, 0);
+    expect(total).toBe(8);
   });
 });

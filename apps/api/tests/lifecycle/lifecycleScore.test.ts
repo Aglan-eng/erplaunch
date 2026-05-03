@@ -334,6 +334,28 @@ describe('Lifecycle harness — threshold gates', () => {
       `Phase 6 (Train) failed: ${p6.failedCheckDescriptions.join('; ')}`,
     ).toBeGreaterThanOrEqual(9.0);
   });
+
+  // Phase 7 (Cutover) gates — NEW after Pack V (Cutover Runbook).
+  // Pre-Pack-V floor: Odoo 2.5/10 (only Rollback/Smoke keywords matched),
+  // NetSuite 0/10 (no Cutover_Runbook). Pack V emits 7 dedicated
+  // artefacts → 8 fresh checks; both adaptors now hit 8/8. Ratcheted
+  // to ≥ 9.0 — anything below means a Pack V artefact dropped or the
+  // harness loader stopped seeing Documentation/Cutover/.
+  it('Odoo bundle Phase 7 (Cutover) ≥ 9.0 — locks in Pack V closure (2.5/10 → 9+/10)', () => {
+    const p7 = runs.find((r) => r.adaptor === 'odoo')!.score.perPhase.find((p) => p.number === 7)!;
+    expect(
+      p7.score,
+      `Phase 7 (Cutover) failed: ${p7.failedCheckDescriptions.join('; ')}`,
+    ).toBeGreaterThanOrEqual(9.0);
+  });
+
+  it('NetSuite bundle Phase 7 (Cutover) ≥ 9.0 — locks in Pack V closure (0/10 → 9+/10)', () => {
+    const p7 = runs.find((r) => r.adaptor === 'netsuite')!.score.perPhase.find((p) => p.number === 7)!;
+    expect(
+      p7.score,
+      `Phase 7 (Cutover) failed: ${p7.failedCheckDescriptions.join('; ')}`,
+    ).toBeGreaterThanOrEqual(9.0);
+  });
 });
 
 function formatScoreDetails(adaptor: AdaptorId, score: BundleScore): string {
