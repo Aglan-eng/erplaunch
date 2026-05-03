@@ -77,6 +77,15 @@ import { generateProcessImprovementBacklog } from './generators/processImproveme
 import { generateContinuousImprovementGovernance } from './generators/continuousImprovementGovernanceGenerator.js';
 import { generateKpiEvolutionPlan } from './generators/kpiEvolutionPlanGenerator.js';
 import { generatePhaseTwoCharter } from './generators/phaseTwoCharterGenerator.js';
+// Pack Z — Data Migration Assets (cross-platform — runs for both NetSuite + Odoo).
+import { generateCsvImportTemplateBundle } from './generators/csvImportTemplateBundleGenerator.js';
+import { generateFieldMappingWorkbook } from './generators/fieldMappingWorkbookGenerator.js';
+import { generateReconciliationQueries } from './generators/reconciliationQueriesGenerator.js';
+import { generateMigrationCleansingRules } from './generators/migrationCleansingRulesGenerator.js';
+import { generateMigrationLoadSequencing } from './generators/migrationLoadSequencingGenerator.js';
+import { generateMigrationRunbook } from './generators/migrationRunbookGenerator.js';
+import { generateRejectHandlingPlaybook } from './generators/rejectHandlingPlaybookGenerator.js';
+import { generateDataQualityScorecard } from './generators/dataQualityScorecardGenerator.js';
 import { convertHtmlToPdf } from './pdfService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -885,6 +894,134 @@ export async function processJob(jobId: string, db: DbModule) {
       phaseTwoResult.markdown,
     );
 
+    // ── Pack Z — Data Migration Assets (CROSS-PLATFORM) ──────────────────────
+    // Eight generators emit to Documentation/Data_Migration/ + nested
+    // Templates/ for the per-object CSV files. Adaptor-conditional —
+    // NetSuite catalog is 16 objects; Odoo catalog is 10. Headers are
+    // byte-for-byte aligned with the adaptor's CSV importer.
+    const dataMigrationDir = path.join(docDir, 'Data_Migration');
+    const dataMigrationTemplatesDir = path.join(dataMigrationDir, 'Templates');
+    await fs.mkdir(dataMigrationTemplatesDir, { recursive: true });
+
+    const sourceSystemsByObject =
+      (answers['migration.details.sourceSystemsByObject'] as string | undefined) ?? '';
+    const cleansingRulesByObject =
+      (answers['migration.details.cleansingRulesByObject'] as string | undefined) ?? '';
+    const rejectSlaByObject =
+      (answers['migration.details.rejectSlaByObject'] as string | undefined) ?? '';
+    const historicalDataDepth =
+      (answers['migration.details.historicalDataDepth'] as string | undefined) ?? '';
+    const dryRunPassThreshold =
+      (answers['migration.readiness.dryRunPassThreshold'] as string | undefined) ?? '';
+    const dataQualityOwners =
+      (answers['migration.readiness.dataQualityOwners'] as string | undefined) ?? '';
+    const migrationCutoffDate =
+      (answers['migration.readiness.migrationCutoffDate'] as string | undefined) ?? '';
+
+    // 1. CSV import template bundle — multi-file emit via spread.
+    const csvBundleResult = generateCsvImportTemplateBundle({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      answers,
+    });
+    for (const [relativePath, content] of Object.entries(csvBundleResult.files)) {
+      // Each entry is "Templates/<NN>_<obj>.csv". Path is relative to
+      // Documentation/Data_Migration/ — write under that dir.
+      const fullPath = path.join(dataMigrationDir, relativePath);
+      await fs.writeFile(fullPath, content);
+    }
+    await fs.writeFile(
+      path.join(dataMigrationTemplatesDir, 'README.md'),
+      csvBundleResult.readme,
+    );
+
+    // 2. Field mapping workbook.
+    const fieldMappingResult = generateFieldMappingWorkbook({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      answers,
+      sourceSystemsByObject,
+    });
+    await fs.writeFile(
+      path.join(dataMigrationDir, 'Field_Mapping_Workbook.md'),
+      fieldMappingResult.markdown,
+    );
+
+    // 3. Reconciliation queries.
+    const reconQueriesResult = generateReconciliationQueries({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      answers,
+    });
+    await fs.writeFile(
+      path.join(dataMigrationDir, 'Reconciliation_Queries.md'),
+      reconQueriesResult.markdown,
+    );
+
+    // 4. Cleansing rules.
+    const cleansingRulesResult = generateMigrationCleansingRules({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      cleansingRulesByObject,
+      dataQualityOwners,
+    });
+    await fs.writeFile(
+      path.join(dataMigrationDir, 'Cleansing_Rules.md'),
+      cleansingRulesResult.markdown,
+    );
+
+    // 5. Load sequencing (Mermaid DAG).
+    const loadSequencingResult = generateMigrationLoadSequencing({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      answers,
+    });
+    await fs.writeFile(
+      path.join(dataMigrationDir, 'Load_Sequencing.md'),
+      loadSequencingResult.markdown,
+    );
+
+    // 6. Migration runbook (cross-refs Cutover_Runbook from Pack V).
+    const migrationRunbookResult = generateMigrationRunbook({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      answers,
+      historicalDataDepth,
+      dryRunPassThreshold,
+      migrationCutoffDate,
+      targetGoLiveDate: answers['kickoff.mandate.targetGoLiveDate'] as string | undefined,
+    });
+    await fs.writeFile(
+      path.join(dataMigrationDir, 'Migration_Runbook.md'),
+      migrationRunbookResult.markdown,
+    );
+
+    // 7. Reject handling playbook.
+    const rejectPlaybookResult = generateRejectHandlingPlaybook({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      rejectSlaByObject,
+    });
+    await fs.writeFile(
+      path.join(dataMigrationDir, 'Reject_Handling_Playbook.md'),
+      rejectPlaybookResult.markdown,
+    );
+
+    // 8. Data quality scorecard (T-30/14/7/3/1 readiness gate).
+    const dqScorecardResult = generateDataQualityScorecard({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      answers,
+      dryRunPassThreshold,
+      dataQualityOwners,
+      migrationCutoffDate,
+      targetGoLiveDate: answers['kickoff.mandate.targetGoLiveDate'] as string | undefined,
+    });
+    await fs.writeFile(
+      path.join(dataMigrationDir, 'Data_Quality_Scorecard.md'),
+      dqScorecardResult.markdown,
+    );
+
     const sddData = {
       clientName: eng.clientName as string,
       adaptor: adaptorCtx,
@@ -1285,6 +1422,16 @@ export async function processJob(jobId: string, db: DbModule) {
           // Pack Y — 7 artefacts under Documentation/Stabilization/.
           artefactCount: 7,
           path: 'Documentation/Stabilization/',
+        },
+        dataMigration: {
+          // Pack Z — 7 markdown artefacts + 1 templates folder containing
+          // N CSVs (16 NetSuite / 10 Odoo, possibly fewer if BOMs / fixed
+          // assets are out of scope) + 1 templates README under
+          // Documentation/Data_Migration/.
+          artefactCount: 7,
+          templateCount: csvBundleResult.objectCount,
+          path: 'Documentation/Data_Migration/',
+          templatesPath: 'Documentation/Data_Migration/Templates/',
         },
         ...(isNetSuite ? { sdf: 'SDF/', suiteScript: 'SuiteScript/' } : {}),
       },

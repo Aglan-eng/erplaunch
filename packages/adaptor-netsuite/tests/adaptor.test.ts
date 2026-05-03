@@ -20,16 +20,20 @@ describe('netsuiteAdaptor: manifest', () => {
 });
 
 describe('netsuiteAdaptor: schema', () => {
-  it('exposes 16 flows in the canonical order — KICKOFF + FOUNDATION + TAX + LOCALIZATION + SOLUTION_DESIGN + the legacy 5 + TESTING + TRAINING + CUTOVER + HYPERCARE + STABILIZATION', () => {
+  it('exposes 17 flows in the canonical order — adds MIGRATION between RETURNS and TESTING (Pack Z)', () => {
     const ids = netsuiteAdaptor.schema.flows.map((f) => f.id);
     // Cross-platform pack ordering — universal lifecycle phases
     // append in lifecycle order. T → Phase 5, U → Phase 6, V → Phase 7,
-    // X → Phase 8, Y → Phase 9.
+    // X → Phase 8, Y → Phase 9. Pack Z inserts MIGRATION (cross-cutting
+    // hardener) between RETURNS and TESTING — mirrors Odoo's flow
+    // position. NS engagements didn't have a dedicated MIGRATION flow
+    // before; the new flow holds the cross-platform `migration.*`
+    // questions (details + readiness).
     expect(ids).toEqual([
       'KICKOFF',
       'FOUNDATION', 'TAX', 'LOCALIZATION', 'SOLUTION_DESIGN',
       'R2R', 'P2P', 'APPROVALS', 'O2C', 'PRODUCTION', 'RETURNS',
-      'TESTING', 'TRAINING', 'CUTOVER', 'HYPERCARE', 'STABILIZATION',
+      'MIGRATION', 'TESTING', 'TRAINING', 'CUTOVER', 'HYPERCARE', 'STABILIZATION',
     ]);
   });
 
@@ -2367,5 +2371,63 @@ describe('netsuiteAdaptor: Pack Y — STABILIZATION flow shape', () => {
   it('STABILIZATION flow contributes 13 questions total (4 + 3 + 3 + 3)', () => {
     const total = stab!.sections.reduce((sum, s) => sum + s.questions.length, 0);
     expect(total).toBe(13);
+  });
+});
+
+// ─── Pack Z — MIGRATION flow shape (cross-platform: same questions on Odoo) ──
+
+describe('netsuiteAdaptor: Pack Z — MIGRATION flow shape', () => {
+  const mig = netsuiteAdaptor.schema.flows.find((f) => f.id === 'MIGRATION');
+
+  it('MIGRATION flow exists with the expected label', () => {
+    expect(mig).toBeDefined();
+    expect(mig!.label).toBe('Data Migration');
+  });
+
+  it('MIGRATION sits between RETURNS and TESTING (mirrors Odoo flow position)', () => {
+    const ids = netsuiteAdaptor.schema.flows.map((f) => f.id);
+    expect(ids.indexOf('MIGRATION')).toBe(ids.indexOf('RETURNS') + 1);
+    expect(ids.indexOf('MIGRATION')).toBe(ids.indexOf('TESTING') - 1);
+  });
+
+  it('MIGRATION has 2 sections in canonical order — details / readiness', () => {
+    const sectionIds = mig!.sections.map((s) => s.id);
+    expect(sectionIds).toEqual(['details', 'readiness']);
+  });
+
+  it('Section 1 (details) carries 4 cross-platform questions', () => {
+    const det = mig!.sections.find((s) => s.id === 'details')!;
+    expect(det.label).toBe('Migration Details');
+    const ids = det.questions.map((q) => q.id).sort();
+    expect(ids).toEqual([
+      'migration.details.cleansingRulesByObject',
+      'migration.details.historicalDataDepth',
+      'migration.details.rejectSlaByObject',
+      'migration.details.sourceSystemsByObject',
+    ]);
+  });
+
+  it('Section 2 (readiness) carries 3 cross-platform questions', () => {
+    const rd = mig!.sections.find((s) => s.id === 'readiness')!;
+    expect(rd.label).toBe('Migration Readiness');
+    const ids = rd.questions.map((q) => q.id).sort();
+    expect(ids).toEqual([
+      'migration.readiness.dataQualityOwners',
+      'migration.readiness.dryRunPassThreshold',
+      'migration.readiness.migrationCutoffDate',
+    ]);
+  });
+
+  it('all questions are non-required (Pack Z keeps the floor green when overlay is sparse)', () => {
+    for (const section of mig!.sections) {
+      for (const q of section.questions) {
+        expect(q.required, `${q.id} should be optional`).toBe(false);
+      }
+    }
+  });
+
+  it('MIGRATION flow contributes 7 questions total (4 + 3)', () => {
+    const total = mig!.sections.reduce((sum, s) => sum + s.questions.length, 0);
+    expect(total).toBe(7);
   });
 });

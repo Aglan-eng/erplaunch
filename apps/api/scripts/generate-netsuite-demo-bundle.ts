@@ -82,6 +82,15 @@ import { generateProcessImprovementBacklog } from '../src/services/generators/pr
 import { generateContinuousImprovementGovernance } from '../src/services/generators/continuousImprovementGovernanceGenerator.js';
 import { generateKpiEvolutionPlan } from '../src/services/generators/kpiEvolutionPlanGenerator.js';
 import { generatePhaseTwoCharter } from '../src/services/generators/phaseTwoCharterGenerator.js';
+// Pack Z — Data Migration Assets (cross-platform).
+import { generateCsvImportTemplateBundle } from '../src/services/generators/csvImportTemplateBundleGenerator.js';
+import { generateFieldMappingWorkbook } from '../src/services/generators/fieldMappingWorkbookGenerator.js';
+import { generateReconciliationQueries } from '../src/services/generators/reconciliationQueriesGenerator.js';
+import { generateMigrationCleansingRules } from '../src/services/generators/migrationCleansingRulesGenerator.js';
+import { generateMigrationLoadSequencing } from '../src/services/generators/migrationLoadSequencingGenerator.js';
+import { generateMigrationRunbook } from '../src/services/generators/migrationRunbookGenerator.js';
+import { generateRejectHandlingPlaybook } from '../src/services/generators/rejectHandlingPlaybookGenerator.js';
+import { generateDataQualityScorecard } from '../src/services/generators/dataQualityScorecardGenerator.js';
 import netsuiteAdaptor from '@ofoq/adaptor-netsuite';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -689,6 +698,56 @@ const answers: Record<string, unknown> = {
     'Scope discipline | Approval delegation deferred late | Reduced finance approval bottleneck risk | Bring delegation forward in phase-two estimating\n' +
     'Data quality | Vendor master had 12% duplicates pre-cutover | Migration window extended 8 hours | Add proactive dedup pass to standard playbook\n' +
     'Sponsor engagement | Helena attended all UAT sign-offs | Approvals moved fast, ambiguity resolved same-day | Replicate exec-attendance pattern for phase 2',
+
+  // ── Pack Z — Data Migration Assets (cross-platform) ─────────────────────────
+  // Atlas migrates from a heterogeneous landscape: QuickBooks Online (US +
+  // AU subsidiaries), Sage 50 (UK), and legacy Microsoft Dynamics GP (DE).
+  // Customer master is partly in Salesforce. Inventory + opening balances
+  // are spread across all four sources.
+  'migration.details.sourceSystemsByObject':
+    'Customers | Salesforce (account object) + QuickBooks Online (Customer Centre) | Salesforce is system-of-record for B2B contacts; QBO holds shipping addresses\n' +
+    'Vendors | QuickBooks Online (Vendor Centre) + Sage 50 (UK) + Dynamics GP (DE) | Three sources, single golden record needed; tax IDs live in different fields per source\n' +
+    'Items | NetSuite (already loaded for SKU master) + QBO (US/AU pricing) | Pricing varies by subsidiary; load NetSuite-format export\n' +
+    'Chart of Accounts | Sage 50 (UK natural account hierarchy is canonical) | Other subsidiaries map to UK chart in COA mapping workbook\n' +
+    'Open AR Invoices | QBO + Sage 50 + Dynamics GP | All three need to net against credit memos before extract\n' +
+    'Open AP Bills | QBO + Sage 50 + Dynamics GP | Same as AR — three sources, net pre-extract\n' +
+    'GL Opening Balances | Consolidated trial balance from current consolidation tool | Source-of-truth is the auditor-signed-off trial balance\n' +
+    'Inventory Opening Balances | NetSuite warehouse system + Sage 50 stock module | Two-source reconcile; Sage is canonical for UK',
+  'migration.details.cleansingRulesByObject':
+    'Customers | Trim whitespace; uppercase tax IDs; split combined billing/shipping into two address rows; merge Salesforce + QBO by tax ID + country | Sarah Chen (consultant — finance lead)\n' +
+    'Vendors | Trim whitespace; standardise IBAN format; verify SWIFT codes; flag bank accounts changed in last 90 days for fraud review | Mostafa Sherif (consultant — OneWorld + tax)\n' +
+    'Items | Standardise UoM codes (Sage uses imperial in some SKUs); convert prices to USD where ledger requires; flag items with zero historical movement for archive | Tom Wilson (Atlas — US/AU lead)\n' +
+    'Chart of Accounts | Map all four sub-charts to UK natural-account canonical; flag any non-mapped accounts to controller; verify hierarchy before export | Helena Reyes (Atlas — CFO sign-off)\n' +
+    'Open AR / AP | Net invoices against credit memos in source; flag aged > 365 days for write-off review; convert all amounts to subsidiary base currency | Priya Patel (Atlas — Rev Rec lead)\n' +
+    'GL Opening Balances | Trial balance must net to zero per subsidiary; intercompany balances must reconcile to elimination subsidiary; auditor sign-off required | Helena Reyes (Atlas — CFO)\n' +
+    'Inventory Opening Balances | Reconcile system-of-record between NetSuite WMS + Sage; capture cycle-count adjustments separately; flag negative on-hand for investigation | Sophie Müller (Atlas — EU lead)',
+  'migration.details.rejectSlaByObject':
+    'Customers | < 0.5% rejects | 24h re-load\n' +
+    'Vendors | < 0.5% rejects | 24h re-load\n' +
+    'Items | < 1% rejects | 48h re-load\n' +
+    'Chart of Accounts | 0 rejects | 4h re-load (financial)\n' +
+    'Open AR Invoices | 0 rejects | 4h re-load (financial — must clear before next dry-run)\n' +
+    'Open AP Bills | 0 rejects | 4h re-load (financial — must clear before next dry-run)\n' +
+    'GL Opening Balances | 0 rejects | 4h re-load (financial — must clear before sign-off)\n' +
+    'Inventory Opening Balances | < 0.5% rejects | 24h re-load',
+  'migration.details.historicalDataDepth':
+    'Current FY 2026 — full detail (open + closed transactions). FY 2024 + FY 2025 — summary balances + selected high-value transactions only (> $50k or > 90d aged). Older — archived in source systems, not migrated. Auditor briefed on data-retention plan.',
+  'migration.readiness.dryRunPassThreshold':
+    '99.7% records loaded clean across all objects, 0 financial-object rejects (AR / AP / GL), trial balance nets to zero per subsidiary',
+  'migration.readiness.dataQualityOwners':
+    'Customers | David Chen | Sophie Müller\n' +
+    'Vendors | David Chen | Tom Wilson\n' +
+    'Items | Tom Wilson | Sophie Müller\n' +
+    'Chart of Accounts | Helena Reyes | David Chen\n' +
+    'Open AR / AP | Priya Patel | David Chen\n' +
+    'GL Opening Balances | Helena Reyes | David Chen\n' +
+    'Inventory Opening Balances | Sophie Müller | Tom Wilson',
+  'migration.readiness.migrationCutoffDate':
+    '2026-11-13 — last business day before go-live; final source extracts pulled at 18:00 EST',
+
+  // Pack Z — flag fixed assets in scope so the FA template + load step ship.
+  'ns.design.fixedAssetsScope':
+    '~120 assets across 4 subsidiaries: leasehold improvements, office equipment, R&D lab equipment. Straight-line depreciation, 60-month useful life standard. Auditor sign-off on opening NBV required before load.',
 };
 
 const comments = [
@@ -1135,6 +1194,89 @@ for (const [filename, content] of stabilizationWrites) {
   await fs.writeFile(path.join(stabilizationDir, filename), content, 'utf8');
   process.stdout.write(`  ✓ Stabilization/${filename}\n`);
 }
+
+// Pack Z — Data_Migration/ subfolder (7 markdown + Templates/ with N CSVs + README.md).
+const dataMigrationDir = path.join(docDir, 'Data_Migration');
+const dataMigrationTemplatesDir = path.join(dataMigrationDir, 'Templates');
+await fs.mkdir(dataMigrationTemplatesDir, { recursive: true });
+
+const csvBundleResult = generateCsvImportTemplateBundle({
+  clientName,
+  adaptorName: 'NetSuite',
+  answers,
+});
+const fieldMappingResult = generateFieldMappingWorkbook({
+  clientName,
+  adaptorName: 'NetSuite',
+  answers,
+  sourceSystemsByObject: answers['migration.details.sourceSystemsByObject'] as string,
+});
+const reconQueriesResult = generateReconciliationQueries({
+  clientName,
+  adaptorName: 'NetSuite',
+  answers,
+});
+const cleansingRulesResult = generateMigrationCleansingRules({
+  clientName,
+  adaptorName: 'NetSuite',
+  cleansingRulesByObject: answers['migration.details.cleansingRulesByObject'] as string,
+  dataQualityOwners: answers['migration.readiness.dataQualityOwners'] as string,
+});
+const loadSequencingResult = generateMigrationLoadSequencing({
+  clientName,
+  adaptorName: 'NetSuite',
+  answers,
+});
+const migrationRunbookResult = generateMigrationRunbook({
+  clientName,
+  adaptorName: 'NetSuite',
+  answers,
+  historicalDataDepth: answers['migration.details.historicalDataDepth'] as string,
+  dryRunPassThreshold: answers['migration.readiness.dryRunPassThreshold'] as string,
+  migrationCutoffDate: answers['migration.readiness.migrationCutoffDate'] as string,
+  targetGoLiveDate: answers['kickoff.mandate.targetGoLiveDate'] as string,
+});
+const rejectPlaybookResult = generateRejectHandlingPlaybook({
+  clientName,
+  adaptorName: 'NetSuite',
+  rejectSlaByObject: answers['migration.details.rejectSlaByObject'] as string,
+});
+const dqScorecardResult = generateDataQualityScorecard({
+  clientName,
+  adaptorName: 'NetSuite',
+  answers,
+  dryRunPassThreshold: answers['migration.readiness.dryRunPassThreshold'] as string,
+  dataQualityOwners: answers['migration.readiness.dataQualityOwners'] as string,
+  migrationCutoffDate: answers['migration.readiness.migrationCutoffDate'] as string,
+  targetGoLiveDate: answers['kickoff.mandate.targetGoLiveDate'] as string,
+});
+
+const dataMigrationWrites: Array<[string, string]> = [
+  ['Field_Mapping_Workbook.md', fieldMappingResult.markdown],
+  ['Reconciliation_Queries.md', reconQueriesResult.markdown],
+  ['Cleansing_Rules.md', cleansingRulesResult.markdown],
+  ['Load_Sequencing.md', loadSequencingResult.markdown],
+  ['Migration_Runbook.md', migrationRunbookResult.markdown],
+  ['Reject_Handling_Playbook.md', rejectPlaybookResult.markdown],
+  ['Data_Quality_Scorecard.md', dqScorecardResult.markdown],
+];
+for (const [filename, content] of dataMigrationWrites) {
+  await fs.writeFile(path.join(dataMigrationDir, filename), content, 'utf8');
+  process.stdout.write(`  ✓ Data_Migration/${filename}\n`);
+}
+// Templates/ — one CSV per object in scope + README.md.
+for (const [relativePath, content] of Object.entries(csvBundleResult.files)) {
+  const fullPath = path.join(dataMigrationDir, relativePath);
+  await fs.mkdir(path.dirname(fullPath), { recursive: true });
+  await fs.writeFile(fullPath, content, 'utf8');
+  process.stdout.write(`  ✓ Data_Migration/${relativePath}\n`);
+}
+await fs.writeFile(
+  path.join(dataMigrationTemplatesDir, 'README.md'),
+  csvBundleResult.readme,
+  'utf8',
+);
+process.stdout.write(`  ✓ Data_Migration/Templates/README.md\n`);
 
 // ── Real-code generation: SDF bundle ────────────────────────────────────────
 // Every NetSuite Account Customization Project needs three things at the

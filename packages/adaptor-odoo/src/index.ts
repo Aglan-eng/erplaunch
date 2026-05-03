@@ -2085,6 +2085,74 @@ function buildMigrationFlow(): FlowDefinition {
           },
         ],
       },
+      // Pack Z — Data Migration details (cross-platform). Same 4
+      // questions added to NetSuite's MIGRATION flow. Drives ETL
+      // artefacts in Documentation/Data_Migration/.
+      {
+        id: 'details',
+        label: 'Migration Details',
+        order: 6,
+        questions: [
+          {
+            id: 'migration.details.sourceSystemsByObject',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Source systems per migration object (one per line — '<Object> | <Source system> | <Approximate row count>'; e.g., 'Customers | Salesforce + legacy AR system | 8500')",
+          },
+          {
+            id: 'migration.details.cleansingRulesByObject',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Cleansing rules per object (one per line — '<Object> | <Rule> | <Tooling>'; e.g., 'Customers | dedup by tax ID + fuzzy name match | Python pandas + manual review')",
+          },
+          {
+            id: 'migration.details.rejectSlaByObject',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Reject acceptance SLA per object (one per line — '<Object> | <Acceptance SLA> | <Owner>'; e.g., 'Customers | Same business day | Sarah Chen')",
+          },
+          {
+            id: 'migration.details.historicalDataDepth',
+            inputType: 'TEXT',
+            required: false,
+            label:
+              'Historical data depth (e.g., "3 fiscal years of GL detail; opening balances only for sub-ledgers prior to that")',
+          },
+        ],
+      },
+      // Pack Z — Data Migration readiness gate (cross-platform).
+      // Drives Data_Quality_Scorecard + dry-run pass criteria.
+      {
+        id: 'readiness',
+        label: 'Migration Readiness',
+        order: 7,
+        questions: [
+          {
+            id: 'migration.readiness.dryRunPassThreshold',
+            inputType: 'TEXT',
+            required: false,
+            label:
+              'Dry-run pass threshold (e.g., "Two consecutive dry runs at > 99.5% load success and < 0.1% reconciliation variance")',
+          },
+          {
+            id: 'migration.readiness.dataQualityOwners',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Data-quality owners per object (one per line — '<Object> | <Quality owner> | <Backup>'; e.g., 'Customers | Sales Operations Manager - Linda Park | Sarah Chen')",
+          },
+          {
+            id: 'migration.readiness.migrationCutoffDate',
+            inputType: 'TEXT',
+            required: false,
+            label:
+              'Migration cutoff date (e.g., "2026-11-12 23:59 GMT — last legacy posting moment; legacy goes read-only 2026-11-13 00:00")',
+          },
+        ],
+      },
     ],
   };
 }

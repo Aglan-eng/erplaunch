@@ -126,6 +126,14 @@ function buildSchema(): QuestionnaireSchema {
       ...['O2C', 'PRODUCTION', 'RETURNS']
         .map((id) => flows[id])
         .filter((f): f is FlowDefinition => !!f),
+      // Pack Z — MIGRATION flow renders AFTER RETURNS and BEFORE
+      // TESTING (mirrors Odoo's flow order). NetSuite engagements
+      // didn't have a dedicated MIGRATION flow before Pack Z; this
+      // flow holds the cross-platform `migration.details.*` and
+      // `migration.readiness.*` questions only (Odoo carries
+      // additional `odoo.migration.*` Pack 7 questions in the same
+      // flow).
+      buildMigrationFlow(),
       // Pack T — TESTING flow renders AFTER all build-side flows
       // because test scenarios reference workstreams, approvals, and
       // custom records declared upstream. Cross-platform pack — same
@@ -1898,6 +1906,93 @@ function buildStabilizationFlow(): FlowDefinition {
             required: false,
             label:
               'Pre-captured lessons-learned items (one per line — \'<Theme> | <What happened> | <So what> | <Now what>\')',
+          },
+        ],
+      },
+    ],
+  };
+}
+
+// ─── Pack Z — MIGRATION flow (CROSS-PLATFORM details + readiness sections) ─
+//
+// NetSuite engagements didn't have a dedicated MIGRATION flow prior
+// to Pack Z. Odoo's existing MIGRATION flow gets the same 7 questions
+// appended (alongside its pre-existing `odoo.migration.*` Pack 7
+// questions). On NetSuite the flow holds only the Pack Z sections.
+//
+// Sources:
+//   - PMI / PMBOK data-migration management.
+//   - SuiteSuccess data-migration playbook + SAP Activate migrate work
+//     stream.
+//   - Standard ERP ETL patterns (extract / cleanse / map / load /
+//     reconcile / sign-off).
+function buildMigrationFlow(): FlowDefinition {
+  return {
+    id: 'MIGRATION',
+    label: 'Data Migration',
+    description:
+      'Source systems, cleansing rules, reject SLAs, historical data depth, dry-run pass thresholds, data-quality owners, and migration cutoff date. Drives Documentation/Data_Migration/ artefacts: CSV import templates, field-mapping workbook, reconciliation queries, cleansing rules, load sequencing, migration runbook, reject-handling playbook, and data-quality scorecard.',
+    sections: [
+      {
+        id: 'details',
+        label: 'Migration Details',
+        order: 1,
+        questions: [
+          {
+            id: 'migration.details.sourceSystemsByObject',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Source systems per migration object (one per line — '<Object> | <Source system> | <Approximate row count>'; e.g., 'Customers | Salesforce + legacy AR system | 8500')",
+          },
+          {
+            id: 'migration.details.cleansingRulesByObject',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Cleansing rules per object (one per line — '<Object> | <Rule> | <Tooling>'; e.g., 'Customers | dedup by tax ID + fuzzy name match | Python pandas + manual review')",
+          },
+          {
+            id: 'migration.details.rejectSlaByObject',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Reject acceptance SLA per object (one per line — '<Object> | <Acceptance SLA> | <Owner>'; e.g., 'Customers | Same business day | Sarah Chen')",
+          },
+          {
+            id: 'migration.details.historicalDataDepth',
+            inputType: 'TEXT',
+            required: false,
+            label:
+              'Historical data depth (e.g., "3 fiscal years of GL detail; opening balances only for sub-ledgers prior to that")',
+          },
+        ],
+      },
+      {
+        id: 'readiness',
+        label: 'Migration Readiness',
+        order: 2,
+        questions: [
+          {
+            id: 'migration.readiness.dryRunPassThreshold',
+            inputType: 'TEXT',
+            required: false,
+            label:
+              'Dry-run pass threshold (e.g., "Two consecutive dry runs at > 99.5% load success and < 0.1% reconciliation variance")',
+          },
+          {
+            id: 'migration.readiness.dataQualityOwners',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Data-quality owners per object (one per line — '<Object> | <Quality owner> | <Backup>'; e.g., 'Customers | Sales Operations Manager - Linda Park | Sarah Chen')",
+          },
+          {
+            id: 'migration.readiness.migrationCutoffDate',
+            inputType: 'TEXT',
+            required: false,
+            label:
+              'Migration cutoff date (e.g., "2026-11-12 23:59 GMT — last legacy posting moment; legacy goes read-only 2026-11-13 00:00")',
           },
         ],
       },

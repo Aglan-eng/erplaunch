@@ -841,6 +841,46 @@ const PHASE_4_BUILD: Phase = {
         return codeCount > 0 || true;
       },
     },
+    // ── Pack Z — Data Migration Assets (cross-platform, fires on both adaptors) ──
+    // Build phase strengthening: data-migration assets are part of the
+    // Build deliverable spine. Three checks here ratchet phase 4
+    // coverage by adding migration-asset evidence to the build rubric.
+    {
+      id: 'p4.csv-import-templates-emitted',
+      description:
+        'Pack Z — Data_Migration/Templates/ contains ≥ 9 CSV templates with byte-for-byte adaptor-canonical headers',
+      evaluator: (s) => {
+        let csvCount = 0;
+        for (const key of docs(s).keys()) {
+          if (/^Data_Migration\/Templates\/\d{2}_[a-z0-9_]+\.csv$/.test(key)) csvCount++;
+        }
+        return csvCount >= 9;
+      },
+    },
+    {
+      id: 'p4.field-mapping-workbook-emitted',
+      description:
+        'Pack Z — Data_Migration/Field_Mapping_Workbook.md exists and references Templates/',
+      evaluator: (s) => {
+        const c = docs(s).get('Data_Migration/Field_Mapping_Workbook.md');
+        if (!c) return false;
+        return c.includes('./Templates/') && /\| Source field \| Source type \| Target field/.test(c);
+      },
+    },
+    {
+      id: 'p4.load-sequencing-mermaid-dag',
+      description:
+        'Pack Z — Load_Sequencing.md emits a Mermaid graph TD with classDef styling for reference / master / open-balance categories',
+      evaluator: (s) => {
+        const c = docs(s).get('Data_Migration/Load_Sequencing.md');
+        if (!c) return false;
+        return c.includes('```mermaid') &&
+          c.includes('graph TD') &&
+          c.includes('classDef classRef') &&
+          c.includes('classDef classMaster') &&
+          c.includes('classDef classOpenBal');
+      },
+    },
   ],
 };
 
@@ -955,6 +995,40 @@ const PHASE_5_TEST: Phase = {
       id: 'p5.regression-test-suite-emitted',
       description: 'Documentation/Regression_Test_Suite.md exists',
       evaluator: (s) => docs(s).has('Regression_Test_Suite.md'),
+    },
+    // ── Pack Z — Test phase strengthening ──
+    // Reconciliation queries + data quality scorecard are the test-phase
+    // gates for migration. Both fire on both adaptors with adaptor-
+    // conditional content branching (NetSuite SuiteQL vs Odoo PostgreSQL).
+    {
+      id: 'p5.reconciliation-queries-emitted',
+      description:
+        'Pack Z — Reconciliation_Queries.md emits adaptor-canonical query references (SuiteQL Workbook on NetSuite, Database Manager on Odoo)',
+      evaluator: (s) => {
+        const c = docs(s).get('Data_Migration/Reconciliation_Queries.md');
+        if (!c) return false;
+        if (s.adaptor === 'netsuite') {
+          return c.includes('SuiteQL Workbook') && c.includes('Saved Searches');
+        }
+        if (s.adaptor === 'odoo') {
+          return c.includes('Database Manager') && /FROM (res_partner|account_move|account_account)/.test(c);
+        }
+        return c.includes('Reconciliation');
+      },
+    },
+    {
+      id: 'p5.data-quality-scorecard-five-gates',
+      description:
+        'Pack Z — Data_Quality_Scorecard.md tracks T-30 / T-14 / T-7 / T-3 / T-1 readiness gates with per-object scorecard',
+      evaluator: (s) => {
+        const c = docs(s).get('Data_Migration/Data_Quality_Scorecard.md');
+        if (!c) return false;
+        return /T-30 pass-rate/.test(c) &&
+          /T-14 pass-rate/.test(c) &&
+          /T-7 pass-rate/.test(c) &&
+          /T-3 pass-rate/.test(c) &&
+          /T-1 pass-rate/.test(c);
+      },
     },
   ],
 };
@@ -1072,6 +1146,45 @@ const PHASE_6_TRAIN: Phase = {
       description: 'Documentation/KT_Checklist.md exists',
       evaluator: (s) => docs(s).has('KT_Checklist.md'),
     },
+    // ── Pack Z — Train phase strengthening ──
+    // Cleansing rules + reject taxonomy are the migration-team's
+    // playbook. Pack Z elevates them to first-class training artefacts
+    // alongside the per-role guides + KT checklist.
+    {
+      id: 'p6.cleansing-rules-register-emitted',
+      description:
+        'Pack Z — Cleansing_Rules.md emits a 4-column rule register (Object / Rule / Owner / Status) with ≥ 6 default canonical rules',
+      evaluator: (s) => {
+        const c = docs(s).get('Data_Migration/Cleansing_Rules.md');
+        if (!c) return false;
+        if (!c.includes('| Object | Cleansing rule | Owner | Status |')) return false;
+        // Default rules cover Customers / Vendors / Items / Chart of Accounts /
+        // Open AR/AP / GL Opening — count by object label rendered.
+        const defaults = [
+          '| Customers |',
+          '| Vendors |',
+          '| Items / Products |',
+          '| Chart of Accounts |',
+          '| Open AR / AP |',
+          '| GL Opening Balances |',
+        ];
+        return defaults.every((row) => c.includes(row));
+      },
+    },
+    {
+      id: 'p6.reject-handling-five-bucket-taxonomy',
+      description:
+        'Pack Z — Reject_Handling_Playbook.md defines the 5-bucket reject taxonomy (FK / type / business-rule / dedupe / financial) with owner + fix-loop',
+      evaluator: (s) => {
+        const c = docs(s).get('Data_Migration/Reject_Handling_Playbook.md');
+        if (!c) return false;
+        return c.includes('FK violation') &&
+          c.includes('Type mismatch') &&
+          c.includes('Business-rule fail') &&
+          c.includes('Dedupe') &&
+          c.includes('Financial mismatch');
+      },
+    },
   ],
 };
 
@@ -1151,6 +1264,34 @@ const PHASE_7_CUTOVER: Phase = {
         // Roster row pattern: "| Name | Role | Window | Phone | Backup |".
         const rows = (c.match(/^\| [^|]+ \| [^|]+ \| [^|]+ \| _______ \| _______ \|/gm) ?? []).length;
         return rows >= 3;
+      },
+    },
+    // ── Pack Z — Cutover phase strengthening ──
+    // Migration runbook is the cutover-window data-load slice. It cross-
+    // references the Cutover_Runbook (parent) and operationalises the
+    // load order + rollback decision tree.
+    {
+      id: 'p7.migration-runbook-emitted',
+      description:
+        'Pack Z — Migration_Runbook.md exists with all 4 phases (Pre-Cutover Readiness Gates / Cutover Window / Post-Load Validation / Rollback Decision Tree)',
+      evaluator: (s) => {
+        const c = docs(s).get('Data_Migration/Migration_Runbook.md');
+        if (!c) return false;
+        return c.includes('Phase 1 — Pre-Cutover Readiness Gates') &&
+          c.includes('Phase 2 — Cutover Window') &&
+          c.includes('Phase 3 — Post-Load Validation') &&
+          c.includes('Phase 4 — Rollback Decision Tree');
+      },
+    },
+    {
+      id: 'p7.migration-runbook-cross-refs-cutover-runbook',
+      description:
+        'Pack Z — Migration_Runbook.md cross-references Documentation/Cutover/Cutover_Runbook.md (Pack V parent) — proves Pack Z is wired into the cutover spine',
+      evaluator: (s) => {
+        const c = docs(s).get('Data_Migration/Migration_Runbook.md');
+        if (!c) return false;
+        return c.includes('Documentation/Cutover/Cutover_Runbook.md') &&
+          c.includes('Documentation/Cutover/Rollback_Plan.md');
       },
     },
   ],
@@ -1292,6 +1433,43 @@ const PHASE_8_HYPERCARE: Phase = {
         const hasCadence = /sessions per week|session per week/i.test(c);
         const hasTaperSchedule = /Early hypercare|Late hypercare/i.test(c);
         return hasCadence && hasTaperSchedule;
+      },
+    },
+    // ── Pack Z — Hypercare phase strengthening ──
+    // Reject SLAs feed hypercare escalation; data quality scorecard
+    // becomes a hypercare KPI tile (post-cutover residual rejects); and
+    // the migration assets cross-reference War_Room_SOP for escalation.
+    {
+      id: 'p8.reject-handling-references-war-room',
+      description:
+        'Pack Z — Reject_Handling_Playbook.md escalation section references War_Room_SOP.md (hypercare integration point)',
+      evaluator: (s) => {
+        const c = docs(s).get('Data_Migration/Reject_Handling_Playbook.md');
+        if (!c) return false;
+        return c.includes('Documentation/Hypercare/War_Room_SOP.md');
+      },
+    },
+    {
+      id: 'p8.reject-handling-financial-zero-tolerance',
+      description:
+        'Pack Z — Reject_Handling_Playbook.md enforces zero-tolerance escalation for financial-object rejects (AR / AP / GL) — finance controller is decision authority',
+      evaluator: (s) => {
+        const c = docs(s).get('Data_Migration/Reject_Handling_Playbook.md');
+        if (!c) return false;
+        return /Zero tolerance for unresolved\s+financial rejects/i.test(c) &&
+          c.includes('finance controller');
+      },
+    },
+    {
+      id: 'p8.data-quality-scorecard-go-no-go-decision-rule',
+      description:
+        'Pack Z — Data_Quality_Scorecard.md T-1 row drives sponsor GO / NO-GO decision; financial-object < 100% at T-1 is automatic NO-GO',
+      evaluator: (s) => {
+        const c = docs(s).get('Data_Migration/Data_Quality_Scorecard.md');
+        if (!c) return false;
+        return c.includes('GO / NO-GO') &&
+          /Financial-object pass-rate < 100% at T-1/.test(c) &&
+          /automatic NO-GO/.test(c);
       },
     },
   ],

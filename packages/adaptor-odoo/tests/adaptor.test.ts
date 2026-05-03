@@ -43,7 +43,7 @@ describe('odooAdaptor: schema', () => {
     }
   });
 
-  it('question IDs are namespaced under "odoo." or universal "kickoff." / "testing." / "training." / "cutover." / "hypercare." / "stabilization." and unique', () => {
+  it('question IDs are namespaced under "odoo." or universal "kickoff." / "testing." / "training." / "cutover." / "hypercare." / "stabilization." / "migration." and unique', () => {
     const seen = new Set<string>();
     for (const flow of odooAdaptor.schema.flows) {
       for (const section of flow.sections) {
@@ -55,6 +55,7 @@ describe('odooAdaptor: schema', () => {
           //   - cutover.*       (Pack V — Cutover Runbook)
           //   - hypercare.*     (Pack X — Hypercare Program)
           //   - stabilization.* (Pack Y — Stabilization Roadmap)
+          //   - migration.*     (Pack Z — Data Migration Assets)
           // Everything else stays adaptor-scoped under odoo.*.
           const valid =
             q.id.startsWith('odoo.') ||
@@ -63,10 +64,11 @@ describe('odooAdaptor: schema', () => {
             q.id.startsWith('training.') ||
             q.id.startsWith('cutover.') ||
             q.id.startsWith('hypercare.') ||
-            q.id.startsWith('stabilization.');
+            q.id.startsWith('stabilization.') ||
+            q.id.startsWith('migration.');
           expect(
             valid,
-            `question ${q.id} not namespaced under odoo. / kickoff. / testing. / training. / cutover. / hypercare. / stabilization.`,
+            `question ${q.id} not namespaced under odoo. / kickoff. / testing. / training. / cutover. / hypercare. / stabilization. / migration.`,
           ).toBe(true);
           expect(seen.has(q.id), `duplicate question id: ${q.id}`).toBe(false);
           seen.add(q.id);
@@ -2532,12 +2534,39 @@ describe('odooAdaptor: Pack 7 — MIGRATION flow shape', () => {
     expect(ids.indexOf('MIGRATION')).toBeLessThan(ids.indexOf('TESTING'));
   });
 
-  it('renders four sections in the documented order', () => {
+  it('renders six sections in the documented order (Pack Z appends details + readiness)', () => {
     const ids = (mig!.sections as Array<{ id: string; order: number }>)
       .slice()
       .sort((a, b) => a.order - b.order)
       .map((s) => s.id);
-    expect(ids).toEqual(['volumes', 'sources', 'cutover', 'validation']);
+    // Pack 7 originals: volumes / sources / cutover / validation
+    // Pack Z appends: details (cross-platform) + readiness (cross-platform)
+    expect(ids).toEqual(['volumes', 'sources', 'cutover', 'validation', 'details', 'readiness']);
+  });
+
+  it('Pack Z — Migration Details section has 4 cross-platform questions', () => {
+    const sec = mig!.sections.find((s) => s.id === 'details')!;
+    expect(sec).toBeDefined();
+    expect(sec.label).toBe('Migration Details');
+    const ids = sec.questions.map((q) => q.id).sort();
+    expect(ids).toEqual([
+      'migration.details.cleansingRulesByObject',
+      'migration.details.historicalDataDepth',
+      'migration.details.rejectSlaByObject',
+      'migration.details.sourceSystemsByObject',
+    ]);
+  });
+
+  it('Pack Z — Migration Readiness section has 3 cross-platform questions', () => {
+    const sec = mig!.sections.find((s) => s.id === 'readiness')!;
+    expect(sec).toBeDefined();
+    expect(sec.label).toBe('Migration Readiness');
+    const ids = sec.questions.map((q) => q.id).sort();
+    expect(ids).toEqual([
+      'migration.readiness.dataQualityOwners',
+      'migration.readiness.dryRunPassThreshold',
+      'migration.readiness.migrationCutoffDate',
+    ]);
   });
 
   it('Migration Volumes — 8 NUMBER questions with the right ids', () => {

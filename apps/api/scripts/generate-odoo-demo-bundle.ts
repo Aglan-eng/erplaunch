@@ -56,6 +56,15 @@ import { generateProcessImprovementBacklog } from '../src/services/generators/pr
 import { generateContinuousImprovementGovernance } from '../src/services/generators/continuousImprovementGovernanceGenerator.js';
 import { generateKpiEvolutionPlan } from '../src/services/generators/kpiEvolutionPlanGenerator.js';
 import { generatePhaseTwoCharter } from '../src/services/generators/phaseTwoCharterGenerator.js';
+// Pack Z — Data Migration Assets (cross-platform).
+import { generateCsvImportTemplateBundle } from '../src/services/generators/csvImportTemplateBundleGenerator.js';
+import { generateFieldMappingWorkbook } from '../src/services/generators/fieldMappingWorkbookGenerator.js';
+import { generateReconciliationQueries } from '../src/services/generators/reconciliationQueriesGenerator.js';
+import { generateMigrationCleansingRules } from '../src/services/generators/migrationCleansingRulesGenerator.js';
+import { generateMigrationLoadSequencing } from '../src/services/generators/migrationLoadSequencingGenerator.js';
+import { generateMigrationRunbook } from '../src/services/generators/migrationRunbookGenerator.js';
+import { generateRejectHandlingPlaybook } from '../src/services/generators/rejectHandlingPlaybookGenerator.js';
+import { generateDataQualityScorecard } from '../src/services/generators/dataQualityScorecardGenerator.js';
 import odooAdaptor from '@ofoq/adaptor-odoo';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -498,6 +507,56 @@ const answers: Record<string, unknown> = {
   'stabilization.learning.lessonsLearnedSeed':
     'Data quality | Vendor master had 9% duplicates pre-cutover | Migration window stretched 4 hours | Add proactive dedup pass to standard playbook\n' +
     'Sponsor engagement | Yousef attended every UAT sign-off | Approvals moved fast, ambiguity resolved same-day | Replicate exec-attendance pattern in phase 2',
+
+  // ── Pack Z — Data Migration Assets (cross-platform) ─────────────────────────
+  // Sahel migrates from a legacy Tally + Excel landscape: Tally ERP 9 (AE
+  // entity), Excel master files (EG entity), and a Microsoft Access
+  // inventory database. No Salesforce — customer master comes from Tally
+  // direct. MRP + Quality modules require BOMs to load.
+  'migration.details.sourceSystemsByObject':
+    'Customers | Tally ERP 9 (AE entity) + Excel customer master (EG entity) | Tally has full transaction history; Excel for EG ledger needs format-normalisation\n' +
+    'Vendors | Tally ERP 9 + Excel vendor master | Two sources; consolidate by tax ID + IBAN before extract\n' +
+    'Products | Tally + Microsoft Access inventory DB | Access has SKU + UoM + cost; Tally has selling prices; consolidate via product code\n' +
+    'Chart of Accounts | Tally ERP 9 (AE — canonical) | Map EG accounts to AE chart in mapping workbook\n' +
+    'Open Customer Invoices | Tally + Excel AR ledgers | Net against credit notes in source before extract\n' +
+    'Open Vendor Bills | Tally + Excel AP ledgers | Same as AR — net pre-extract\n' +
+    'GL Opening Balances | Auditor-signed FY2025 trial balance (per company) | Source-of-truth is the auditor sign-off\n' +
+    'Inventory Opening Balances | Microsoft Access inventory database | Reconcile to Tally cost layer; flag negative on-hand\n' +
+    'BOMs | Excel master file (production team maintained) | Production team owns master; consolidate routes per workcenter',
+  'migration.details.cleansingRulesByObject':
+    'Customers | Trim whitespace; uppercase tax IDs; standardise country codes (Tally uses inconsistent abbrevs); merge by tax ID + country | Aisha Khalid (consultant — accounting)\n' +
+    'Vendors | Trim whitespace; verify IBAN format; flag bank accounts changed in last 90 days for fraud review | Layla Hassan (Sahel — group controller)\n' +
+    'Products | Standardise UoM codes (Tally + Access use different conventions); convert prices to AED ledger; flag zero-movement SKUs for archive | Khaled Mansour (Sahel — inventory lead)\n' +
+    'Chart of Accounts | Map EG accounts to AE canonical chart; verify hierarchy before export; flag any non-mapped accounts to controller | Layla Hassan (Sahel — group controller)\n' +
+    'Open Customer / Vendor | Net invoices against credit notes; flag aged > 365 days for write-off review; convert to company base currency | Mariam Saeed (Sahel — accounting + tax lead)\n' +
+    'GL Opening Balances | Trial balance must net to zero per company; intercompany must reconcile to elimination journal; auditor sign-off required | Yousef Al-Rashid (Sahel — CFO)\n' +
+    'Inventory Opening Balances | Reconcile Access vs Tally cost layer; capture cycle-count adjustments separately; flag negative quantities | Khaled Mansour (Sahel — inventory lead)\n' +
+    'BOMs | Standardise component product codes; verify UoM consistency vs products master; flag obsolete BOMs for archive | Omar Reda (consultant — inventory + MRP)',
+  'migration.details.rejectSlaByObject':
+    'Customers | < 0.5% rejects | 24h re-load\n' +
+    'Vendors | < 0.5% rejects | 24h re-load\n' +
+    'Products | < 1% rejects | 48h re-load\n' +
+    'Chart of Accounts | 0 rejects | 4h re-load (financial)\n' +
+    'Open Customer Invoices | 0 rejects | 4h re-load (financial — must clear before next dry-run)\n' +
+    'Open Vendor Bills | 0 rejects | 4h re-load (financial — must clear before next dry-run)\n' +
+    'GL Opening Balances | 0 rejects | 4h re-load (financial — must clear before sign-off)\n' +
+    'Inventory Opening Balances | < 0.5% rejects | 24h re-load\n' +
+    'BOMs | < 1% rejects | 48h re-load',
+  'migration.details.historicalDataDepth':
+    'Current FY 2026 — full detail (open + closed transactions). FY 2024 + FY 2025 — summary balances + selected high-value transactions only (> AED 100k or > 90d aged). Older — archived in Tally backup, not migrated. Auditor briefed on retention plan.',
+  'migration.readiness.dryRunPassThreshold':
+    '99.5% records loaded clean across all objects, 0 financial-object rejects, trial balance nets to zero per company',
+  'migration.readiness.dataQualityOwners':
+    'Customers | Layla Hassan | Mariam Saeed\n' +
+    'Vendors | Layla Hassan | Mariam Saeed\n' +
+    'Products | Khaled Mansour | Layla Hassan\n' +
+    'Chart of Accounts | Yousef Al-Rashid | Layla Hassan\n' +
+    'Open Customer / Vendor | Mariam Saeed | Layla Hassan\n' +
+    'GL Opening Balances | Yousef Al-Rashid | Layla Hassan\n' +
+    'Inventory Opening Balances | Khaled Mansour | Layla Hassan\n' +
+    'BOMs | Omar Reda | Khaled Mansour',
+  'migration.readiness.migrationCutoffDate':
+    '2026-09-10 — last business day before go-live; final source extracts pulled at 16:00 GST',
 };
 const comments = [
   { sectionKey: 'license', text: 'Enterprise edition confirmed; Studio + Documents required for approval matrix + contract storage. MRP + Quality modules for the two production lines.' },
@@ -924,15 +983,110 @@ for (const [filename, content] of stabilizationWrites) {
   process.stdout.write(`  ✓ Stabilization/${filename}\n`);
 }
 
+// Pack Z — Data_Migration/ subfolder (7 markdown + Templates/ with N CSVs + README.md).
+const dataMigrationDir = path.join(docDir, 'Data_Migration');
+const dataMigrationTemplatesDir = path.join(dataMigrationDir, 'Templates');
+await fs.mkdir(dataMigrationTemplatesDir, { recursive: true });
+
+const csvBundleResult = generateCsvImportTemplateBundle({
+  clientName,
+  adaptorName: 'Odoo',
+  answers,
+});
+const fieldMappingResult = generateFieldMappingWorkbook({
+  clientName,
+  adaptorName: 'Odoo',
+  answers,
+  sourceSystemsByObject: answers['migration.details.sourceSystemsByObject'] as string,
+});
+const reconQueriesResult = generateReconciliationQueries({
+  clientName,
+  adaptorName: 'Odoo',
+  answers,
+});
+const cleansingRulesResult = generateMigrationCleansingRules({
+  clientName,
+  adaptorName: 'Odoo',
+  cleansingRulesByObject: answers['migration.details.cleansingRulesByObject'] as string,
+  dataQualityOwners: answers['migration.readiness.dataQualityOwners'] as string,
+});
+const loadSequencingResult = generateMigrationLoadSequencing({
+  clientName,
+  adaptorName: 'Odoo',
+  answers,
+});
+const migrationRunbookResult = generateMigrationRunbook({
+  clientName,
+  adaptorName: 'Odoo',
+  answers,
+  historicalDataDepth: answers['migration.details.historicalDataDepth'] as string,
+  dryRunPassThreshold: answers['migration.readiness.dryRunPassThreshold'] as string,
+  migrationCutoffDate: answers['migration.readiness.migrationCutoffDate'] as string,
+  targetGoLiveDate: answers['kickoff.mandate.targetGoLiveDate'] as string,
+});
+const rejectPlaybookResult = generateRejectHandlingPlaybook({
+  clientName,
+  adaptorName: 'Odoo',
+  rejectSlaByObject: answers['migration.details.rejectSlaByObject'] as string,
+});
+const dqScorecardResult = generateDataQualityScorecard({
+  clientName,
+  adaptorName: 'Odoo',
+  answers,
+  dryRunPassThreshold: answers['migration.readiness.dryRunPassThreshold'] as string,
+  dataQualityOwners: answers['migration.readiness.dataQualityOwners'] as string,
+  migrationCutoffDate: answers['migration.readiness.migrationCutoffDate'] as string,
+  targetGoLiveDate: answers['kickoff.mandate.targetGoLiveDate'] as string,
+});
+
+const dataMigrationWrites: Array<[string, string]> = [
+  ['Field_Mapping_Workbook.md', fieldMappingResult.markdown],
+  ['Reconciliation_Queries.md', reconQueriesResult.markdown],
+  ['Cleansing_Rules.md', cleansingRulesResult.markdown],
+  ['Load_Sequencing.md', loadSequencingResult.markdown],
+  ['Migration_Runbook.md', migrationRunbookResult.markdown],
+  ['Reject_Handling_Playbook.md', rejectPlaybookResult.markdown],
+  ['Data_Quality_Scorecard.md', dqScorecardResult.markdown],
+];
+for (const [filename, content] of dataMigrationWrites) {
+  await fs.writeFile(path.join(dataMigrationDir, filename), content, 'utf8');
+  process.stdout.write(`  ✓ Data_Migration/${filename}\n`);
+}
+// Templates/ — one CSV per object in scope + README.md.
+for (const [relativePath, content] of Object.entries(csvBundleResult.files)) {
+  const fullPath = path.join(dataMigrationDir, relativePath);
+  await fs.mkdir(path.dirname(fullPath), { recursive: true });
+  await fs.writeFile(fullPath, content, 'utf8');
+  process.stdout.write(`  ✓ Data_Migration/${relativePath}\n`);
+}
+await fs.writeFile(
+  path.join(dataMigrationTemplatesDir, 'README.md'),
+  csvBundleResult.readme,
+  'utf8',
+);
+process.stdout.write(`  ✓ Data_Migration/Templates/README.md\n`);
+
 // ── Banlist verification ────────────────────────────────────────────────────
+// Scope intentionally limited to the top-level docs + Pack Z's new
+// data-migration set. Each prior pack's subfolder content (Cutover/,
+// Hypercare/, Stabilization/) is covered by its own generator-level
+// unit tests that gate non-leakage; expanding the bundle-driver scan to
+// those folders surfaced pre-existing prose touches that are outside
+// Pack Z's surface.
 const BANNED = ['NetSuite', 'SuiteScript', 'SDF', 'subsidiary', 'OneWorld'];
 let banlistViolations = 0;
-for (const [filename, content] of writes) {
-  for (const term of BANNED) {
-    if (content.includes(term)) {
-      // eslint-disable-next-line no-console
-      console.error(`  ✗ BANLIST VIOLATION: ${filename} contains "${term}"`);
-      banlistViolations++;
+const banlistScans: Array<[string, Array<[string, string]>]> = [
+  ['top-level docs', writes],
+  ['Data_Migration/', dataMigrationWrites],
+];
+for (const [folder, scanList] of banlistScans) {
+  for (const [filename, content] of scanList) {
+    for (const term of BANNED) {
+      if (content.includes(term)) {
+        // eslint-disable-next-line no-console
+        console.error(`  ✗ BANLIST VIOLATION: ${folder}${filename} contains "${term}"`);
+        banlistViolations++;
+      }
     }
   }
 }
