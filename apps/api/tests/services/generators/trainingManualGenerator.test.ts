@@ -222,3 +222,50 @@ describe('generateTrainingManual — custom adaptor (fall-through default)', () 
     expect(md).not.toContain('SDF');
   });
 });
+
+// ─── Pack U — cross-ref index sections ──────────────────────────────────────
+
+describe('generateTrainingManual — Pack U cross-ref index sections', () => {
+  it('renders the "Pack U Index — Role-Targeted Starting Points" section', () => {
+    const md = generateTrainingManual(baseData(NETSUITE_CTX));
+    expect(md).toContain('## Pack U Index — Role-Targeted Starting Points');
+  });
+
+  it('cross-refs per-role training guide path', () => {
+    const md = generateTrainingManual(baseData(NETSUITE_CTX));
+    expect(md).toContain('Documentation/Training/<Role_Slug>_Training_Guide.md');
+  });
+
+  it('cross-refs Quick_Reference_Cards directory + naming convention', () => {
+    const md = generateTrainingManual(baseData(NETSUITE_CTX));
+    expect(md).toContain('Documentation/Training/Quick_Reference_Cards/');
+    expect(md).toContain('QRC-<task-slug>.md');
+  });
+
+  it('cross-refs Training_Matrix.md + its purpose framing', () => {
+    const md = generateTrainingManual(baseData(NETSUITE_CTX));
+    expect(md).toContain('Documentation/Training_Matrix.md');
+    expect(md).toContain('Required / View / N/A');
+  });
+
+  it('cross-refs Training_Schedule.md + auto-stagger description', () => {
+    const md = generateTrainingManual(baseData(NETSUITE_CTX));
+    expect(md).toContain('Documentation/Training_Schedule.md');
+    expect(md).toContain('4 weeks pre-go-live');
+  });
+
+  it('cross-refs KT_Checklist.md + the BAU transition framing', () => {
+    const md = generateTrainingManual(baseData(NETSUITE_CTX));
+    expect(md).toContain('Documentation/KT_Checklist.md');
+    expect(md).toContain('go-live + 30 days');
+  });
+
+  it('Odoo training manual still emits Pack U index section without NetSuite-banlist leak', () => {
+    const md = generateTrainingManual(baseData(ODOO_CTX));
+    expect(md).toContain('## Pack U Index');
+    expect(md).toContain('Documentation/Training/<Role_Slug>_Training_Guide.md');
+    for (const banned of ['SuiteScript', 'SDF', 'subsidiary', 'OneWorld', 'NetSuite']) {
+      expect(md, `Pack U index must not leak "${banned}" on Odoo`).not.toContain(banned);
+    }
+  });
+});

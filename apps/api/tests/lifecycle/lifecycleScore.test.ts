@@ -310,6 +310,30 @@ describe('Lifecycle harness — threshold gates', () => {
       `Phase 5 (Test) failed: ${p5.failedCheckDescriptions.join('; ')}`,
     ).toBeGreaterThanOrEqual(8.0);
   });
+
+  // Phase 6 (Train) gates — NEW after Pack U (Training Collateral).
+  // Pre-Pack-U: Odoo 5/10 (only Training_Manual + 2 sections passed —
+  // schema-driven Odoo branch didn't carry "Quick Reference" / per-role
+  // headings). NS 10/10 (broader hand-tuned content). Pack U adds 7
+  // new artefact checks that fire on BOTH adaptors. Both adaptors now
+  // hit 11/11 of the rubric on the demo bundles. Ratcheted to ≥ 9.0
+  // — anything below 9.0 means a Pack U artefact dropped or the
+  // harness loader stopped seeing Documentation/Training/.
+  it('Odoo bundle Phase 6 (Train) ≥ 9.0 — locks in Pack U closure (5/10 → 9+/10)', () => {
+    const p6 = runs.find((r) => r.adaptor === 'odoo')!.score.perPhase.find((p) => p.number === 6)!;
+    expect(
+      p6.score,
+      `Phase 6 (Train) failed: ${p6.failedCheckDescriptions.join('; ')}`,
+    ).toBeGreaterThanOrEqual(9.0);
+  });
+
+  it('NetSuite bundle Phase 6 (Train) ≥ 9.0 — locks in Pack U closure', () => {
+    const p6 = runs.find((r) => r.adaptor === 'netsuite')!.score.perPhase.find((p) => p.number === 6)!;
+    expect(
+      p6.score,
+      `Phase 6 (Train) failed: ${p6.failedCheckDescriptions.join('; ')}`,
+    ).toBeGreaterThanOrEqual(9.0);
+  });
 });
 
 function formatScoreDetails(adaptor: AdaptorId, score: BundleScore): string {

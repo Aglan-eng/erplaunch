@@ -30,6 +30,11 @@ import {
 import { generateDefectLogTemplate } from '../src/services/generators/defectLogTemplateGenerator.js';
 import { generatePerformanceTestPlan } from '../src/services/generators/performanceTestPlanGenerator.js';
 import { generateRegressionTestSuite } from '../src/services/generators/regressionTestSuiteGenerator.js';
+import { generatePerRoleTrainingGuides } from '../src/services/generators/perRoleTrainingGuideGenerator.js';
+import { generateQuickReferenceCards } from '../src/services/generators/quickReferenceCardGenerator.js';
+import { generateTrainingMatrix } from '../src/services/generators/trainingMatrixGenerator.js';
+import { generateTrainingSchedule } from '../src/services/generators/trainingScheduleGenerator.js';
+import { generateKnowledgeTransferChecklist } from '../src/services/generators/knowledgeTransferChecklistGenerator.js';
 import odooAdaptor from '@ofoq/adaptor-odoo';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -324,6 +329,28 @@ const answers: Record<string, unknown> = {
     'Run TB report: TB balances per entity + consolidated within 30s\n' +
     'Inventory query: 14.5k SKU dataset returns within 5s with filters',
   'testing.regression.defectSeverityLevels': 'STANDARD_4_LEVEL',
+
+  // Pack U — TRAINING flow (cross-platform). Sahel exercises 5 roles
+  // across the major Odoo apps + 2 champions + 4 sessions; HYBRID
+  // cascade with LIVE_DEMO assessment.
+  'training.curriculum.trainingPerRole':
+    'AP Clerk: Vendor Bill Entry, 3-Way Match, Payment Run, Bank Reconciliation\n' +
+    'AR Clerk: Customer Invoice Creation, Cash Application, Dunning Letters, AR Aging\n' +
+    'CFO: Trial Balance Export, Multi-Entity Close, Financial Statements, Currency Revaluation\n' +
+    'Inventory Manager: Item Master Setup, Cycle Count, Lot/Serial Tracking, FEFO Removal Strategy\n' +
+    'Sales Manager: Lead-to-Quote, Sales Order Entry, Pricelist Management, Pipeline Reports',
+  'training.curriculum.businessChampions':
+    'Mariam Saeed: Group Controller — Accounting champion\n' +
+    'Khaled Mansour: Workstream Lead — Inventory champion',
+  'training.curriculum.cascadeStrategy': 'HYBRID',
+  'training.schedule.trainingSessions':
+    'Accounting End-to-End: 4 hours: AP Clerk + AR Clerk + Mariam Saeed\n' +
+    'Multi-Entity Close + IFRS Reporting: 3 hours: CFO + Mariam Saeed\n' +
+    'Inventory + Lot Tracking: 4 hours: Inventory Manager + Khaled Mansour\n' +
+    'Sales + CRM End-to-End: 3 hours: Sales Manager + Sales team',
+  'training.schedule.deliveryMode': 'HYBRID',
+  'training.assessment.assessmentRequired': true,
+  'training.assessment.assessmentFormat': 'LIVE_DEMO',
 };
 const comments = [
   { sectionKey: 'license', text: 'Enterprise edition confirmed; Studio + Documents required for approval matrix + contract storage. MRP + Quality modules for the two production lines.' },
@@ -397,6 +424,52 @@ const regressionResult = generateRegressionTestSuite({
   adaptorName: 'Odoo',
 });
 
+// ── Pack U — Training Collateral (cross-platform — runs on Odoo too) ────────
+const perRoleResult = generatePerRoleTrainingGuides({
+  clientName,
+  trainingPerRole: answers['training.curriculum.trainingPerRole'] as string,
+  cascadeStrategy: answers['training.curriculum.cascadeStrategy'] as string,
+  deliveryMode: answers['training.schedule.deliveryMode'] as string,
+  assessmentRequired: answers['training.assessment.assessmentRequired'] === true,
+  assessmentFormat: answers['training.assessment.assessmentFormat'] as string,
+  adaptorName: 'Odoo',
+});
+const qrcResult = generateQuickReferenceCards({
+  clientName,
+  adaptorName: 'Odoo',
+  poApprovalInScope: true,
+  multiCurrencyInScope: answers['odoo.foundation.multiCurrency'] === true,
+  mfgInScope: Object.keys(answers).some((k) => k.startsWith('odoo.mfg.')),
+  inventoryInScope: Object.keys(answers).some((k) => k.startsWith('odoo.inventory.')),
+});
+const trainingMatrixResult = generateTrainingMatrix({
+  clientName,
+  adaptorName: 'Odoo',
+  trainingPerRole: answers['training.curriculum.trainingPerRole'] as string,
+  // Sahel scope: Odoo apps R2R/P2P/O2C/INV/MFG/RTN/CRM/HR — all in.
+  r2rInScope: true,
+  p2pInScope: true,
+  o2cInScope: true,
+  invInScope: true,
+  mfgInScope: true,
+  rtnInScope: true,
+  crmInScope: true,
+  hrInScope: true,
+});
+const trainingScheduleResult = generateTrainingSchedule({
+  clientName,
+  adaptorName: 'Odoo',
+  trainingSessions: answers['training.schedule.trainingSessions'] as string,
+  deliveryMode: answers['training.schedule.deliveryMode'] as string,
+  targetGoLiveDate: answers['kickoff.mandate.targetGoLiveDate'] as string,
+});
+const ktResult = generateKnowledgeTransferChecklist({
+  clientName,
+  adaptorName: 'Odoo',
+  cascadeStrategy: answers['training.curriculum.cascadeStrategy'] as string,
+  workstreamsInScope: ['R2R', 'P2P', 'O2C', 'INV', 'MFG', 'RTN', 'CRM', 'HR'],
+});
+
 const writes: Array<[string, string]> = [
   ['Project_Kickoff.md', generateKickoff(kickoffData)],
   ['Project_Kickoff.html', generateKickoffHtml(kickoffData)],
@@ -420,6 +493,13 @@ const writes: Array<[string, string]> = [
   ['Performance_Test_Plan.html', perfPlanResult.html],
   ['Regression_Test_Suite.md', regressionResult.markdown],
   ['Regression_Test_Suite.html', regressionResult.html],
+  // Pack U artefacts — cross-cutting docs at the top level. Per-role
+  // guides + QRCs go into Documentation/Training/ subfolders below.
+  ['Training_Matrix.md', trainingMatrixResult.markdown],
+  ['Training_Matrix.html', trainingMatrixResult.html],
+  ['Training_Schedule.md', trainingScheduleResult.markdown],
+  ['Training_Schedule.html', trainingScheduleResult.html],
+  ['KT_Checklist.md', ktResult.markdown],
 ];
 
 for (const [filename, content] of writes) {
@@ -435,6 +515,26 @@ if (testScriptsResult.emitted.length > 0) {
   await fs.mkdir(testScriptsDir, { recursive: true });
 }
 for (const [bundlePath, content] of Object.entries(testScriptsResult.files)) {
+  const rel = bundlePath.replace(/^Documentation\//, '');
+  const fullPath = path.join(docDir, rel);
+  await fs.mkdir(path.dirname(fullPath), { recursive: true });
+  await fs.writeFile(fullPath, content, 'utf8');
+  process.stdout.write(`  ✓ ${rel}\n`);
+}
+
+// Pack U — Training/ subfolder (per-role guides + Quick_Reference_Cards/).
+// Same path-stripping trick as Test_Scripts above.
+if (perRoleResult.emitted.length > 0 || qrcResult.emitted.length > 0) {
+  await fs.mkdir(path.join(docDir, 'Training'), { recursive: true });
+}
+for (const [bundlePath, content] of Object.entries(perRoleResult.files)) {
+  const rel = bundlePath.replace(/^Documentation\//, '');
+  const fullPath = path.join(docDir, rel);
+  await fs.mkdir(path.dirname(fullPath), { recursive: true });
+  await fs.writeFile(fullPath, content, 'utf8');
+  process.stdout.write(`  ✓ ${rel}\n`);
+}
+for (const [bundlePath, content] of Object.entries(qrcResult.files)) {
   const rel = bundlePath.replace(/^Documentation\//, '');
   const fullPath = path.join(docDir, rel);
   await fs.mkdir(path.dirname(fullPath), { recursive: true });

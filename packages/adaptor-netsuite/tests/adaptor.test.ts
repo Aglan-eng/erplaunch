@@ -20,7 +20,7 @@ describe('netsuiteAdaptor: manifest', () => {
 });
 
 describe('netsuiteAdaptor: schema', () => {
-  it('exposes 12 flows in the canonical order — KICKOFF + FOUNDATION + TAX + LOCALIZATION + SOLUTION_DESIGN + the legacy 5 + TESTING', () => {
+  it('exposes 13 flows in the canonical order — KICKOFF + FOUNDATION + TAX + LOCALIZATION + SOLUTION_DESIGN + the legacy 5 + TESTING + TRAINING', () => {
     const ids = netsuiteAdaptor.schema.flows.map((f) => f.id);
     // Kickoff Pack — UNIVERSAL pack renders FIRST.
     // NS Pack 1 added FOUNDATION.
@@ -31,14 +31,15 @@ describe('netsuiteAdaptor: schema', () => {
     // NS Pack W inserts APPROVALS between P2P and O2C — drives the
     // SuiteFlow workflow + WFA script generators.
     // Pack T appends TESTING after RETURNS (cross-platform — same flow
-    // mirrored verbatim in adaptor-odoo) — drives Phase 5 (Test/UAT)
-    // artefacts: test scripts, sign-off matrix, defect log, performance
-    // plan, regression suite. Closes Phase 5 lifecycle gap (3/10 → 9+).
+    // mirrored verbatim in adaptor-odoo) — drives Phase 5 artefacts.
+    // Pack U appends TRAINING after TESTING (cross-platform) — drives
+    // Phase 6 training collateral. Closes Phase 6 gap (5/10 Odoo →
+    // 9+/10).
     expect(ids).toEqual([
       'KICKOFF',
       'FOUNDATION', 'TAX', 'LOCALIZATION', 'SOLUTION_DESIGN',
       'R2R', 'P2P', 'APPROVALS', 'O2C', 'PRODUCTION', 'RETURNS',
-      'TESTING',
+      'TESTING', 'TRAINING',
     ]);
   });
 
@@ -1897,10 +1898,13 @@ describe('netsuiteAdaptor: Pack T — TESTING flow shape', () => {
     expect(testing!.label).toBe('Test & UAT Planning');
   });
 
-  it('TESTING sits LAST in the flow order (after RETURNS)', () => {
+  it('TESTING sits AFTER RETURNS (and BEFORE TRAINING which Pack U appends last)', () => {
     const ids = netsuiteAdaptor.schema.flows.map((f) => f.id);
-    expect(ids[ids.length - 1]).toBe('TESTING');
     expect(ids.indexOf('TESTING')).toBeGreaterThan(ids.indexOf('RETURNS'));
+    // Pack U appended TRAINING after TESTING; pre-Pack-U this test
+    // asserted TESTING was the array tail. Same supersession pattern
+    // as Odoo's MIGRATION-was-last test in Pack T.
+    expect(ids.indexOf('TESTING')).toBeLessThan(ids.indexOf('TRAINING'));
   });
 
   it('TESTING has the 3 sections in canonical order — scope / performance / regression', () => {
@@ -1982,6 +1986,114 @@ describe('netsuiteAdaptor: Pack T — TESTING flow shape', () => {
 
   it('TESTING flow contributes 7 questions total (3 + 2 + 2)', () => {
     const total = testing!.sections.reduce((sum, s) => sum + s.questions.length, 0);
+    expect(total).toBe(7);
+  });
+});
+
+// ─── Pack U — TRAINING flow shape ───────────────────────────────────────────
+
+describe('netsuiteAdaptor: Pack U — TRAINING flow shape', () => {
+  const training = netsuiteAdaptor.schema.flows.find((f) => f.id === 'TRAINING');
+
+  it('TRAINING flow exists with the expected label', () => {
+    expect(training).toBeDefined();
+    expect(training!.label).toBe('Training & Knowledge Transfer');
+  });
+
+  it('TRAINING sits LAST in the flow order (after TESTING)', () => {
+    const ids = netsuiteAdaptor.schema.flows.map((f) => f.id);
+    expect(ids[ids.length - 1]).toBe('TRAINING');
+    expect(ids.indexOf('TRAINING')).toBeGreaterThan(ids.indexOf('TESTING'));
+  });
+
+  it('TRAINING has the 3 sections in canonical order — curriculum / schedule / assessment', () => {
+    const sectionIds = training!.sections.map((s) => s.id);
+    expect(sectionIds).toEqual(['curriculum', 'schedule', 'assessment']);
+  });
+
+  it('Section 1 (curriculum) carries the 3 curriculum questions', () => {
+    const curriculum = training!.sections.find((s) => s.id === 'curriculum')!;
+    const ids = curriculum.questions.map((q) => q.id);
+    expect(ids).toEqual([
+      'training.curriculum.trainingPerRole',
+      'training.curriculum.businessChampions',
+      'training.curriculum.cascadeStrategy',
+    ]);
+  });
+
+  it('Section 2 (schedule) carries the 2 schedule questions', () => {
+    const schedule = training!.sections.find((s) => s.id === 'schedule')!;
+    const ids = schedule.questions.map((q) => q.id);
+    expect(ids).toEqual([
+      'training.schedule.trainingSessions',
+      'training.schedule.deliveryMode',
+    ]);
+  });
+
+  it('Section 3 (assessment) carries the 2 assessment questions', () => {
+    const assessment = training!.sections.find((s) => s.id === 'assessment')!;
+    const ids = assessment.questions.map((q) => q.id);
+    expect(ids).toEqual([
+      'training.assessment.assessmentRequired',
+      'training.assessment.assessmentFormat',
+    ]);
+  });
+
+  it('cascadeStrategy offers TRAIN_EVERYONE / TRAIN_THE_TRAINER / HYBRID', () => {
+    const q = training!
+      .sections.find((s) => s.id === 'curriculum')!
+      .questions.find((qq) => qq.id === 'training.curriculum.cascadeStrategy')!;
+    expect(q.inputType).toBe('SINGLE_SELECT');
+    const values = (q.options ?? []).map((o) => o.value).sort();
+    expect(values).toEqual(['HYBRID', 'TRAIN_EVERYONE', 'TRAIN_THE_TRAINER']);
+  });
+
+  it('deliveryMode offers IN_PERSON / VIRTUAL_LIVE / HYBRID / SELF_PACED_VIDEO', () => {
+    const q = training!
+      .sections.find((s) => s.id === 'schedule')!
+      .questions.find((qq) => qq.id === 'training.schedule.deliveryMode')!;
+    expect(q.inputType).toBe('SINGLE_SELECT');
+    const values = (q.options ?? []).map((o) => o.value).sort();
+    expect(values).toEqual(['HYBRID', 'IN_PERSON', 'SELF_PACED_VIDEO', 'VIRTUAL_LIVE']);
+  });
+
+  it('assessmentFormat offers QUIZ / LIVE_DEMO / WORK_PRODUCT_REVIEW / NONE', () => {
+    const q = training!
+      .sections.find((s) => s.id === 'assessment')!
+      .questions.find((qq) => qq.id === 'training.assessment.assessmentFormat')!;
+    expect(q.inputType).toBe('SINGLE_SELECT');
+    const values = (q.options ?? []).map((o) => o.value).sort();
+    expect(values).toEqual(['LIVE_DEMO', 'NONE', 'QUIZ', 'WORK_PRODUCT_REVIEW']);
+  });
+
+  it('all TEXTAREA questions are non-required (consultant skip-friendly)', () => {
+    for (const section of training!.sections) {
+      for (const q of section.questions) {
+        if (q.inputType === 'TEXTAREA') {
+          expect(q.required, `${q.id} should be optional`).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('flow description references the training artefacts the generators emit', () => {
+    expect(training!.description ?? '').toMatch(/per-role guides/);
+    expect(training!.description ?? '').toMatch(/quick reference cards/);
+    expect(training!.description ?? '').toMatch(/training matrix/);
+    expect(training!.description ?? '').toMatch(/training schedule/);
+    expect(training!.description ?? '').toMatch(/KT checklist/);
+  });
+
+  it('question IDs use the training.* universal namespace (cross-platform — same on Odoo)', () => {
+    for (const section of training!.sections) {
+      for (const q of section.questions) {
+        expect(q.id).toMatch(/^training\./);
+      }
+    }
+  });
+
+  it('TRAINING flow contributes 7 questions total (3 + 2 + 2)', () => {
+    const total = training!.sections.reduce((sum, s) => sum + s.questions.length, 0);
     expect(total).toBe(7);
   });
 });

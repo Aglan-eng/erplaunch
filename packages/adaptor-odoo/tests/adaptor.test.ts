@@ -20,23 +20,23 @@ describe('odooAdaptor: manifest', () => {
 });
 
 describe('odooAdaptor: schema', () => {
-  it('exposes the canonical Odoo App-shaped flow order (with KICKOFF first + TESTING last)', () => {
+  it('exposes the canonical Odoo App-shaped flow order (with KICKOFF first + TRAINING last)', () => {
     const ids = odooAdaptor.schema.flows.map((f) => f.id);
     // Kickoff Pack — UNIVERSAL pack renders FIRST. Mandate, governance,
     //   communication. Mirrored verbatim into adaptor-netsuite.
     // Pack R — Restructure to Odoo App shape.
     // Pack 8 — REVENUE_APPS (POS + eCommerce + Subscriptions).
     // Pack 9 — OPERATIONS_APPS (HR + Project + CRM).
-    // Pack T — TESTING universal pack renders LAST (cross-platform —
-    //   same flow mirrored verbatim in adaptor-netsuite). Drives Phase 5
-    //   (Test/UAT) artefacts: test scripts, sign-off matrix, defect log,
-    //   performance plan, regression suite.
+    // Pack T — TESTING universal pack (cross-platform — same flow
+    //   mirrored in adaptor-netsuite). Drives Phase 5 artefacts.
+    // Pack U — TRAINING universal pack (cross-platform). Drives Phase 6
+    //   training collateral.
     expect(ids).toEqual([
       'KICKOFF',
       'FOUNDATION', 'ACCOUNTING', 'TAX', 'LOCALIZATION', 'INVENTORY',
       'P2P', 'O2C', 'REVENUE_APPS', 'OPERATIONS_APPS',
       'MANUFACTURING', 'RETURNS', 'MIGRATION',
-      'TESTING',
+      'TESTING', 'TRAINING',
     ]);
   });
 
@@ -49,19 +49,25 @@ describe('odooAdaptor: schema', () => {
     }
   });
 
-  it('question IDs are namespaced under "odoo." or universal "kickoff." / "testing." and unique', () => {
+  it('question IDs are namespaced under "odoo." or universal "kickoff." / "testing." / "training." and unique', () => {
     const seen = new Set<string>();
     for (const flow of odooAdaptor.schema.flows) {
       for (const section of flow.sections) {
         for (const q of section.questions) {
-          // Universal Kickoff Pack questions live under the cross-adaptor
-          // `kickoff.*` namespace; Pack T TESTING questions under
-          // `testing.*` (cross-platform); everything else adaptor-scoped.
+          // Universal packs live under cross-adaptor namespaces:
+          //   - kickoff.*  (Project Kickoff)
+          //   - testing.*  (Pack T — Test Artifacts)
+          //   - training.* (Pack U — Training Collateral)
+          // Everything else stays adaptor-scoped under odoo.*.
           const valid =
             q.id.startsWith('odoo.') ||
             q.id.startsWith('kickoff.') ||
-            q.id.startsWith('testing.');
-          expect(valid, `question ${q.id} not namespaced under odoo. / kickoff. / testing.`).toBe(true);
+            q.id.startsWith('testing.') ||
+            q.id.startsWith('training.');
+          expect(
+            valid,
+            `question ${q.id} not namespaced under odoo. / kickoff. / testing. / training.`,
+          ).toBe(true);
           expect(seen.has(q.id), `duplicate question id: ${q.id}`).toBe(false);
           seen.add(q.id);
         }
@@ -3789,10 +3795,12 @@ describe('odooAdaptor: Pack T — TESTING flow shape', () => {
     expect(testing!.label).toBe('Test & UAT Planning');
   });
 
-  it('TESTING sits LAST in the flow order (after MIGRATION)', () => {
+  it('TESTING sits AFTER MIGRATION (and BEFORE TRAINING which Pack U appends last)', () => {
     const ids = odooAdaptor.schema.flows.map((f) => f.id);
-    expect(ids[ids.length - 1]).toBe('TESTING');
     expect(ids.indexOf('TESTING')).toBeGreaterThan(ids.indexOf('MIGRATION'));
+    // Pack U appended TRAINING after TESTING; pre-Pack-U this test
+    // asserted TESTING was the array tail.
+    expect(ids.indexOf('TESTING')).toBeLessThan(ids.indexOf('TRAINING'));
   });
 
   it('TESTING has the 3 sections in canonical order — scope / performance / regression', () => {
@@ -3874,6 +3882,114 @@ describe('odooAdaptor: Pack T — TESTING flow shape', () => {
 
   it('TESTING flow contributes 7 questions total (3 + 2 + 2)', () => {
     const total = testing!.sections.reduce((sum, s) => sum + s.questions.length, 0);
+    expect(total).toBe(7);
+  });
+});
+
+// ─── Pack U — TRAINING flow shape (cross-platform parity with NetSuite) ─────
+
+describe('odooAdaptor: Pack U — TRAINING flow shape', () => {
+  const training = odooAdaptor.schema.flows.find((f) => f.id === 'TRAINING');
+
+  it('TRAINING flow exists with the expected label', () => {
+    expect(training).toBeDefined();
+    expect(training!.label).toBe('Training & Knowledge Transfer');
+  });
+
+  it('TRAINING sits LAST in the flow order (after TESTING)', () => {
+    const ids = odooAdaptor.schema.flows.map((f) => f.id);
+    expect(ids[ids.length - 1]).toBe('TRAINING');
+    expect(ids.indexOf('TRAINING')).toBeGreaterThan(ids.indexOf('TESTING'));
+  });
+
+  it('TRAINING has the 3 sections in canonical order — curriculum / schedule / assessment', () => {
+    const sectionIds = training!.sections.map((s) => s.id);
+    expect(sectionIds).toEqual(['curriculum', 'schedule', 'assessment']);
+  });
+
+  it('Section 1 (curriculum) carries the 3 curriculum questions', () => {
+    const curriculum = training!.sections.find((s) => s.id === 'curriculum')!;
+    const ids = curriculum.questions.map((q) => q.id);
+    expect(ids).toEqual([
+      'training.curriculum.trainingPerRole',
+      'training.curriculum.businessChampions',
+      'training.curriculum.cascadeStrategy',
+    ]);
+  });
+
+  it('Section 2 (schedule) carries the 2 schedule questions', () => {
+    const schedule = training!.sections.find((s) => s.id === 'schedule')!;
+    const ids = schedule.questions.map((q) => q.id);
+    expect(ids).toEqual([
+      'training.schedule.trainingSessions',
+      'training.schedule.deliveryMode',
+    ]);
+  });
+
+  it('Section 3 (assessment) carries the 2 assessment questions', () => {
+    const assessment = training!.sections.find((s) => s.id === 'assessment')!;
+    const ids = assessment.questions.map((q) => q.id);
+    expect(ids).toEqual([
+      'training.assessment.assessmentRequired',
+      'training.assessment.assessmentFormat',
+    ]);
+  });
+
+  it('cascadeStrategy offers TRAIN_EVERYONE / TRAIN_THE_TRAINER / HYBRID', () => {
+    const q = training!
+      .sections.find((s) => s.id === 'curriculum')!
+      .questions.find((qq) => qq.id === 'training.curriculum.cascadeStrategy')!;
+    expect(q.inputType).toBe('SINGLE_SELECT');
+    const values = (q.options ?? []).map((o) => o.value).sort();
+    expect(values).toEqual(['HYBRID', 'TRAIN_EVERYONE', 'TRAIN_THE_TRAINER']);
+  });
+
+  it('deliveryMode offers IN_PERSON / VIRTUAL_LIVE / HYBRID / SELF_PACED_VIDEO', () => {
+    const q = training!
+      .sections.find((s) => s.id === 'schedule')!
+      .questions.find((qq) => qq.id === 'training.schedule.deliveryMode')!;
+    expect(q.inputType).toBe('SINGLE_SELECT');
+    const values = (q.options ?? []).map((o) => o.value).sort();
+    expect(values).toEqual(['HYBRID', 'IN_PERSON', 'SELF_PACED_VIDEO', 'VIRTUAL_LIVE']);
+  });
+
+  it('assessmentFormat offers QUIZ / LIVE_DEMO / WORK_PRODUCT_REVIEW / NONE', () => {
+    const q = training!
+      .sections.find((s) => s.id === 'assessment')!
+      .questions.find((qq) => qq.id === 'training.assessment.assessmentFormat')!;
+    expect(q.inputType).toBe('SINGLE_SELECT');
+    const values = (q.options ?? []).map((o) => o.value).sort();
+    expect(values).toEqual(['LIVE_DEMO', 'NONE', 'QUIZ', 'WORK_PRODUCT_REVIEW']);
+  });
+
+  it('all TEXTAREA questions are non-required (consultant skip-friendly)', () => {
+    for (const section of training!.sections) {
+      for (const q of section.questions) {
+        if (q.inputType === 'TEXTAREA') {
+          expect(q.required, `${q.id} should be optional`).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('flow description references the training artefacts the generators emit', () => {
+    expect(training!.description ?? '').toMatch(/per-role guides/);
+    expect(training!.description ?? '').toMatch(/quick reference cards/);
+    expect(training!.description ?? '').toMatch(/training matrix/);
+    expect(training!.description ?? '').toMatch(/training schedule/);
+    expect(training!.description ?? '').toMatch(/KT checklist/);
+  });
+
+  it('question IDs use the training.* universal namespace (cross-platform — same on NetSuite)', () => {
+    for (const section of training!.sections) {
+      for (const q of section.questions) {
+        expect(q.id).toMatch(/^training\./);
+      }
+    }
+  });
+
+  it('TRAINING flow contributes 7 questions total (3 + 2 + 2)', () => {
+    const total = training!.sections.reduce((sum, s) => sum + s.questions.length, 0);
     expect(total).toBe(7);
   });
 });

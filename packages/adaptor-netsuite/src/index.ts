@@ -126,11 +126,16 @@ function buildSchema(): QuestionnaireSchema {
       ...['O2C', 'PRODUCTION', 'RETURNS']
         .map((id) => flows[id])
         .filter((f): f is FlowDefinition => !!f),
-      // Pack T — TESTING flow renders LAST (after all build-side flows
-      // + RETURNS) because test scenarios reference workstreams,
-      // approvals, and custom records declared upstream. Cross-platform
-      // pack — same flow definition mirrored verbatim in adaptor-odoo.
+      // Pack T — TESTING flow renders AFTER all build-side flows
+      // because test scenarios reference workstreams, approvals, and
+      // custom records declared upstream. Cross-platform pack — same
+      // flow definition mirrored verbatim in adaptor-odoo.
       buildTestingFlow(),
+      // Pack U — TRAINING flow renders AFTER TESTING (Phase 6 follows
+      // Phase 5 in the lifecycle). Same cross-platform pattern; curricula
+      // reference roles from Pack C (NetSuite) and standardRoleCustomization,
+      // schedule reverses from KICKOFF's targetGoLiveDate.
+      buildTrainingFlow(),
     ],
   };
 }
@@ -1390,6 +1395,124 @@ function buildTestingFlow(): FlowDefinition {
               },
               { value: 'MAJOR_MINOR', label: 'Major / Minor (lightweight, common in small implementations)' },
               { value: 'NUMERIC_1_5', label: 'Numeric 1-5 (used by some QA teams + Jira defaults)' },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+// ─── Pack U — TRAINING flow (CROSS-PLATFORM, mirrored in adaptor-odoo) ───────
+//
+// Curriculum, schedule, assessment, and knowledge transfer to BAU.
+// Same 7 questions in both adaptors — training collateral is platform-
+// agnostic at the discovery layer (per-role curricula, cascade strategy,
+// session scheduling, assessment format). The platform-specific menu
+// paths land later inside the Quick Reference Cards generator, which
+// branches on adaptorName.
+//
+// Sources:
+//   - Kirkpatrick four-level training evaluation model (Reaction → Learning
+//     → Behavior → Results).
+//   - ADDIE instructional design framework (Analyze / Design / Develop /
+//     Implement / Evaluate).
+//   - Standard ERP training program structures (SuiteSuccess Champion
+//     Network, SAP Activate Train-the-Trainer, Odoo OpenAcademy).
+//   - Just-in-time learning patterns for enterprise software adoption.
+function buildTrainingFlow(): FlowDefinition {
+  return {
+    id: 'TRAINING',
+    label: 'Training & Knowledge Transfer',
+    description:
+      'Curriculum per role, training schedule, assessment, and knowledge transfer to BAU. Drives Documentation/Training/ artefacts: per-role guides, quick reference cards, training matrix, training schedule, and KT checklist.',
+    sections: [
+      {
+        id: 'curriculum',
+        label: 'Curriculum & Champions',
+        order: 1,
+        questions: [
+          {
+            id: 'training.curriculum.trainingPerRole',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Training topics per role (one per line — '<role>: <topics>'; e.g., 'AP Clerk: Vendor Bill Entry, 3-Way Match, Payment Run', 'CFO: Trial Balance, Multi-Entity Close, Financial Reporting'). Topics auto-supplemented from a canonical curriculum if a line is short.",
+          },
+          {
+            id: 'training.curriculum.businessChampions',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Business champions / train-the-trainer candidates (one per line — '<name>: <role>'; e.g., 'Hessa Al-Maktoum: UAE Operations Lead'). Champions get extended materials + cascade-training scope.",
+          },
+          {
+            id: 'training.curriculum.cascadeStrategy',
+            inputType: 'SINGLE_SELECT',
+            required: false,
+            label: 'Cascade strategy',
+            options: [
+              { value: 'TRAIN_EVERYONE', label: 'Train everyone (consultant trains all end users directly)' },
+              {
+                value: 'TRAIN_THE_TRAINER',
+                label: 'Train-the-trainer (consultant trains champions, champions cascade to end users)',
+              },
+              { value: 'HYBRID', label: 'Hybrid (mix per role — typical for mid-market engagements)' },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'schedule',
+        label: 'Training Schedule',
+        order: 2,
+        questions: [
+          {
+            id: 'training.schedule.trainingSessions',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Training sessions (one per line — '<session_name>: <duration>: <target_audience>'; e.g., 'P2P End-to-End: 4 hours: AP Clerk + Buyer', 'Multi-Entity Reporting: 2 hours: Finance Team')",
+          },
+          {
+            id: 'training.schedule.deliveryMode',
+            inputType: 'SINGLE_SELECT',
+            required: false,
+            label: 'Delivery mode',
+            options: [
+              { value: 'IN_PERSON', label: 'In-person (handouts + live demos)' },
+              { value: 'VIRTUAL_LIVE', label: 'Virtual live (shared deck links + screen-share)' },
+              { value: 'HYBRID', label: 'Hybrid (some sessions in-person, some virtual)' },
+              { value: 'SELF_PACED_VIDEO', label: 'Self-paced video (recorded walkthroughs + scripts)' },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'assessment',
+        label: 'Assessment & Handoff',
+        order: 3,
+        questions: [
+          {
+            id: 'training.assessment.assessmentRequired',
+            inputType: 'BOOLEAN',
+            required: false,
+            label:
+              'Post-training assessment required before user can transact in production?',
+          },
+          {
+            id: 'training.assessment.assessmentFormat',
+            inputType: 'SINGLE_SELECT',
+            required: false,
+            label: 'Assessment format',
+            options: [
+              { value: 'QUIZ', label: 'Quiz (multiple-choice — fastest to grade, weakest signal)' },
+              { value: 'LIVE_DEMO', label: 'Live demo (user demonstrates a transaction — recommended)' },
+              {
+                value: 'WORK_PRODUCT_REVIEW',
+                label: 'Work product review (user completes a real task under observation)',
+              },
+              { value: 'NONE', label: 'No assessment (training is informational only)' },
             ],
           },
         ],

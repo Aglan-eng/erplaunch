@@ -245,6 +245,41 @@ export function generateTrainingManual(data: TrainingManualData): string {
   doc += `This Training Manual has been prepared specifically for **${clientName}** based on the business processes configured during the ${adaptor.name} discovery and design phases. `;
   doc += `Each module addresses a specific business role and the associated ${adaptor.name} transactions they will perform day-to-day.\n\n`;
 
+  // Pack U — index sections cross-referencing the per-role training
+  // guides + quick reference cards + matrix + schedule + KT checklist.
+  // These sit at the top of the manual so consultants and end users
+  // see the role-targeted starting points before the consolidated
+  // platform-wide content.
+  doc += `## Pack U Index — Role-Targeted Starting Points\n\n`;
+  doc += `This consolidated manual is the platform-wide reference. For role-targeted entry points, ` +
+    `start with the per-role guide for your function — each one carries its own curriculum, ` +
+    `hands-on lab, and assessment scoped to the day-to-day tasks for that role.\n\n`;
+  doc += `### Per-Role Training Guides\n\n`;
+  doc += `Auto-generated per role declared in the engagement wizard. One file per role under ` +
+    `\`Documentation/Training/<Role_Slug>_Training_Guide.md\`. Each guide carries 3-7 modules + ` +
+    `hands-on lab + assessment criteria.\n\n`;
+  doc += `> See \`Documentation/Training/\` for the full set on this engagement.\n\n`;
+  doc += `### Quick Reference Cards (1-page-per-task)\n\n`;
+  doc += `Auto-generated for the ~12-18 most common day-to-day tasks. Each card shows: ` +
+    `audience, prerequisites, numbered steps, common pitfalls, the ${adaptor.name}-specific menu path, ` +
+    `and cross-references to the matching test script + role training guide.\n\n`;
+  doc += `> Browse \`Documentation/Training/Quick_Reference_Cards/\` — files are named ` +
+    `\`QRC-<task-slug>.md\`.\n\n`;
+  doc += `### Training Matrix (who-trains-what)\n\n`;
+  doc += `\`Documentation/Training_Matrix.md\` shows per-role × per-workstream coverage in a single ` +
+    `grid (Required / View / N/A) plus total training hours per role. Use it for cohort-planning ` +
+    `conversations with the client PM.\n\n`;
+  doc += `### Training Schedule\n\n`;
+  doc += `\`Documentation/Training_Schedule.md\` carries the session-by-session schedule, ` +
+    `auto-staggered from 4 weeks pre-go-live to 1 week pre-go-live. Pre-training prerequisites ` +
+    `+ post-training validation checklists are at the bottom of that document.\n\n`;
+  doc += `### Knowledge Transfer Checklist\n\n`;
+  doc += `\`Documentation/KT_Checklist.md\` is the formal transition gate from consultant team to ` +
+    `client-internal BAU support. Complete before go-live + 30 days. Tickbox lists per area: ` +
+    `documentation handoff, configuration knowledge, operational run-books, training cascade ` +
+    `status, and BAU transition (on-call rotation + SLAs).\n\n`;
+  doc += `---\n\n`;
+
   if (isNetSuite) {
     // Detailed step-by-step training is NetSuite-only for now. Each step
     // references a specific NetSuite menu path; localising to other adaptors

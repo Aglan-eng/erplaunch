@@ -56,6 +56,11 @@ import {
 import { generateDefectLogTemplate } from '../src/services/generators/defectLogTemplateGenerator.js';
 import { generatePerformanceTestPlan } from '../src/services/generators/performanceTestPlanGenerator.js';
 import { generateRegressionTestSuite } from '../src/services/generators/regressionTestSuiteGenerator.js';
+import { generatePerRoleTrainingGuides } from '../src/services/generators/perRoleTrainingGuideGenerator.js';
+import { generateQuickReferenceCards } from '../src/services/generators/quickReferenceCardGenerator.js';
+import { generateTrainingMatrix } from '../src/services/generators/trainingMatrixGenerator.js';
+import { generateTrainingSchedule } from '../src/services/generators/trainingScheduleGenerator.js';
+import { generateKnowledgeTransferChecklist } from '../src/services/generators/knowledgeTransferChecklistGenerator.js';
 import netsuiteAdaptor from '@ofoq/adaptor-netsuite';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -490,6 +495,29 @@ const answers: Record<string, unknown> = {
     'Run AR aging > 60 days saved search: returns within 6s with correct count\n' +
     'Trigger PO User Event script: required-approver field populates correctly per tier',
   'testing.regression.defectSeverityLevels': 'STANDARD_4_LEVEL',
+
+  // Pack U — TRAINING flow (cross-platform). Atlas exercises 5 roles
+  // across the major workstreams + 3 champions + 4 sessions; HYBRID
+  // cascade with LIVE_DEMO assessment.
+  'training.curriculum.trainingPerRole':
+    'AP Clerk: Vendor Bill Entry, 3-Way Match, Payment Run, Voucher Approval Workflow\n' +
+    'AR Clerk: Customer Invoice Creation, Cash Application, Dunning Letters, AR Aging\n' +
+    'CFO: Trial Balance Export, Multi-Subsidiary Close, Financial Statements, Multi-Currency Revaluation\n' +
+    'Sales Manager: Lead-to-Quote, Sales Order Entry, Pricelist Management, Pipeline Reports\n' +
+    'Inventory Manager: Item Master Setup, Cycle Count, Lot/Serial Tracking, Warehouse Transfer',
+  'training.curriculum.businessChampions':
+    'Sophie Müller: Workstream Lead — EU subsidiaries (UK + DE) — accounting champion\n' +
+    'Tom Wilson: Workstream Lead — US + AU subsidiaries — operations champion\n' +
+    'Priya Patel: Workstream Lead — Revenue Recognition (ARM) — ARM champion',
+  'training.curriculum.cascadeStrategy': 'HYBRID',
+  'training.schedule.trainingSessions':
+    'P2P End-to-End: 4 hours: AP Clerk + Buyer + Sophie Müller\n' +
+    'Multi-Subsidiary Close + ASC 606 Reporting: 4 hours: CFO + Priya Patel + Sophie Müller\n' +
+    'O2C + ARM Revenue Recognition: 3 hours: AR Clerk + Sales Manager + Priya Patel\n' +
+    'Inventory + WIP Routings + Manufacturing: 4 hours: Inventory Manager + Tom Wilson',
+  'training.schedule.deliveryMode': 'HYBRID',
+  'training.assessment.assessmentRequired': true,
+  'training.assessment.assessmentFormat': 'LIVE_DEMO',
 };
 
 const comments = [
@@ -570,6 +598,62 @@ const regressionResult = generateRegressionTestSuite({
   adaptorName: 'NetSuite',
 });
 
+// ── Pack U — Training Collateral (cross-platform — runs on NetSuite too) ────
+const perRoleResult = generatePerRoleTrainingGuides({
+  clientName,
+  trainingPerRole: answers['training.curriculum.trainingPerRole'] as string,
+  // Atlas seed has Pack C standardRoleCustomization populated — feed it
+  // into the supplementary role source so all NS roles declared there
+  // get a guide even if not repeated in trainingPerRole.
+  standardRoleCustomization: answers['ns.design.standardRoleCustomization'] as string,
+  cascadeStrategy: answers['training.curriculum.cascadeStrategy'] as string,
+  deliveryMode: answers['training.schedule.deliveryMode'] as string,
+  assessmentRequired: answers['training.assessment.assessmentRequired'] === true,
+  assessmentFormat: answers['training.assessment.assessmentFormat'] as string,
+  adaptorName: 'NetSuite',
+});
+const qrcResult = generateQuickReferenceCards({
+  clientName,
+  adaptorName: 'NetSuite',
+  poApprovalInScope: answers['ns.approvals.poApprovalInScope'] === true,
+  multiCurrencyInScope: answers['ns.foundation.multiCurrencyInScope'] === true,
+  mfgInScope: Object.keys(answers).some((k) => k.startsWith('mfg.')),
+  inventoryInScope: answers['o2c.fulfillment.pickPackShip'] === true,
+  customRecords: answers['ns.design.customRecords'] as string,
+});
+const trainingMatrixResult = generateTrainingMatrix({
+  clientName,
+  adaptorName: 'NetSuite',
+  trainingPerRole: answers['training.curriculum.trainingPerRole'] as string,
+  standardRoleCustomization: answers['ns.design.standardRoleCustomization'] as string,
+  // Atlas: full sweep across all NS workstreams.
+  r2rInScope: true,
+  p2pInScope: true,
+  o2cInScope: true,
+  invInScope: true,
+  mfgInScope: true,
+  rtnInScope: true,
+});
+const trainingScheduleResult = generateTrainingSchedule({
+  clientName,
+  adaptorName: 'NetSuite',
+  trainingSessions: answers['training.schedule.trainingSessions'] as string,
+  deliveryMode: answers['training.schedule.deliveryMode'] as string,
+  targetGoLiveDate: answers['kickoff.mandate.targetGoLiveDate'] as string,
+});
+const ktResult = generateKnowledgeTransferChecklist({
+  clientName,
+  adaptorName: 'NetSuite',
+  cascadeStrategy: answers['training.curriculum.cascadeStrategy'] as string,
+  workstreamsInScope: ['R2R', 'P2P', 'O2C', 'INV', 'MFG', 'RTN'],
+  integrationsList: [
+    answers['ns.design.inboundIntegrations'] as string,
+    answers['ns.design.outboundIntegrations'] as string,
+  ]
+    .filter((s) => typeof s === 'string' && s.trim().length > 0)
+    .join('\n'),
+});
+
 const writes: Array<[string, string]> = [
   ['Project_Kickoff.md', generateKickoff(kickoffData)],
   ['Project_Kickoff.html', generateKickoffHtml(kickoffData)],
@@ -591,6 +675,12 @@ const writes: Array<[string, string]> = [
   ['Performance_Test_Plan.html', perfPlanResult.html],
   ['Regression_Test_Suite.md', regressionResult.markdown],
   ['Regression_Test_Suite.html', regressionResult.html],
+  // Pack U artefacts — cross-cutting docs at the top level.
+  ['Training_Matrix.md', trainingMatrixResult.markdown],
+  ['Training_Matrix.html', trainingMatrixResult.html],
+  ['Training_Schedule.md', trainingScheduleResult.markdown],
+  ['Training_Schedule.html', trainingScheduleResult.html],
+  ['KT_Checklist.md', ktResult.markdown],
 ];
 
 for (const [filename, content] of writes) {
@@ -604,6 +694,25 @@ if (testScriptsResult.emitted.length > 0) {
   await fs.mkdir(testScriptsDir, { recursive: true });
 }
 for (const [bundlePath, content] of Object.entries(testScriptsResult.files)) {
+  const rel = bundlePath.replace(/^Documentation\//, '');
+  const fullPath = path.join(docDir, rel);
+  await fs.mkdir(path.dirname(fullPath), { recursive: true });
+  await fs.writeFile(fullPath, content, 'utf8');
+  process.stdout.write(`  ✓ ${rel}\n`);
+}
+
+// Pack U — Training/ subfolder (per-role guides + Quick_Reference_Cards/).
+if (perRoleResult.emitted.length > 0 || qrcResult.emitted.length > 0) {
+  await fs.mkdir(path.join(docDir, 'Training'), { recursive: true });
+}
+for (const [bundlePath, content] of Object.entries(perRoleResult.files)) {
+  const rel = bundlePath.replace(/^Documentation\//, '');
+  const fullPath = path.join(docDir, rel);
+  await fs.mkdir(path.dirname(fullPath), { recursive: true });
+  await fs.writeFile(fullPath, content, 'utf8');
+  process.stdout.write(`  ✓ ${rel}\n`);
+}
+for (const [bundlePath, content] of Object.entries(qrcResult.files)) {
   const rel = bundlePath.replace(/^Documentation\//, '');
   const fullPath = path.join(docDir, rel);
   await fs.mkdir(path.dirname(fullPath), { recursive: true });

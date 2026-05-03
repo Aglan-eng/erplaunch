@@ -960,6 +960,15 @@ const PHASE_5_TEST: Phase = {
 };
 
 // ─── Phase 6 — Train ─────────────────────────────────────────────────────────
+//
+// Pack U closure — pre-Pack-U this rubric was 4 checks (manual + 2
+// sections + Quick Reference keyword + per-role section). Odoo scored
+// 5/10 because the schema-driven non-NetSuite branch didn't carry
+// "Quick Reference" or per-role sections; NS scored 10/10 from broader
+// content. Pack U adds 7 new checks that fire on BOTH adaptors via the
+// new artefact set (per-role guides, QRCs, training matrix, training
+// schedule, KT checklist). The 4 original Train checks are kept (they
+// still pass — Pack U enriched the manual rather than replacing it).
 
 const PHASE_6_TRAIN: Phase = {
   number: 6,
@@ -982,17 +991,86 @@ const PHASE_6_TRAIN: Phase = {
     },
     {
       id: 'p6.quick-reference',
-      description: 'Training_Manual.md contains "Quick Reference" (gap until Train pack)',
+      description: 'Training_Manual.md contains "Quick Reference"',
       evaluator: (s) => fileContains(docs(s), 'Training_Manual.md', 'Quick Reference'),
     },
     {
       id: 'p6.per-role-section',
-      description: 'Training_Manual.md has a per-role section (gap until Train pack)',
+      description: 'Training_Manual.md has a per-role section (Pack U cross-refs count)',
       evaluator: (s) =>
         fileContains(docs(s), 'Training_Manual.md', 'Role:') ||
         fileContains(docs(s), 'Training_Manual.md', 'For Accountants') ||
         fileContains(docs(s), 'Training_Manual.md', 'For Managers') ||
-        fileContains(docs(s), 'Training_Manual.md', 'By Role'),
+        fileContains(docs(s), 'Training_Manual.md', 'By Role') ||
+        fileContains(docs(s), 'Training_Manual.md', 'Per-Role Training Guides') ||
+        fileContains(docs(s), 'Training_Manual.md', 'Role-Targeted Starting Points'),
+    },
+    // ── Pack U artefact checks (7 new) ─────────────────────────────────────
+    {
+      id: 'p6.per-role-training-guides-emitted',
+      description:
+        'Documentation/Training/<Role>_Training_Guide.md files are emitted (≥ 3 when trainingPerRole is non-empty)',
+      evaluator: (s) => {
+        let count = 0;
+        for (const key of docs(s).keys()) {
+          if (/^Training\/.*_Training_Guide\.md$/.test(key)) count++;
+        }
+        return count >= 3;
+      },
+    },
+    {
+      id: 'p6.training-guides-have-curriculum',
+      description:
+        'At least one per-role training guide contains 3+ "### Module" curriculum sections',
+      evaluator: (s) => {
+        for (const [key, content] of docs(s)) {
+          if (!/^Training\/.*_Training_Guide\.md$/.test(key)) continue;
+          const moduleCount = (content.match(/^### Module \d+:/gm) ?? []).length;
+          if (moduleCount >= 3) return true;
+        }
+        return false;
+      },
+    },
+    {
+      id: 'p6.quick-reference-cards-emitted',
+      description:
+        'At least 8 Documentation/Training/Quick_Reference_Cards/QRC-*.md files exist',
+      evaluator: (s) => {
+        let count = 0;
+        for (const key of docs(s).keys()) {
+          if (/^Training\/Quick_Reference_Cards\/QRC-.+\.md$/.test(key)) count++;
+        }
+        return count >= 8;
+      },
+    },
+    {
+      id: 'p6.training-matrix-emitted',
+      description: 'Documentation/Training_Matrix.md exists',
+      evaluator: (s) => docs(s).has('Training_Matrix.md'),
+    },
+    {
+      id: 'p6.training-matrix-has-roles',
+      description: 'Training_Matrix.md contains at least 3 role rows',
+      evaluator: (s) => {
+        const c = docs(s).get('Training_Matrix.md');
+        if (!c) return false;
+        // Role rows in the Role × Workstream Coverage table — we need
+        // at least 3 distinct role-name rows. The header + alignment
+        // rows ALSO contain pipes, so we anchor on "✓ Required" or
+        // "View" cell content (only data rows have those).
+        const roleRows = (c.match(/^\| [^|]+ \|.*(?:✓ Required|View|—)/gm) ?? []).length;
+        return roleRows >= 3;
+      },
+    },
+    {
+      id: 'p6.training-schedule-emitted',
+      description: 'Documentation/Training_Schedule.md exists',
+      evaluator: (s) => docs(s).has('Training_Schedule.md'),
+    },
+    {
+      id: 'p6.kt-checklist-emitted',
+      description: 'Documentation/KT_Checklist.md exists',
+      evaluator: (s) => docs(s).has('KT_Checklist.md'),
     },
   ],
 };

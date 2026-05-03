@@ -47,6 +47,12 @@ import {
 import { generateDefectLogTemplate } from './generators/defectLogTemplateGenerator.js';
 import { generatePerformanceTestPlan } from './generators/performanceTestPlanGenerator.js';
 import { generateRegressionTestSuite } from './generators/regressionTestSuiteGenerator.js';
+// Pack U — Training Collateral (cross-platform — runs for both NetSuite + Odoo).
+import { generatePerRoleTrainingGuides } from './generators/perRoleTrainingGuideGenerator.js';
+import { generateQuickReferenceCards } from './generators/quickReferenceCardGenerator.js';
+import { generateTrainingMatrix } from './generators/trainingMatrixGenerator.js';
+import { generateTrainingSchedule } from './generators/trainingScheduleGenerator.js';
+import { generateKnowledgeTransferChecklist } from './generators/knowledgeTransferChecklistGenerator.js';
 import { convertHtmlToPdf } from './pdfService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -327,6 +333,149 @@ export async function processJob(jobId: string, db: DbModule) {
     });
     await fs.writeFile(path.join(docDir, 'Regression_Test_Suite.md'), regressionResult.markdown);
     await fs.writeFile(path.join(docDir, 'Regression_Test_Suite.html'), regressionResult.html);
+
+    // ── Pack U — Training Collateral (CROSS-PLATFORM) ───────────────────────
+    // Five generators run unconditionally on every adaptor. Reads the
+    // TRAINING flow's wizard answers + cross-pack inputs:
+    //   - training.curriculum.* (Pack U)
+    //   - training.schedule.*   (Pack U)
+    //   - training.assessment.* (Pack U)
+    //   - ns.design.standardRoleCustomization (Pack C — supplementary
+    //     role list for engagements that didn't repeat them in
+    //     trainingPerRole)
+    //   - kickoff.mandate.targetGoLiveDate (KICKOFF — drives schedule
+    //     reverse-from-go-live logic)
+    //   - Pack W approval flags + foundation flags (drive QRC scope)
+    //   - ns.design.customRecords (Pack K — drives per-record QRCs)
+    //   - ns.design.inboundIntegrations / outboundIntegrations
+    //     (Pack 3 — drive KT checklist integration walk-through lines)
+    //
+    // Emits to Documentation/Training/<Role>_Training_Guide.md (one per
+    // role) + Documentation/Training/Quick_Reference_Cards/QRC-*.md +
+    // Documentation/Training_Matrix.{md,html} +
+    // Documentation/Training_Schedule.{md,html} +
+    // Documentation/KT_Checklist.md.
+    const perRoleResult = generatePerRoleTrainingGuides({
+      clientName: eng.clientName as string,
+      trainingPerRole: answers['training.curriculum.trainingPerRole'] as string | undefined,
+      standardRoleCustomization: answers['ns.design.standardRoleCustomization'] as
+        | string
+        | undefined,
+      cascadeStrategy: answers['training.curriculum.cascadeStrategy'] as string | undefined,
+      deliveryMode: answers['training.schedule.deliveryMode'] as string | undefined,
+      assessmentRequired: answers['training.assessment.assessmentRequired'] === true,
+      assessmentFormat: answers['training.assessment.assessmentFormat'] as string | undefined,
+      adaptorName: adaptorCtx.name,
+    });
+    if (perRoleResult.emitted.length > 0) {
+      await fs.mkdir(path.join(docDir, 'Training'), { recursive: true });
+    }
+    for (const [bundlePath, content] of Object.entries(perRoleResult.files)) {
+      const rel = bundlePath.replace(/^Documentation\//, '');
+      const fullPath = path.join(docDir, rel);
+      await fs.mkdir(path.dirname(fullPath), { recursive: true });
+      await fs.writeFile(fullPath, content);
+    }
+
+    // Quick Reference Cards — workstream-canonical + per-custom-record.
+    // Scope flags drive which conditional QRCs emit; same flag policy
+    // as the Pack T test scripts.
+    const qrcResult = generateQuickReferenceCards({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      poApprovalInScope:
+        answers['ns.approvals.poApprovalInScope'] === true ||
+        (typeof answers['p2p.purchasing.poApprovalTiers'] === 'string' &&
+          (answers['p2p.purchasing.poApprovalTiers'] as string).trim().length > 0),
+      multiCurrencyInScope:
+        answers['ns.foundation.multiCurrencyInScope'] === true ||
+        answers['odoo.foundation.multiCurrency'] === true,
+      mfgInScope:
+        Object.keys(answers).some((k) => k.startsWith('mfg.') || k.startsWith('odoo.mfg.')),
+      inventoryInScope:
+        answers['o2c.fulfillment.pickPackShip'] === true ||
+        Object.keys(answers).some((k) => k.startsWith('odoo.inventory.')),
+      customRecords: answers['ns.design.customRecords'] as string | undefined,
+    });
+    for (const [bundlePath, content] of Object.entries(qrcResult.files)) {
+      const rel = bundlePath.replace(/^Documentation\//, '');
+      const fullPath = path.join(docDir, rel);
+      await fs.mkdir(path.dirname(fullPath), { recursive: true });
+      await fs.writeFile(fullPath, content);
+    }
+
+    // Training Matrix — per-role × per-workstream coverage grid.
+    const matrixResult = generateTrainingMatrix({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      trainingPerRole: answers['training.curriculum.trainingPerRole'] as string | undefined,
+      standardRoleCustomization: answers['ns.design.standardRoleCustomization'] as
+        | string
+        | undefined,
+      // Workstream scope flags — when none provided the matrix renders
+      // all 9 columns (best-guess complete). When any explicit flag is
+      // provided the matrix filters to in-scope columns only.
+      r2rInScope: Object.keys(answers).some((k) => k.startsWith('r2r.')),
+      p2pInScope: Object.keys(answers).some((k) => k.startsWith('p2p.')),
+      o2cInScope: Object.keys(answers).some((k) => k.startsWith('o2c.')),
+      invInScope: Object.keys(answers).some(
+        (k) => k.startsWith('odoo.inventory.') || k === 'o2c.fulfillment.multipleLocations',
+      ),
+      mfgInScope: Object.keys(answers).some(
+        (k) => k.startsWith('mfg.') || k.startsWith('odoo.mfg.'),
+      ),
+      rtnInScope: Object.keys(answers).some((k) => k.startsWith('rtn.') || k.startsWith('odoo.returns.')),
+      crmInScope: answers['odoo.operations.crmInScope'] === true,
+      hrInScope: answers['odoo.operations.hrInScope'] === true,
+      itInScope: answers['ns.foundation.ssoInScope'] === true,
+    });
+    await fs.writeFile(path.join(docDir, 'Training_Matrix.md'), matrixResult.markdown);
+    await fs.writeFile(path.join(docDir, 'Training_Matrix.html'), matrixResult.html);
+
+    // Training Schedule — auto-staggered from KICKOFF go-live date.
+    const scheduleResult = generateTrainingSchedule({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      trainingSessions: answers['training.schedule.trainingSessions'] as string | undefined,
+      deliveryMode: answers['training.schedule.deliveryMode'] as string | undefined,
+      targetGoLiveDate: answers['kickoff.mandate.targetGoLiveDate'] as string | undefined,
+    });
+    await fs.writeFile(path.join(docDir, 'Training_Schedule.md'), scheduleResult.markdown);
+    await fs.writeFile(path.join(docDir, 'Training_Schedule.html'), scheduleResult.html);
+
+    // KT Checklist — final transition gate. Workstreams + integrations
+    // drive the run-book + configuration walk-through bullet lists.
+    const ktWorkstreams: string[] = [];
+    if (Object.keys(answers).some((k) => k.startsWith('r2r.'))) ktWorkstreams.push('R2R');
+    if (Object.keys(answers).some((k) => k.startsWith('p2p.'))) ktWorkstreams.push('P2P');
+    if (Object.keys(answers).some((k) => k.startsWith('o2c.'))) ktWorkstreams.push('O2C');
+    if (
+      Object.keys(answers).some(
+        (k) => k.startsWith('odoo.inventory.') || k === 'o2c.fulfillment.multipleLocations',
+      )
+    )
+      ktWorkstreams.push('INV');
+    if (Object.keys(answers).some((k) => k.startsWith('mfg.') || k.startsWith('odoo.mfg.')))
+      ktWorkstreams.push('MFG');
+    if (Object.keys(answers).some((k) => k.startsWith('rtn.') || k.startsWith('odoo.returns.')))
+      ktWorkstreams.push('RTN');
+    if (answers['odoo.operations.crmInScope'] === true) ktWorkstreams.push('CRM');
+    if (answers['odoo.operations.hrInScope'] === true) ktWorkstreams.push('HR');
+
+    // Combine inbound + outbound integrations into a single text block;
+    // the generator parses each line and emits a walk-through tickbox.
+    const inbound = (answers['ns.design.inboundIntegrations'] as string | undefined) ?? '';
+    const outbound = (answers['ns.design.outboundIntegrations'] as string | undefined) ?? '';
+    const integrationsList = [inbound, outbound].filter((s) => s.trim().length > 0).join('\n');
+
+    const ktResult = generateKnowledgeTransferChecklist({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      cascadeStrategy: answers['training.curriculum.cascadeStrategy'] as string | undefined,
+      workstreamsInScope: ktWorkstreams,
+      integrationsList: integrationsList.length > 0 ? integrationsList : undefined,
+    });
+    await fs.writeFile(path.join(docDir, 'KT_Checklist.md'), ktResult.markdown);
 
     const sddData = {
       clientName: eng.clientName as string,
@@ -697,11 +846,20 @@ export async function processJob(jobId: string, db: DbModule) {
           'Defect_Log_Template.md',
           'Performance_Test_Plan.md', 'Performance_Test_Plan.html',
           'Regression_Test_Suite.md', 'Regression_Test_Suite.html',
+          // Pack U — Training Collateral (cross-platform).
+          'Training_Matrix.md', 'Training_Matrix.html',
+          'Training_Schedule.md', 'Training_Schedule.html',
+          'KT_Checklist.md',
           ...(isNetSuite ? [] : ['Configuration_Plan.md', 'Configuration_Plan.html']),
         ],
         testScripts: {
           count: testScriptsResult.emitted.length,
           path: 'Documentation/Test_Scripts/',
+        },
+        training: {
+          perRoleGuides: perRoleResult.emitted.length,
+          quickReferenceCards: qrcResult.emitted.length,
+          path: 'Documentation/Training/',
         },
         ...(isNetSuite ? { sdf: 'SDF/', suiteScript: 'SuiteScript/' } : {}),
       },
