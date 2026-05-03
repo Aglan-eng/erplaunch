@@ -49,6 +49,13 @@ import { generateWarRoomSop } from '../src/services/generators/warRoomSopGenerat
 import { generateTransitionToSupportPlan } from '../src/services/generators/transitionToSupportPlanGenerator.js';
 import { generateHypercareKpiDashboard } from '../src/services/generators/hypercareKpiDashboardGenerator.js';
 import { generatePowerUserOfficeHours } from '../src/services/generators/powerUserOfficeHoursGenerator.js';
+import { generateStabilizationRoadmap } from '../src/services/generators/stabilizationRoadmapGenerator.js';
+import { generateLessonsLearned } from '../src/services/generators/lessonsLearnedGenerator.js';
+import { generateBenefitsRealizationTracker } from '../src/services/generators/benefitsRealizationTrackerGenerator.js';
+import { generateProcessImprovementBacklog } from '../src/services/generators/processImprovementBacklogGenerator.js';
+import { generateContinuousImprovementGovernance } from '../src/services/generators/continuousImprovementGovernanceGenerator.js';
+import { generateKpiEvolutionPlan } from '../src/services/generators/kpiEvolutionPlanGenerator.js';
+import { generatePhaseTwoCharter } from '../src/services/generators/phaseTwoCharterGenerator.js';
 import odooAdaptor from '@ofoq/adaptor-odoo';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -443,6 +450,54 @@ const answers: Record<string, unknown> = {
     'Lot/serial tracking integrity verified across 14.5k SKUs\n' +
     'User adoption ≥ 85% of named users posting at least 1 transaction in trailing 7 days\n' +
     'Sponsor (Yousef Al-Rashid) sign-off captured',
+
+  // Pack Y — STABILIZATION flow (cross-platform). Sahel exercises a
+  // 3-person committee, simpler 5-row business case, single retro
+  // session pattern.
+  'stabilization.governance.stabilizationOwner':
+    'Sahel Logistics Internal IT — Sara Mahmoud (Head of IT)',
+  'stabilization.governance.governanceCommittee':
+    'Sara Mahmoud | Head of IT | IT chair\n' +
+    'Yousef Al-Rashid | CFO | Finance + sponsor\n' +
+    'Layla Hassan | Group Controller | Operations + accounting\n' +
+    'Aisha Khalid | Senior Odoo Consultant | Vendor continuity',
+  'stabilization.governance.decisionCadence':
+    'Monthly steering meeting (last Sunday), quarterly business review, annual board readout',
+  'stabilization.governance.changeRequestProcess':
+    'Submit via internal IT helpdesk\n' +
+    'Triage at weekly IT meeting (every Sunday morning)\n' +
+    'Estimate by Aisha Khalid (consultant continuity) within 5 business days\n' +
+    'Prioritize at monthly steering\n' +
+    'Build via OdooSH staging branch\n' +
+    'Release after staging UAT + functional lead sign-off',
+  'stabilization.benefits.businessCaseSummary':
+    'Close cycle days | 8 | 4 | T+90\n' +
+    'Manual reconciliations per period | 35 | 10 | T+180\n' +
+    'IFRS reporting prep effort | High (manual) | Automated | T+30\n' +
+    'Days-sales-outstanding | 55 | 45 | T+180\n' +
+    'Lot/serial query response time | 2-4 hours | < 5 minutes | T+60',
+  'stabilization.benefits.benefitsReviewCadence':
+    'Quarterly to steering committee, annual to board',
+  'stabilization.benefits.benefitsReviewOwner':
+    'Yousef Al-Rashid (CFO) — accountable; Layla Hassan (Group Controller) — measurement support',
+  'stabilization.backlog.deferredFeatures':
+    'Advanced demand forecasting | Dataset incomplete pre-cutover | T+90 enhancement\n' +
+    'Customer-portal self-service | Pilot scope | T+180\n' +
+    'Multi-warehouse routing optimisation | Phase 2 | T+270',
+  'stabilization.backlog.knownLimitations':
+    'IFRS revaluation must be triggered manually at period end | manual cron trigger | temporary, automating in T+90 enhancement\n' +
+    'Lot expiry alerts only fire at 30-day window | configure additional 7/14-day alerts | permanent, by-design',
+  'stabilization.backlog.phaseTwoScope':
+    'Demand forecasting integration | Reduce stock-out incidents by ~30% | T+180\n' +
+    'Customer self-service portal | Reduce inbound CS volume by ~25% | T+180\n' +
+    'Mobile field-ops app | Replace paper-based receiving | T+270',
+  'stabilization.learning.retroFormat':
+    'Half-day workshop with project + business + ops + sponsor (in-person at Sahel HQ)',
+  'stabilization.learning.retroDate':
+    'T+45 — first Sunday of month following hypercare exit (i.e. ~2026-10-25)',
+  'stabilization.learning.lessonsLearnedSeed':
+    'Data quality | Vendor master had 9% duplicates pre-cutover | Migration window stretched 4 hours | Add proactive dedup pass to standard playbook\n' +
+    'Sponsor engagement | Yousef attended every UAT sign-off | Approvals moved fast, ambiguity resolved same-day | Replicate exec-attendance pattern in phase 2',
 };
 const comments = [
   { sectionKey: 'license', text: 'Enterprise edition confirmed; Studio + Documents required for approval matrix + contract storage. MRP + Quality modules for the two production lines.' },
@@ -690,6 +745,61 @@ const officeHoursResult = generatePowerUserOfficeHours({
   workstreamsInScope: ['R2R', 'P2P', 'O2C', 'INV', 'MFG', 'RTN', 'CRM', 'HR'],
 });
 
+// ── Pack Y — Stabilization Roadmap (cross-platform — runs on Odoo too) ──────
+const stabRoadmapResult = generateStabilizationRoadmap({
+  clientName,
+  adaptorName: 'Odoo',
+  stabilizationOwner: answers['stabilization.governance.stabilizationOwner'] as string,
+  governanceCommittee: answers['stabilization.governance.governanceCommittee'] as string,
+  decisionCadence: answers['stabilization.governance.decisionCadence'] as string,
+  phaseTwoScope: answers['stabilization.backlog.phaseTwoScope'] as string,
+  targetGoLiveDate: answers['kickoff.mandate.targetGoLiveDate'] as string,
+});
+const lessonsResult = generateLessonsLearned({
+  clientName,
+  adaptorName: 'Odoo',
+  retroFormat: answers['stabilization.learning.retroFormat'] as string,
+  retroDate: answers['stabilization.learning.retroDate'] as string,
+  lessonsLearnedSeed: answers['stabilization.learning.lessonsLearnedSeed'] as string,
+  stabilizationOwner: answers['stabilization.governance.stabilizationOwner'] as string,
+});
+const benefitsResult = generateBenefitsRealizationTracker({
+  clientName,
+  adaptorName: 'Odoo',
+  businessCaseSummary: answers['stabilization.benefits.businessCaseSummary'] as string,
+  benefitsReviewCadence: answers['stabilization.benefits.benefitsReviewCadence'] as string,
+  benefitsReviewOwner: answers['stabilization.benefits.benefitsReviewOwner'] as string,
+});
+const processBacklogResult = generateProcessImprovementBacklog({
+  clientName,
+  adaptorName: 'Odoo',
+  deferredFeatures: answers['stabilization.backlog.deferredFeatures'] as string,
+  knownLimitations: answers['stabilization.backlog.knownLimitations'] as string,
+  phaseTwoScope: answers['stabilization.backlog.phaseTwoScope'] as string,
+});
+const governanceResult = generateContinuousImprovementGovernance({
+  clientName,
+  adaptorName: 'Odoo',
+  governanceCommittee: answers['stabilization.governance.governanceCommittee'] as string,
+  decisionCadence: answers['stabilization.governance.decisionCadence'] as string,
+  changeRequestProcess: answers['stabilization.governance.changeRequestProcess'] as string,
+  stabilizationOwner: answers['stabilization.governance.stabilizationOwner'] as string,
+});
+const kpiEvolutionResult = generateKpiEvolutionPlan({
+  clientName,
+  adaptorName: 'Odoo',
+  businessCaseSummary: answers['stabilization.benefits.businessCaseSummary'] as string,
+  hypercareDailyStandupTime: answers['hypercare.cadence.dailyStandupTime'] as string,
+});
+const phaseTwoResult = generatePhaseTwoCharter({
+  clientName,
+  adaptorName: 'Odoo',
+  phaseTwoScope: answers['stabilization.backlog.phaseTwoScope'] as string,
+  deferredFeatures: answers['stabilization.backlog.deferredFeatures'] as string,
+  stabilizationOwner: answers['stabilization.governance.stabilizationOwner'] as string,
+  targetGoLiveDate: answers['kickoff.mandate.targetGoLiveDate'] as string,
+});
+
 const writes: Array<[string, string]> = [
   ['Project_Kickoff.md', generateKickoff(kickoffData)],
   ['Project_Kickoff.html', generateKickoffHtml(kickoffData)],
@@ -795,6 +905,23 @@ const hypercareWrites: Array<[string, string]> = [
 for (const [filename, content] of hypercareWrites) {
   await fs.writeFile(path.join(hypercareDir, filename), content, 'utf8');
   process.stdout.write(`  ✓ Hypercare/${filename}\n`);
+}
+
+// Pack Y — Stabilization/ subfolder (7 stabilization artefacts).
+const stabilizationDir = path.join(docDir, 'Stabilization');
+await fs.mkdir(stabilizationDir, { recursive: true });
+const stabilizationWrites: Array<[string, string]> = [
+  ['Stabilization_Roadmap.md', stabRoadmapResult.markdown],
+  ['Lessons_Learned_Register.md', lessonsResult.markdown],
+  ['Benefits_Realization_Tracker.md', benefitsResult.markdown],
+  ['Process_Improvement_Backlog.md', processBacklogResult.markdown],
+  ['Continuous_Improvement_Governance.md', governanceResult.markdown],
+  ['KPI_Evolution_Plan.md', kpiEvolutionResult.markdown],
+  ['Phase_Two_Charter.md', phaseTwoResult.markdown],
+];
+for (const [filename, content] of stabilizationWrites) {
+  await fs.writeFile(path.join(stabilizationDir, filename), content, 'utf8');
+  process.stdout.write(`  ✓ Stabilization/${filename}\n`);
 }
 
 // ── Banlist verification ────────────────────────────────────────────────────

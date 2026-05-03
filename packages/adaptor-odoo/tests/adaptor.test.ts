@@ -20,17 +20,17 @@ describe('odooAdaptor: manifest', () => {
 });
 
 describe('odooAdaptor: schema', () => {
-  it('exposes the canonical Odoo App-shaped flow order (with KICKOFF first + HYPERCARE last)', () => {
+  it('exposes the canonical Odoo App-shaped flow order (with KICKOFF first + STABILIZATION last)', () => {
     const ids = odooAdaptor.schema.flows.map((f) => f.id);
     // Cross-platform pack ordering — universal lifecycle phases append
     // in lifecycle order. T → Phase 5, U → Phase 6, V → Phase 7,
-    // X → Phase 8.
+    // X → Phase 8, Y → Phase 9.
     expect(ids).toEqual([
       'KICKOFF',
       'FOUNDATION', 'ACCOUNTING', 'TAX', 'LOCALIZATION', 'INVENTORY',
       'P2P', 'O2C', 'REVENUE_APPS', 'OPERATIONS_APPS',
       'MANUFACTURING', 'RETURNS', 'MIGRATION',
-      'TESTING', 'TRAINING', 'CUTOVER', 'HYPERCARE',
+      'TESTING', 'TRAINING', 'CUTOVER', 'HYPERCARE', 'STABILIZATION',
     ]);
   });
 
@@ -43,17 +43,18 @@ describe('odooAdaptor: schema', () => {
     }
   });
 
-  it('question IDs are namespaced under "odoo." or universal "kickoff." / "testing." / "training." / "cutover." / "hypercare." and unique', () => {
+  it('question IDs are namespaced under "odoo." or universal "kickoff." / "testing." / "training." / "cutover." / "hypercare." / "stabilization." and unique', () => {
     const seen = new Set<string>();
     for (const flow of odooAdaptor.schema.flows) {
       for (const section of flow.sections) {
         for (const q of section.questions) {
           // Universal packs live under cross-adaptor namespaces:
-          //   - kickoff.*   (Project Kickoff)
-          //   - testing.*   (Pack T — Test Artifacts)
-          //   - training.*  (Pack U — Training Collateral)
-          //   - cutover.*   (Pack V — Cutover Runbook)
-          //   - hypercare.* (Pack X — Hypercare Program)
+          //   - kickoff.*       (Project Kickoff)
+          //   - testing.*       (Pack T — Test Artifacts)
+          //   - training.*      (Pack U — Training Collateral)
+          //   - cutover.*       (Pack V — Cutover Runbook)
+          //   - hypercare.*     (Pack X — Hypercare Program)
+          //   - stabilization.* (Pack Y — Stabilization Roadmap)
           // Everything else stays adaptor-scoped under odoo.*.
           const valid =
             q.id.startsWith('odoo.') ||
@@ -61,10 +62,11 @@ describe('odooAdaptor: schema', () => {
             q.id.startsWith('testing.') ||
             q.id.startsWith('training.') ||
             q.id.startsWith('cutover.') ||
-            q.id.startsWith('hypercare.');
+            q.id.startsWith('hypercare.') ||
+            q.id.startsWith('stabilization.');
           expect(
             valid,
-            `question ${q.id} not namespaced under odoo. / kickoff. / testing. / training. / cutover. / hypercare.`,
+            `question ${q.id} not namespaced under odoo. / kickoff. / testing. / training. / cutover. / hypercare. / stabilization.`,
           ).toBe(true);
           expect(seen.has(q.id), `duplicate question id: ${q.id}`).toBe(false);
           seen.add(q.id);
@@ -4091,10 +4093,10 @@ describe('odooAdaptor: Pack X — HYPERCARE flow shape', () => {
     expect(hypercare!.label).toBe('Hypercare & BAU Transition');
   });
 
-  it('HYPERCARE sits LAST in the flow order (after CUTOVER)', () => {
+  it('HYPERCARE sits AFTER CUTOVER (and BEFORE STABILIZATION which Pack Y appends last)', () => {
     const ids = odooAdaptor.schema.flows.map((f) => f.id);
-    expect(ids[ids.length - 1]).toBe('HYPERCARE');
     expect(ids.indexOf('HYPERCARE')).toBeGreaterThan(ids.indexOf('CUTOVER'));
+    expect(ids.indexOf('HYPERCARE')).toBeLessThan(ids.indexOf('STABILIZATION'));
   });
 
   it('HYPERCARE has 3 sections in canonical order', () => {
@@ -4168,5 +4170,97 @@ describe('odooAdaptor: Pack X — HYPERCARE flow shape', () => {
   it('HYPERCARE flow contributes 11 questions total', () => {
     const total = hypercare!.sections.reduce((sum, s) => sum + s.questions.length, 0);
     expect(total).toBe(11);
+  });
+});
+
+// ─── Pack Y — STABILIZATION flow shape (cross-platform parity with NetSuite) ─
+
+describe('odooAdaptor: Pack Y — STABILIZATION flow shape', () => {
+  const stab = odooAdaptor.schema.flows.find((f) => f.id === 'STABILIZATION');
+
+  it('STABILIZATION flow exists with the expected label', () => {
+    expect(stab).toBeDefined();
+    expect(stab!.label).toBe('Stabilization & Continuous Improvement');
+  });
+
+  it('STABILIZATION sits LAST in the flow order (after HYPERCARE)', () => {
+    const ids = odooAdaptor.schema.flows.map((f) => f.id);
+    expect(ids[ids.length - 1]).toBe('STABILIZATION');
+    expect(ids.indexOf('STABILIZATION')).toBeGreaterThan(ids.indexOf('HYPERCARE'));
+  });
+
+  it('STABILIZATION has 4 sections in canonical order', () => {
+    const sectionIds = stab!.sections.map((s) => s.id);
+    expect(sectionIds).toEqual(['governance', 'benefits', 'backlog', 'learning']);
+  });
+
+  it('Section 1 (governance) carries 4 questions', () => {
+    const gov = stab!.sections.find((s) => s.id === 'governance')!;
+    const ids = gov.questions.map((q) => q.id);
+    expect(ids).toEqual([
+      'stabilization.governance.stabilizationOwner',
+      'stabilization.governance.governanceCommittee',
+      'stabilization.governance.decisionCadence',
+      'stabilization.governance.changeRequestProcess',
+    ]);
+  });
+
+  it('Section 2 (benefits) carries 3 questions', () => {
+    const ben = stab!.sections.find((s) => s.id === 'benefits')!;
+    const ids = ben.questions.map((q) => q.id);
+    expect(ids).toEqual([
+      'stabilization.benefits.businessCaseSummary',
+      'stabilization.benefits.benefitsReviewCadence',
+      'stabilization.benefits.benefitsReviewOwner',
+    ]);
+  });
+
+  it('Section 3 (backlog) carries 3 questions', () => {
+    const bl = stab!.sections.find((s) => s.id === 'backlog')!;
+    const ids = bl.questions.map((q) => q.id);
+    expect(ids).toEqual([
+      'stabilization.backlog.deferredFeatures',
+      'stabilization.backlog.knownLimitations',
+      'stabilization.backlog.phaseTwoScope',
+    ]);
+  });
+
+  it('Section 4 (learning) carries 3 questions', () => {
+    const lr = stab!.sections.find((s) => s.id === 'learning')!;
+    const ids = lr.questions.map((q) => q.id);
+    expect(ids).toEqual([
+      'stabilization.learning.retroFormat',
+      'stabilization.learning.retroDate',
+      'stabilization.learning.lessonsLearnedSeed',
+    ]);
+  });
+
+  it('all TEXTAREA questions are non-required', () => {
+    for (const section of stab!.sections) {
+      for (const q of section.questions) {
+        if (q.inputType === 'TEXTAREA') {
+          expect(q.required, `${q.id} should be optional`).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('flow description references the stabilization artefacts', () => {
+    expect(stab!.description ?? '').toMatch(/stabilization roadmap/i);
+    expect(stab!.description ?? '').toMatch(/lessons-learned register/i);
+    expect(stab!.description ?? '').toMatch(/benefits realization tracker/i);
+  });
+
+  it('question IDs use the stabilization.* universal namespace + match three-segment pattern', () => {
+    for (const section of stab!.sections) {
+      for (const q of section.questions) {
+        expect(q.id).toMatch(/^stabilization\.[a-zA-Z0-9]+\.[a-zA-Z0-9]+/);
+      }
+    }
+  });
+
+  it('STABILIZATION flow contributes 13 questions total', () => {
+    const total = stab!.sections.reduce((sum, s) => sum + s.questions.length, 0);
+    expect(total).toBe(13);
   });
 });

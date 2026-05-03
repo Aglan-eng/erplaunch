@@ -376,6 +376,51 @@ describe('Lifecycle harness — threshold gates', () => {
       `Phase 8 (Hypercare) failed: ${p8.failedCheckDescriptions.join('; ')}`,
     ).toBeGreaterThanOrEqual(9.0);
   });
+
+  // Phase 9 (Stabilize) gates — NEW after Pack Y (Stabilization Roadmap).
+  // Pre-Pack-Y floor: 0/10 on BOTH adaptors (placeholder rubric only;
+  // no Documentation/Stabilization/ folder existed). Pack Y emits 7
+  // dedicated artefacts → 10 fresh checks; both adaptors hit 10/10.
+  // Ratcheted to ≥ 9.0. After this lands, EVERY phase floor is closed
+  // at ≥ 9.0 — sprint-end snapshot uniform overall ≥ 9.6,
+  // front-half-weighted ≥ 9.5.
+  it('Odoo bundle Phase 9 (Stabilize) ≥ 9.0 — locks in Pack Y closure (0/10 → 10/10)', () => {
+    const p9 = runs.find((r) => r.adaptor === 'odoo')!.score.perPhase.find((p) => p.number === 9)!;
+    expect(
+      p9.score,
+      `Phase 9 (Stabilize) failed: ${p9.failedCheckDescriptions.join('; ')}`,
+    ).toBeGreaterThanOrEqual(9.0);
+  });
+
+  it('NetSuite bundle Phase 9 (Stabilize) ≥ 9.0 — locks in Pack Y closure (0/10 → 10/10)', () => {
+    const p9 = runs.find((r) => r.adaptor === 'netsuite')!.score.perPhase.find((p) => p.number === 9)!;
+    expect(
+      p9.score,
+      `Phase 9 (Stabilize) failed: ${p9.failedCheckDescriptions.join('; ')}`,
+    ).toBeGreaterThanOrEqual(9.0);
+  });
+
+  // Sprint-end gates: every phase floor closed at ≥ 9.0; uniform
+  // overall ≥ 9.6; front-half-weighted ≥ 9.5.
+  it('Odoo bundle uniform overall ≥ 9.6 — sprint-end target', () => {
+    const o = runs.find((r) => r.adaptor === 'odoo')!;
+    expect(o.score.uniformOverall).toBeGreaterThanOrEqual(9.6);
+  });
+
+  it('NetSuite bundle uniform overall ≥ 9.6 — sprint-end target', () => {
+    const n = runs.find((r) => r.adaptor === 'netsuite')!;
+    expect(n.score.uniformOverall).toBeGreaterThanOrEqual(9.6);
+  });
+
+  it('Odoo bundle front-half-weighted overall ≥ 9.5 — sprint-end target', () => {
+    const o = runs.find((r) => r.adaptor === 'odoo')!;
+    expect(o.score.frontHalfWeightedOverall).toBeGreaterThanOrEqual(9.5);
+  });
+
+  it('NetSuite bundle front-half-weighted overall ≥ 9.5 — sprint-end target', () => {
+    const n = runs.find((r) => r.adaptor === 'netsuite')!;
+    expect(n.score.frontHalfWeightedOverall).toBeGreaterThanOrEqual(9.5);
+  });
 });
 
 function formatScoreDetails(adaptor: AdaptorId, score: BundleScore): string {

@@ -69,6 +69,14 @@ import { generateWarRoomSop } from './generators/warRoomSopGenerator.js';
 import { generateTransitionToSupportPlan } from './generators/transitionToSupportPlanGenerator.js';
 import { generateHypercareKpiDashboard } from './generators/hypercareKpiDashboardGenerator.js';
 import { generatePowerUserOfficeHours } from './generators/powerUserOfficeHoursGenerator.js';
+// Pack Y — Stabilization Roadmap (cross-platform — runs for both NetSuite + Odoo).
+import { generateStabilizationRoadmap } from './generators/stabilizationRoadmapGenerator.js';
+import { generateLessonsLearned } from './generators/lessonsLearnedGenerator.js';
+import { generateBenefitsRealizationTracker } from './generators/benefitsRealizationTrackerGenerator.js';
+import { generateProcessImprovementBacklog } from './generators/processImprovementBacklogGenerator.js';
+import { generateContinuousImprovementGovernance } from './generators/continuousImprovementGovernanceGenerator.js';
+import { generateKpiEvolutionPlan } from './generators/kpiEvolutionPlanGenerator.js';
+import { generatePhaseTwoCharter } from './generators/phaseTwoCharterGenerator.js';
 import { convertHtmlToPdf } from './pdfService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -754,6 +762,129 @@ export async function processJob(jobId: string, db: DbModule) {
       officeHoursResult.markdown,
     );
 
+    // ── Pack Y — Stabilization Roadmap (CROSS-PLATFORM) ──────────────────────
+    // Seven generators emit to Documentation/Stabilization/. Reuses
+    // stabilization.* wizard answers + targetGoLiveDate (KICKOFF) +
+    // hypercare cadence (Pack X) + integrations (Pack 3).
+    const stabilizationDir = path.join(docDir, 'Stabilization');
+    await fs.mkdir(stabilizationDir, { recursive: true });
+
+    const stabilizationOwner =
+      (answers['stabilization.governance.stabilizationOwner'] as string | undefined) ?? '';
+    const governanceCommittee =
+      (answers['stabilization.governance.governanceCommittee'] as string | undefined) ?? '';
+    const decisionCadence =
+      (answers['stabilization.governance.decisionCadence'] as string | undefined) ?? '';
+    const changeRequestProcess =
+      (answers['stabilization.governance.changeRequestProcess'] as string | undefined) ?? '';
+    const businessCaseSummary =
+      (answers['stabilization.benefits.businessCaseSummary'] as string | undefined) ?? '';
+    const benefitsReviewCadence =
+      (answers['stabilization.benefits.benefitsReviewCadence'] as string | undefined) ?? '';
+    const benefitsReviewOwner =
+      (answers['stabilization.benefits.benefitsReviewOwner'] as string | undefined) ?? '';
+    const deferredFeatures =
+      (answers['stabilization.backlog.deferredFeatures'] as string | undefined) ?? '';
+    const knownLimitations =
+      (answers['stabilization.backlog.knownLimitations'] as string | undefined) ?? '';
+    const phaseTwoScope =
+      (answers['stabilization.backlog.phaseTwoScope'] as string | undefined) ?? '';
+    const retroFormat =
+      (answers['stabilization.learning.retroFormat'] as string | undefined) ?? '';
+    const retroDate = (answers['stabilization.learning.retroDate'] as string | undefined) ?? '';
+    const lessonsLearnedSeed =
+      (answers['stabilization.learning.lessonsLearnedSeed'] as string | undefined) ?? '';
+
+    const stabRoadmapResult = generateStabilizationRoadmap({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      stabilizationOwner,
+      governanceCommittee,
+      decisionCadence,
+      phaseTwoScope,
+      targetGoLiveDate: answers['kickoff.mandate.targetGoLiveDate'] as string | undefined,
+    });
+    await fs.writeFile(
+      path.join(stabilizationDir, 'Stabilization_Roadmap.md'),
+      stabRoadmapResult.markdown,
+    );
+
+    const lessonsResult = generateLessonsLearned({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      retroFormat,
+      retroDate,
+      lessonsLearnedSeed,
+      stabilizationOwner,
+    });
+    await fs.writeFile(
+      path.join(stabilizationDir, 'Lessons_Learned_Register.md'),
+      lessonsResult.markdown,
+    );
+
+    const benefitsResult = generateBenefitsRealizationTracker({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      businessCaseSummary,
+      benefitsReviewCadence,
+      benefitsReviewOwner,
+    });
+    await fs.writeFile(
+      path.join(stabilizationDir, 'Benefits_Realization_Tracker.md'),
+      benefitsResult.markdown,
+    );
+
+    const processBacklogResult = generateProcessImprovementBacklog({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      deferredFeatures,
+      knownLimitations,
+      phaseTwoScope,
+    });
+    await fs.writeFile(
+      path.join(stabilizationDir, 'Process_Improvement_Backlog.md'),
+      processBacklogResult.markdown,
+    );
+
+    const governanceResult = generateContinuousImprovementGovernance({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      governanceCommittee,
+      decisionCadence,
+      changeRequestProcess,
+      stabilizationOwner,
+    });
+    await fs.writeFile(
+      path.join(stabilizationDir, 'Continuous_Improvement_Governance.md'),
+      governanceResult.markdown,
+    );
+
+    const kpiEvolutionResult = generateKpiEvolutionPlan({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      businessCaseSummary,
+      hypercareDailyStandupTime: answers['hypercare.cadence.dailyStandupTime'] as
+        | string
+        | undefined,
+    });
+    await fs.writeFile(
+      path.join(stabilizationDir, 'KPI_Evolution_Plan.md'),
+      kpiEvolutionResult.markdown,
+    );
+
+    const phaseTwoResult = generatePhaseTwoCharter({
+      clientName: eng.clientName as string,
+      adaptorName: adaptorCtx.name,
+      phaseTwoScope,
+      deferredFeatures,
+      stabilizationOwner,
+      targetGoLiveDate: answers['kickoff.mandate.targetGoLiveDate'] as string | undefined,
+    });
+    await fs.writeFile(
+      path.join(stabilizationDir, 'Phase_Two_Charter.md'),
+      phaseTwoResult.markdown,
+    );
+
     const sddData = {
       clientName: eng.clientName as string,
       adaptor: adaptorCtx,
@@ -1149,6 +1280,11 @@ export async function processJob(jobId: string, db: DbModule) {
           artefactCount: 7,
           path: 'Documentation/Hypercare/',
           durationDays: hypercareDurationDays,
+        },
+        stabilization: {
+          // Pack Y — 7 artefacts under Documentation/Stabilization/.
+          artefactCount: 7,
+          path: 'Documentation/Stabilization/',
         },
         ...(isNetSuite ? { sdf: 'SDF/', suiteScript: 'SuiteScript/' } : {}),
       },

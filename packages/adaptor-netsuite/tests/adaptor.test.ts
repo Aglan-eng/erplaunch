@@ -20,16 +20,16 @@ describe('netsuiteAdaptor: manifest', () => {
 });
 
 describe('netsuiteAdaptor: schema', () => {
-  it('exposes 15 flows in the canonical order — KICKOFF + FOUNDATION + TAX + LOCALIZATION + SOLUTION_DESIGN + the legacy 5 + TESTING + TRAINING + CUTOVER + HYPERCARE', () => {
+  it('exposes 16 flows in the canonical order — KICKOFF + FOUNDATION + TAX + LOCALIZATION + SOLUTION_DESIGN + the legacy 5 + TESTING + TRAINING + CUTOVER + HYPERCARE + STABILIZATION', () => {
     const ids = netsuiteAdaptor.schema.flows.map((f) => f.id);
     // Cross-platform pack ordering — universal lifecycle phases
     // append in lifecycle order. T → Phase 5, U → Phase 6, V → Phase 7,
-    // X → Phase 8.
+    // X → Phase 8, Y → Phase 9.
     expect(ids).toEqual([
       'KICKOFF',
       'FOUNDATION', 'TAX', 'LOCALIZATION', 'SOLUTION_DESIGN',
       'R2R', 'P2P', 'APPROVALS', 'O2C', 'PRODUCTION', 'RETURNS',
-      'TESTING', 'TRAINING', 'CUTOVER', 'HYPERCARE',
+      'TESTING', 'TRAINING', 'CUTOVER', 'HYPERCARE', 'STABILIZATION',
     ]);
   });
 
@@ -2190,10 +2190,10 @@ describe('netsuiteAdaptor: Pack X — HYPERCARE flow shape', () => {
     expect(hypercare!.label).toBe('Hypercare & BAU Transition');
   });
 
-  it('HYPERCARE sits LAST in the flow order (after CUTOVER)', () => {
+  it('HYPERCARE sits AFTER CUTOVER (and BEFORE STABILIZATION which Pack Y appends last)', () => {
     const ids = netsuiteAdaptor.schema.flows.map((f) => f.id);
-    expect(ids[ids.length - 1]).toBe('HYPERCARE');
     expect(ids.indexOf('HYPERCARE')).toBeGreaterThan(ids.indexOf('CUTOVER'));
+    expect(ids.indexOf('HYPERCARE')).toBeLessThan(ids.indexOf('STABILIZATION'));
   });
 
   it('HYPERCARE has 3 sections in canonical order — team / sla / cadence', () => {
@@ -2271,5 +2271,101 @@ describe('netsuiteAdaptor: Pack X — HYPERCARE flow shape', () => {
   it('HYPERCARE flow contributes 11 questions total (3 + 4 + 4)', () => {
     const total = hypercare!.sections.reduce((sum, s) => sum + s.questions.length, 0);
     expect(total).toBe(11);
+  });
+});
+
+// ─── Pack Y — STABILIZATION flow shape ───────────────────────────────────────
+
+describe('netsuiteAdaptor: Pack Y — STABILIZATION flow shape', () => {
+  const stab = netsuiteAdaptor.schema.flows.find((f) => f.id === 'STABILIZATION');
+
+  it('STABILIZATION flow exists with the expected label', () => {
+    expect(stab).toBeDefined();
+    expect(stab!.label).toBe('Stabilization & Continuous Improvement');
+  });
+
+  it('STABILIZATION sits LAST in the flow order (after HYPERCARE) — terminal flow', () => {
+    const ids = netsuiteAdaptor.schema.flows.map((f) => f.id);
+    expect(ids[ids.length - 1]).toBe('STABILIZATION');
+    expect(ids.indexOf('STABILIZATION')).toBeGreaterThan(ids.indexOf('HYPERCARE'));
+  });
+
+  it('STABILIZATION has 4 sections in canonical order — governance / benefits / backlog / learning', () => {
+    const sectionIds = stab!.sections.map((s) => s.id);
+    expect(sectionIds).toEqual(['governance', 'benefits', 'backlog', 'learning']);
+  });
+
+  it('Section 1 (governance) carries 4 questions', () => {
+    const gov = stab!.sections.find((s) => s.id === 'governance')!;
+    const ids = gov.questions.map((q) => q.id);
+    expect(ids).toEqual([
+      'stabilization.governance.stabilizationOwner',
+      'stabilization.governance.governanceCommittee',
+      'stabilization.governance.decisionCadence',
+      'stabilization.governance.changeRequestProcess',
+    ]);
+  });
+
+  it('Section 2 (benefits) carries 3 questions', () => {
+    const ben = stab!.sections.find((s) => s.id === 'benefits')!;
+    const ids = ben.questions.map((q) => q.id);
+    expect(ids).toEqual([
+      'stabilization.benefits.businessCaseSummary',
+      'stabilization.benefits.benefitsReviewCadence',
+      'stabilization.benefits.benefitsReviewOwner',
+    ]);
+  });
+
+  it('Section 3 (backlog) carries 3 questions', () => {
+    const bl = stab!.sections.find((s) => s.id === 'backlog')!;
+    const ids = bl.questions.map((q) => q.id);
+    expect(ids).toEqual([
+      'stabilization.backlog.deferredFeatures',
+      'stabilization.backlog.knownLimitations',
+      'stabilization.backlog.phaseTwoScope',
+    ]);
+  });
+
+  it('Section 4 (learning) carries 3 questions', () => {
+    const lr = stab!.sections.find((s) => s.id === 'learning')!;
+    const ids = lr.questions.map((q) => q.id);
+    expect(ids).toEqual([
+      'stabilization.learning.retroFormat',
+      'stabilization.learning.retroDate',
+      'stabilization.learning.lessonsLearnedSeed',
+    ]);
+  });
+
+  it('all TEXTAREA questions are non-required', () => {
+    for (const section of stab!.sections) {
+      for (const q of section.questions) {
+        if (q.inputType === 'TEXTAREA') {
+          expect(q.required, `${q.id} should be optional`).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('flow description references the stabilization artefacts', () => {
+    expect(stab!.description ?? '').toMatch(/stabilization roadmap/i);
+    expect(stab!.description ?? '').toMatch(/lessons-learned register/i);
+    expect(stab!.description ?? '').toMatch(/benefits realization tracker/i);
+    expect(stab!.description ?? '').toMatch(/process-improvement backlog/i);
+    expect(stab!.description ?? '').toMatch(/continuous-improvement governance/i);
+    expect(stab!.description ?? '').toMatch(/KPI evolution plan/i);
+    expect(stab!.description ?? '').toMatch(/phase-two charter/i);
+  });
+
+  it('question IDs use the stabilization.* universal namespace + match three-segment pattern', () => {
+    for (const section of stab!.sections) {
+      for (const q of section.questions) {
+        expect(q.id).toMatch(/^stabilization\.[a-zA-Z0-9]+\.[a-zA-Z0-9]+/);
+      }
+    }
+  });
+
+  it('STABILIZATION flow contributes 13 questions total (4 + 3 + 3 + 3)', () => {
+    const total = stab!.sections.reduce((sum, s) => sum + s.questions.length, 0);
+    expect(total).toBe(13);
   });
 });

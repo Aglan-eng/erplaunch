@@ -148,6 +148,13 @@ function buildSchema(): QuestionnaireSchema {
       // standardRoleCustomization from Pack C for power-user coach +
       // role-aware hypercare lists.
       buildHypercareFlow(),
+      // Pack Y — STABILIZATION flow renders AFTER HYPERCARE (Phase 9
+      // follows Phase 8). Last phase-closure pack — covers months 2-12
+      // post-go-live: governance body, benefits realization tracking,
+      // process-improvement backlog, lessons-learned, KPI evolution,
+      // and phase-two charter. Reuses Pack X sustainmentOwner +
+      // KICKOFF businessCase as natural anchors.
+      buildStabilizationFlow(),
     ],
   };
 }
@@ -1749,6 +1756,148 @@ function buildHypercareFlow(): FlowDefinition {
             required: false,
             label:
               'Hypercare exit criteria — measurable gates (one per line; e.g., "Zero S1 open for 5 consecutive business days", "First month-end close completed within 5 business days", "Sponsor sign-off captured")',
+          },
+        ],
+      },
+    ],
+  };
+}
+
+// ─── Pack Y — STABILIZATION flow (CROSS-PLATFORM, mirrored in adaptor-odoo) ─
+//
+// Months 2-12 post-go-live: governance + benefits realization +
+// process improvement + lessons-learned + KPI evolution + phase-two
+// charter. Same 13 questions in both adaptors. Drives
+// Documentation/Stabilization/ artefacts (7 files).
+//
+// Sources:
+//   - PMI / PMBOK benefits realization management.
+//   - Standard ERP stabilization playbooks (SuiteSuccess Sustain,
+//     SAP Activate Run + benefits review, Odoo annual major-version
+//     release cadence).
+//   - Lessons-learned register conventions (PMBOK + ITIL).
+function buildStabilizationFlow(): FlowDefinition {
+  return {
+    id: 'STABILIZATION',
+    label: 'Stabilization & Continuous Improvement',
+    description:
+      '12-month outlook after hypercare exit. Governance body, benefits realization tracker, process-improvement backlog, continuous-improvement governance, KPI evolution plan, lessons-learned register, and phase-two charter. Drives Documentation/Stabilization/ artefacts: stabilization roadmap, lessons-learned register, benefits realization tracker, process-improvement backlog, continuous-improvement governance, KPI evolution plan, and phase-two charter.',
+    sections: [
+      {
+        id: 'governance',
+        label: 'Governance & Decision Rights',
+        order: 1,
+        questions: [
+          {
+            id: 'stabilization.governance.stabilizationOwner',
+            inputType: 'TEXT',
+            required: false,
+            label:
+              'Stabilization owner — single accountable owner post-hypercare (typically client IT director / shared services lead)',
+          },
+          {
+            id: 'stabilization.governance.governanceCommittee',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              'Governance committee membership (one per line — \'<Name> | <Role> | <Function represented>\'; e.g., \'David Chen | Director, Enterprise Systems | IT chair\')',
+          },
+          {
+            id: 'stabilization.governance.decisionCadence',
+            inputType: 'TEXT',
+            required: false,
+            label:
+              'Decision-making cadence (e.g., "Monthly steering committee, quarterly business review, annual board readout")',
+          },
+          {
+            id: 'stabilization.governance.changeRequestProcess',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              'Change-request process steps (one per line — describes the lifecycle from submission to release; e.g., "Submit via ServiceNow form", "Triage at weekly IT-functional huddle", "Estimate by consultant lead", "Prioritize at monthly steering", "Build in next available release wave", "Release with mandatory regression test pack")',
+          },
+        ],
+      },
+      {
+        id: 'benefits',
+        label: 'Benefits Realization',
+        order: 2,
+        questions: [
+          {
+            id: 'stabilization.benefits.businessCaseSummary',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              'Business-case metrics for tracking (one per line — \'<Metric> | <Baseline> | <Target> | <Timing>\'; e.g., \'Close cycle days | 11 | 5 | T+180\')',
+          },
+          {
+            id: 'stabilization.benefits.benefitsReviewCadence',
+            inputType: 'TEXT',
+            required: false,
+            label: 'Benefits-review cadence (e.g., "Quarterly to steering committee, annual to board")',
+          },
+          {
+            id: 'stabilization.benefits.benefitsReviewOwner',
+            inputType: 'TEXT',
+            required: false,
+            label:
+              'Benefits-tracking owner — accountable for measuring business-case attainment',
+          },
+        ],
+      },
+      {
+        id: 'backlog',
+        label: 'Backlog & Phase Two',
+        order: 3,
+        questions: [
+          {
+            id: 'stabilization.backlog.deferredFeatures',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              'Deferred features from initial implementation (one per line — \'<Feature> | <Reason deferred> | <Target wave>\')',
+          },
+          {
+            id: 'stabilization.backlog.knownLimitations',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              'Known limitations of the live system (one per line — \'<Limitation> | <Workaround> | <Permanent or temporary>\')',
+          },
+          {
+            id: 'stabilization.backlog.phaseTwoScope',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              'Phase-two scope candidates (one per line — \'<Initiative> | <Business case headline> | <Sequence>\')',
+          },
+        ],
+      },
+      {
+        id: 'learning',
+        label: 'Retrospective & Lessons',
+        order: 4,
+        questions: [
+          {
+            id: 'stabilization.learning.retroFormat',
+            inputType: 'TEXT',
+            required: false,
+            label:
+              'Retrospective format (e.g., "Half-day workshop with project + business + ops + sponsor")',
+          },
+          {
+            id: 'stabilization.learning.retroDate',
+            inputType: 'TEXT',
+            required: false,
+            label:
+              'Retrospective target date (e.g., "T+45 — first Friday of month following hypercare exit")',
+          },
+          {
+            id: 'stabilization.learning.lessonsLearnedSeed',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              'Pre-captured lessons-learned items (one per line — \'<Theme> | <What happened> | <So what> | <Now what>\')',
           },
         ],
       },

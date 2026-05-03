@@ -75,6 +75,13 @@ import { generateWarRoomSop } from '../src/services/generators/warRoomSopGenerat
 import { generateTransitionToSupportPlan } from '../src/services/generators/transitionToSupportPlanGenerator.js';
 import { generateHypercareKpiDashboard } from '../src/services/generators/hypercareKpiDashboardGenerator.js';
 import { generatePowerUserOfficeHours } from '../src/services/generators/powerUserOfficeHoursGenerator.js';
+import { generateStabilizationRoadmap } from '../src/services/generators/stabilizationRoadmapGenerator.js';
+import { generateLessonsLearned } from '../src/services/generators/lessonsLearnedGenerator.js';
+import { generateBenefitsRealizationTracker } from '../src/services/generators/benefitsRealizationTrackerGenerator.js';
+import { generateProcessImprovementBacklog } from '../src/services/generators/processImprovementBacklogGenerator.js';
+import { generateContinuousImprovementGovernance } from '../src/services/generators/continuousImprovementGovernanceGenerator.js';
+import { generateKpiEvolutionPlan } from '../src/services/generators/kpiEvolutionPlanGenerator.js';
+import { generatePhaseTwoCharter } from '../src/services/generators/phaseTwoCharterGenerator.js';
 import netsuiteAdaptor from '@ofoq/adaptor-netsuite';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -626,6 +633,62 @@ const answers: Record<string, unknown> = {
     'User adoption ≥ 90% of named users posting at least 1 transaction in trailing 7 days\n' +
     'Project Sponsor (Helena Reyes) sign-off captured\n' +
     'External auditor (KPMG) interim review passed',
+
+  // Pack Y — STABILIZATION flow (cross-platform). Atlas exercises a
+  // 6-person committee, 7-row business case, half-day retro pattern.
+  'stabilization.governance.stabilizationOwner':
+    'Atlas IT Shared Services — David Chen (Director, Enterprise Systems)',
+  'stabilization.governance.governanceCommittee':
+    'David Chen | Director, Enterprise Systems | IT chair\n' +
+    'Helena Reyes | CFO | Finance + sponsor\n' +
+    'Mark Patterson | COO | Operations\n' +
+    'Sarah Chen | NetSuite Functional Lead | Consultant continuity\n' +
+    'Mostafa Sherif | Integration Engineer | IT delivery\n' +
+    'Lara Mansour | NetSuite Account Executive | Vendor',
+  'stabilization.governance.decisionCadence':
+    'Monthly steering committee (last Thursday), quarterly business review (first month of new quarter), annual board readout',
+  'stabilization.governance.changeRequestProcess':
+    'Submit via ServiceNow form "NetSuite CR"\n' +
+    'Triage at weekly IT-functional huddle (every Monday)\n' +
+    'Estimate by consultant lead within 5 business days\n' +
+    'Prioritize at monthly steering\n' +
+    'Build in next available release wave (2027.1 or 2027.2)\n' +
+    'Release with mandatory regression test pack',
+  'stabilization.benefits.businessCaseSummary':
+    'Close cycle days | 11 | 5 | T+180\n' +
+    'Audit prep hours | 600 | 240 | T+270\n' +
+    'Manual JE count per period | 250 | 60 | T+180\n' +
+    'Days-payable-outstanding | 38 | 45 | T+180\n' +
+    'Days-sales-outstanding | 62 | 50 | T+270\n' +
+    'Headcount avoided in finance ops | 0 | 4 FTE | T+360\n' +
+    'Multi-currency revaluation runtime | 4h | 30min | T+90',
+  'stabilization.benefits.benefitsReviewCadence':
+    'Quarterly to steering committee, annual to board',
+  'stabilization.benefits.benefitsReviewOwner':
+    'Helena Reyes (CFO) — accountable; David Chen (IT) — measurement support',
+  'stabilization.backlog.deferredFeatures':
+    'Bank statement auto-reconciliation | Pilot scope | T+90 enhancement\n' +
+    'Approval delegation rules | Pilot scope | T+90 enhancement\n' +
+    'Vendor onboarding workflow extension | Phase 2 | T+180\n' +
+    'Project costing for capex projects | Phase 2 | T+270\n' +
+    'Advanced revenue recognition for SaaS deals | Phase 2 | T+360',
+  'stabilization.backlog.knownLimitations':
+    'Multi-currency reval batch must be run sequentially per entity | run sequentially | temporary, fixing in 2027.2\n' +
+    'UK VAT report does not auto-include reverse-charge transactions | manual reclass JE | permanent, by-design\n' +
+    'Australia GST BAS export only quarterly | manual export for monthly internal | permanent',
+  'stabilization.backlog.phaseTwoScope':
+    'WhatsApp supplier portal | Reduce email volume by ~40% | T+180\n' +
+    'Fixed asset module rollout | Replace separate FA spreadsheet, ~80 hrs/period saved | T+270\n' +
+    'Intercompany automation enhancement | Eliminate 30+ manual IC entries per period | T+270\n' +
+    'Mobile expense capture | Replace legacy expense tool | T+360',
+  'stabilization.learning.retroFormat':
+    'Half-day workshop with project + business + ops + sponsor (in-person at Atlas HQ Boston)',
+  'stabilization.learning.retroDate':
+    'T+45 — first Friday of month following hypercare exit (i.e. ~2027-01-30)',
+  'stabilization.learning.lessonsLearnedSeed':
+    'Scope discipline | Approval delegation deferred late | Reduced finance approval bottleneck risk | Bring delegation forward in phase-two estimating\n' +
+    'Data quality | Vendor master had 12% duplicates pre-cutover | Migration window extended 8 hours | Add proactive dedup pass to standard playbook\n' +
+    'Sponsor engagement | Helena attended all UAT sign-offs | Approvals moved fast, ambiguity resolved same-day | Replicate exec-attendance pattern for phase 2',
 };
 
 const comments = [
@@ -900,6 +963,61 @@ const officeHoursResult = generatePowerUserOfficeHours({
   workstreamsInScope: ['R2R', 'P2P', 'O2C', 'INV', 'MFG', 'RTN', 'IT'],
 });
 
+// ── Pack Y — Stabilization Roadmap (cross-platform — runs on NetSuite) ──────
+const stabRoadmapResult = generateStabilizationRoadmap({
+  clientName,
+  adaptorName: 'NetSuite',
+  stabilizationOwner: answers['stabilization.governance.stabilizationOwner'] as string,
+  governanceCommittee: answers['stabilization.governance.governanceCommittee'] as string,
+  decisionCadence: answers['stabilization.governance.decisionCadence'] as string,
+  phaseTwoScope: answers['stabilization.backlog.phaseTwoScope'] as string,
+  targetGoLiveDate: answers['kickoff.mandate.targetGoLiveDate'] as string,
+});
+const lessonsResult = generateLessonsLearned({
+  clientName,
+  adaptorName: 'NetSuite',
+  retroFormat: answers['stabilization.learning.retroFormat'] as string,
+  retroDate: answers['stabilization.learning.retroDate'] as string,
+  lessonsLearnedSeed: answers['stabilization.learning.lessonsLearnedSeed'] as string,
+  stabilizationOwner: answers['stabilization.governance.stabilizationOwner'] as string,
+});
+const benefitsResult = generateBenefitsRealizationTracker({
+  clientName,
+  adaptorName: 'NetSuite',
+  businessCaseSummary: answers['stabilization.benefits.businessCaseSummary'] as string,
+  benefitsReviewCadence: answers['stabilization.benefits.benefitsReviewCadence'] as string,
+  benefitsReviewOwner: answers['stabilization.benefits.benefitsReviewOwner'] as string,
+});
+const processBacklogResult = generateProcessImprovementBacklog({
+  clientName,
+  adaptorName: 'NetSuite',
+  deferredFeatures: answers['stabilization.backlog.deferredFeatures'] as string,
+  knownLimitations: answers['stabilization.backlog.knownLimitations'] as string,
+  phaseTwoScope: answers['stabilization.backlog.phaseTwoScope'] as string,
+});
+const governanceResult = generateContinuousImprovementGovernance({
+  clientName,
+  adaptorName: 'NetSuite',
+  governanceCommittee: answers['stabilization.governance.governanceCommittee'] as string,
+  decisionCadence: answers['stabilization.governance.decisionCadence'] as string,
+  changeRequestProcess: answers['stabilization.governance.changeRequestProcess'] as string,
+  stabilizationOwner: answers['stabilization.governance.stabilizationOwner'] as string,
+});
+const kpiEvolutionResult = generateKpiEvolutionPlan({
+  clientName,
+  adaptorName: 'NetSuite',
+  businessCaseSummary: answers['stabilization.benefits.businessCaseSummary'] as string,
+  hypercareDailyStandupTime: answers['hypercare.cadence.dailyStandupTime'] as string,
+});
+const phaseTwoResult = generatePhaseTwoCharter({
+  clientName,
+  adaptorName: 'NetSuite',
+  phaseTwoScope: answers['stabilization.backlog.phaseTwoScope'] as string,
+  deferredFeatures: answers['stabilization.backlog.deferredFeatures'] as string,
+  stabilizationOwner: answers['stabilization.governance.stabilizationOwner'] as string,
+  targetGoLiveDate: answers['kickoff.mandate.targetGoLiveDate'] as string,
+});
+
 const writes: Array<[string, string]> = [
   ['Project_Kickoff.md', generateKickoff(kickoffData)],
   ['Project_Kickoff.html', generateKickoffHtml(kickoffData)],
@@ -999,6 +1117,23 @@ const hypercareWrites: Array<[string, string]> = [
 for (const [filename, content] of hypercareWrites) {
   await fs.writeFile(path.join(hypercareDir, filename), content, 'utf8');
   process.stdout.write(`  ✓ Hypercare/${filename}\n`);
+}
+
+// Pack Y — Stabilization/ subfolder (7 stabilization artefacts).
+const stabilizationDir = path.join(docDir, 'Stabilization');
+await fs.mkdir(stabilizationDir, { recursive: true });
+const stabilizationWrites: Array<[string, string]> = [
+  ['Stabilization_Roadmap.md', stabRoadmapResult.markdown],
+  ['Lessons_Learned_Register.md', lessonsResult.markdown],
+  ['Benefits_Realization_Tracker.md', benefitsResult.markdown],
+  ['Process_Improvement_Backlog.md', processBacklogResult.markdown],
+  ['Continuous_Improvement_Governance.md', governanceResult.markdown],
+  ['KPI_Evolution_Plan.md', kpiEvolutionResult.markdown],
+  ['Phase_Two_Charter.md', phaseTwoResult.markdown],
+];
+for (const [filename, content] of stabilizationWrites) {
+  await fs.writeFile(path.join(stabilizationDir, filename), content, 'utf8');
+  process.stdout.write(`  ✓ Stabilization/${filename}\n`);
 }
 
 // ── Real-code generation: SDF bundle ────────────────────────────────────────

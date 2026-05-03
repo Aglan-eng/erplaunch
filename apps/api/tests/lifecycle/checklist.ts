@@ -1298,28 +1298,149 @@ const PHASE_8_HYPERCARE: Phase = {
 };
 
 // ─── Phase 9 — Stabilize ─────────────────────────────────────────────────────
+//
+// Pack Y closure — pre-Pack-Y this rubric was 3 placeholder checks
+// scoring 0/10 on both adaptors (no Documentation/Stabilization/
+// folder existed). Pack Y emits 7 dedicated artefacts driving a
+// 10-check rubric. Both adaptors should now hit 10/10.
 
 const PHASE_9_STABILIZE: Phase = {
   number: 9,
   name: 'Stabilize',
   checks: [
     {
-      id: 'p9.optimization-roadmap-exists',
-      description: 'Optimization_Roadmap.md is generated (gap — not currently produced)',
-      evaluator: (s) => docs(s).has('Optimization_Roadmap.md'),
+      id: 'p9.stabilization-roadmap-exists',
+      description: 'Documentation/Stabilization/Stabilization_Roadmap.md exists',
+      evaluator: (s) => docs(s).has('Stabilization/Stabilization_Roadmap.md'),
     },
     {
-      id: 'p9.phase-2-or-continuous',
-      description: '"Phase 2" or "Continuous improvement" referenced (gap)',
-      evaluator: (s) =>
-        bundleContains(docs(s), 'Continuous Improvement') ||
-        bundleContains(docs(s), 'Phase 2') ||
-        bundleContains(docs(s), 'Continuous improvement'),
+      id: 'p9.stabilization-roadmap-has-quarterly-milestones',
+      description:
+        'Stabilization_Roadmap.md defines T+30 / T+90 / T+180 / T+270 / T+360 anchors',
+      evaluator: (s) => {
+        const c = docs(s).get('Stabilization/Stabilization_Roadmap.md');
+        if (!c) return false;
+        return /T\+30/.test(c) && /T\+90/.test(c) && /T\+180/.test(c) && /T\+270/.test(c) && /T\+360/.test(c);
+      },
     },
     {
-      id: 'p9.backlog',
-      description: '"Backlog" referenced (gap)',
-      evaluator: (s) => bundleContains(docs(s), 'Backlog'),
+      id: 'p9.lessons-learned-register-exists',
+      description:
+        'Lessons_Learned_Register.md exists with the 4-column "Theme | What | So what | Now what" table',
+      evaluator: (s) => {
+        const c = docs(s).get('Stabilization/Lessons_Learned_Register.md');
+        if (!c) return false;
+        return /\| Theme \| What happened \| So what \(impact\) \| Now what \(action\) \|/.test(c);
+      },
+    },
+    {
+      id: 'p9.lessons-learned-has-default-themes',
+      description:
+        'Lessons_Learned_Register.md has at least 5 of the 7 canonical theme rows',
+      evaluator: (s) => {
+        const c = docs(s).get('Stabilization/Lessons_Learned_Register.md');
+        if (!c) return false;
+        const themes = [
+          'Scope discipline',
+          'Change management',
+          'Data quality',
+          'Integration testing',
+          'Sponsor engagement',
+          'Training depth',
+          'Hypercare staffing',
+        ];
+        const present = themes.filter((t) => c.includes(`| ${t} |`)).length;
+        return present >= 5;
+      },
+    },
+    {
+      id: 'p9.benefits-tracker-references-business-case',
+      description:
+        'Benefits_Realization_Tracker.md has Metric/Baseline/Target columns + at least 4 data rows',
+      evaluator: (s) => {
+        const c = docs(s).get('Stabilization/Benefits_Realization_Tracker.md');
+        if (!c) return false;
+        // Header check.
+        if (!/\| Metric \| Baseline \| Target \| Timing \| Source data \| Owner \| Status \|/.test(c)) return false;
+        // Data row pattern: pipe + content + pipe (× 7 columns) — count rows in tracker section.
+        const trackerSection = c.split('## 2. Tracker Table')[1]?.split('## 3.')[0] ?? '';
+        const dataRows = (trackerSection.match(/^\|[^|]+\|[^|]+\|[^|]+\|[^|]+\|[^|]+\|[^|]+\|[^|]+\|/gm) ?? [])
+          .filter((r) => !/^\| Metric \| Baseline/.test(r) && !/^\| ---/.test(r));
+        return dataRows.length >= 4;
+      },
+    },
+    {
+      id: 'p9.benefits-tracker-names-owner',
+      description:
+        'Benefits_Realization_Tracker.md cites the parsed benefitsReviewOwner verbatim (no [ASSIGN] placeholder)',
+      evaluator: (s) => {
+        const c = docs(s).get('Stabilization/Benefits_Realization_Tracker.md');
+        if (!c) return false;
+        return !c.includes('_[ASSIGN benefits-review owner]_');
+      },
+    },
+    {
+      id: 'p9.process-improvement-backlog-has-three-queues',
+      description:
+        'Process_Improvement_Backlog.md has Quick Wins / Enhancements / Phase Two sections',
+      evaluator: (s) => {
+        const c = docs(s).get('Stabilization/Process_Improvement_Backlog.md');
+        if (!c) return false;
+        return (
+          /## 1\. Quick Wins/.test(c) &&
+          /## 2\. Enhancements/.test(c) &&
+          /## 3\. Phase Two/.test(c)
+        );
+      },
+    },
+    {
+      id: 'p9.governance-doc-has-decision-matrix',
+      description:
+        'Continuous_Improvement_Governance.md has RACI matrix for at least 4 decision categories',
+      evaluator: (s) => {
+        const c = docs(s).get('Stabilization/Continuous_Improvement_Governance.md');
+        if (!c) return false;
+        const categories = [
+          'Configuration change',
+          'Master-data change',
+          'Integration change',
+          'Customisation change',
+          'Release of new module',
+          'Expansion to new entity',
+        ];
+        return categories.filter((cat) => c.includes(cat)).length >= 4;
+      },
+    },
+    {
+      id: 'p9.governance-doc-references-vendor-release-cadence',
+      description:
+        'Continuous_Improvement_Governance.md references the platform-specific vendor release cadence (NetSuite biannual / Odoo annual + OdooSH)',
+      evaluator: (s) => {
+        const c = docs(s).get('Stabilization/Continuous_Improvement_Governance.md');
+        if (!c) return false;
+        if (s.adaptor === 'netsuite') {
+          return c.includes('2 vendor releases per year') && c.includes('Release Preview');
+        }
+        if (s.adaptor === 'odoo') {
+          return c.includes('1 annual major version') && c.includes('OdooSH');
+        }
+        return /vendor release cadence|annual|biannual|major version/i.test(c);
+      },
+    },
+    {
+      id: 'p9.kpi-evolution-plan-defines-three-eras',
+      description:
+        'KPI_Evolution_Plan.md defines Hypercare / Stabilization / Steady-state eras with metric transitions',
+      evaluator: (s) => {
+        const c = docs(s).get('Stabilization/KPI_Evolution_Plan.md');
+        if (!c) return false;
+        const hasEras =
+          /\*\*Hypercare\*\* \| T\+0/i.test(c) &&
+          /\*\*Stabilization\*\* \| T\+30/i.test(c) &&
+          /\*\*Steady-state\*\* \| T\+360\+/i.test(c);
+        const hasTransitions = /Metric Retirement/i.test(c) && /Metric Introduction/i.test(c);
+        return hasEras && hasTransitions;
+      },
     },
   ],
 };
