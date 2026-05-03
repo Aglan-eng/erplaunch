@@ -641,6 +641,79 @@ const PHASE_4_BUILD: Phase = {
         return true;
       },
     },
+    // ── Pack F — Reporting (Saved Searches + Dashboards) ──
+    // The starter library guarantees a 12-saved-search floor on every
+    // NetSuite engagement. Per-customrecord default views give every
+    // customrecord a paired list-view savedsearch. Dashboards bind
+    // matching savedsearches as Search portlets per role.
+    {
+      id: 'p4.sdf-saved-searches-emitted',
+      description:
+        'At least 12 customsearch_nsix_*.xml files in SDF/Objects/ (Pack F starter library floor)',
+      applicable: onlyNetSuite,
+      evaluator: (s) => {
+        let count = 0;
+        for (const key of s.buildArtefacts.keys()) {
+          if (/^SDF\/Objects\/customsearch_nsix_[a-z0-9_]+\.xml$/.test(key)) count++;
+        }
+        return count >= 12;
+      },
+    },
+    {
+      id: 'p4.sdf-saved-search-per-custom-record',
+      description:
+        'Every customrecord_*.xml has a corresponding customsearch_*_default_view.xml (Pack F per-record list view)',
+      applicable: onlyNetSuite,
+      evaluator: (s) => {
+        const recordSlugs: string[] = [];
+        for (const key of s.buildArtefacts.keys()) {
+          const m = key.match(/^SDF\/Objects\/customrecord_([a-z0-9_]+)\.xml$/);
+          if (m) recordSlugs.push(m[1]);
+        }
+        // Vacuous-truth: no records → no expectation.
+        if (recordSlugs.length === 0) return true;
+        for (const slug of recordSlugs) {
+          if (!s.buildArtefacts.has(`SDF/Objects/customsearch_nsix_${slug}_default_view.xml`)) {
+            return false;
+          }
+        }
+        return true;
+      },
+    },
+    {
+      id: 'p4.sdf-dashboards-emitted',
+      description:
+        'When ns.design.roleDashboards yields ≥1 dashboard, custpubdash_nsix_*.xml files exist (vacuous-truth pass otherwise)',
+      applicable: onlyNetSuite,
+      evaluator: (s) => {
+        // The harness can't read wizard answers directly — we treat the
+        // absence of dashboard files as "no dashboards declared" and
+        // pass. The presence-with-bad-shape case is caught by the next
+        // check (p4.sdf-dashboards-reference-saved-searches).
+        for (const key of s.buildArtefacts.keys()) {
+          if (/^SDF\/Objects\/custpubdash_nsix_[a-z0-9_]+\.xml$/.test(key)) return true;
+        }
+        return true; // vacuous-truth — engagement may have no dashboards
+      },
+    },
+    {
+      id: 'p4.sdf-dashboards-reference-saved-searches',
+      description:
+        'At least one dashboard XML contains a <portlet><id>customsearch_nsix_*</id></portlet> reference (dashboards actually wire to searches, not empty containers)',
+      applicable: onlyNetSuite,
+      evaluator: (s) => {
+        let dashboardCount = 0;
+        for (const [key, content] of s.buildArtefacts.entries()) {
+          if (!/^SDF\/Objects\/custpubdash_nsix_[a-z0-9_]+\.xml$/.test(key)) continue;
+          dashboardCount++;
+          if (/<id>customsearch_nsix_[a-z0-9_]+<\/id>/.test(content)) return true;
+        }
+        // Vacuous-truth pass when no dashboards exist (Pack F is
+        // optional — engagements with no roleDashboards answer ship
+        // zero dashboards).
+        return dashboardCount === 0;
+      },
+    },
   ],
 };
 

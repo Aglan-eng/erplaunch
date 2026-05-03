@@ -941,6 +941,30 @@ function buildSolutionDesignFlow(): FlowDefinition {
               { value: 'MIXED', label: 'Mixed — Saved Searches for ops, BI for executive reporting' },
             ],
           },
+          {
+            id: 'ns.design.kpiCatalog',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "KPI catalog (one per line — '<workstream>: <KPI name>: <description>'; e.g., 'P2P: Open PO Count: count of POs not yet received', 'O2C: AR Aging > 60 days: customer balances over 60 days', 'R2R: Trial Balance: TB by subsidiary')",
+            help: {
+              title: 'How this drives the bundle',
+              body:
+                'Workstream prefix is one of R2R, P2P, O2C, MFG, RTN, CRM, INV. The Saved Search generator emits one savedsearch XML per KPI line plus a standard starter library covering common cross-engagement reports.',
+            },
+          },
+          {
+            id: 'ns.design.roleDashboards',
+            inputType: 'TEXTAREA',
+            required: false,
+            label:
+              "Role-specific dashboards (one per line — '<role>: <KPIs to feature>'; e.g., 'CFO: Trial Balance, AR Aging, Cash Position', 'AP Clerk: Pending Bills, Approval Queue', 'Sales Manager: Top Customers, Open SO, Win Rate'). Each role gets a publisheddashboard XML referencing the matching savedsearch XMLs.",
+            help: {
+              title: 'How dashboards route to NetSuite Centers',
+              body:
+                'Generator routes each role to the appropriate NetSuite Center (ACCOUNTING_CENTER for finance roles, SALES_CENTER for sales, INVENTORY_CENTER for ops, PURCHASE_CENTER for procurement, MANUFACTURING_CENTER for production, EXECUTIVE_CENTER for C-suite, CLASSIC otherwise) and binds the listed KPIs as Search portlets.',
+            },
+          },
         ],
       },
       {

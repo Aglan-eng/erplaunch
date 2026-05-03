@@ -21,6 +21,8 @@ import {
 import { generateCurrencies } from './generators/sdfCurrencyGenerator.js';
 import { generateWorkflows } from './generators/sdfWorkflowGenerator.js';
 import { generateWorkflowActionScripts } from './generators/sdfWorkflowActionScriptGenerator.js';
+import { generateSavedSearches } from './generators/sdfSavedSearchGenerator.js';
+import { generateDashboards } from './generators/sdfDashboardGenerator.js';
 import { validateSDFBundle, isValidationEnabled } from './generators/sdfValidator.js';
 import { generateScripts } from './generators/scriptGenerator.js';
 import { generateRiskRegister } from './generators/riskGenerator.js';
@@ -374,6 +376,23 @@ export async function processJob(jobId: string, db: DbModule) {
       // script. Object.assign-merge into sdfFiles uses the script's
       // already-prefixed filename ("SuiteScripts/NSIX_WFA_*.js").
       Object.assign(sdfFiles, wfaScriptsResult.files);
+
+      // Pack F — Saved Searches + Dashboards. The starter library
+      // (12 universal NS reports) emits unconditionally; the wizard's
+      // KPI catalog adds engagement-specific KPIs; each customrecord
+      // gets a default list-view savedsearch. Dashboards then bind
+      // matching savedsearches as Search portlets per role.
+      const savedSearchesResult = generateSavedSearches({
+        kpiCatalogAnswer: answers['ns.design.kpiCatalog'] as string | undefined,
+        customRecordsAnswer: answers['ns.design.customRecords'] as string | undefined,
+      });
+      Object.assign(sdfFiles, savedSearchesResult.files);
+
+      const dashboardsResult = generateDashboards({
+        roleDashboardsAnswer: answers['ns.design.roleDashboards'] as string | undefined,
+        savedSearches: savedSearchesResult.emitted,
+      });
+      Object.assign(sdfFiles, dashboardsResult.files);
 
       // Pack A — Manifest now derives features from wizard answers
       // (was hardcoded to {CUSTOMRECORDS, SERVERSIDESCRIPTING}). The

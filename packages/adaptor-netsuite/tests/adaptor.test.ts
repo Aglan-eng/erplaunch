@@ -1793,3 +1793,46 @@ describe('netsuiteAdaptor: NS Pack W — APPROVALS flow shape', () => {
     }
   });
 });
+
+// ─── NS Pack F — Reporting question schema ──────────────────────────────────
+
+describe('netsuiteAdaptor: NS Pack F — Reporting questions in SOLUTION_DESIGN', () => {
+  const sd = netsuiteAdaptor.schema.flows.find((f) => f.id === 'SOLUTION_DESIGN');
+  const approach = sd!.sections.find((s) => s.id === 'approach')!;
+
+  it('approach section contains ns.design.kpiCatalog (TEXTAREA)', () => {
+    const q = approach.questions.find((q) => q.id === 'ns.design.kpiCatalog');
+    expect(q, 'kpiCatalog question must exist').toBeDefined();
+    expect(q!.inputType).toBe('TEXTAREA');
+  });
+
+  it('approach section contains ns.design.roleDashboards (TEXTAREA)', () => {
+    const q = approach.questions.find((q) => q.id === 'ns.design.roleDashboards');
+    expect(q, 'roleDashboards question must exist').toBeDefined();
+    expect(q!.inputType).toBe('TEXTAREA');
+  });
+
+  it('kpiCatalog label mentions the workstream prefix format', () => {
+    const q = approach.questions.find((q) => q.id === 'ns.design.kpiCatalog')!;
+    expect(q.label).toMatch(/workstream|R2R|P2P|O2C/i);
+  });
+
+  it('roleDashboards label mentions role-to-KPI binding', () => {
+    const q = approach.questions.find((q) => q.id === 'ns.design.roleDashboards')!;
+    expect(q.label.toLowerCase()).toContain('role');
+    expect(q.label.toLowerCase()).toContain('kpi');
+  });
+
+  it('both questions are non-required (consultant-optional)', () => {
+    const kpi = approach.questions.find((q) => q.id === 'ns.design.kpiCatalog')!;
+    const dash = approach.questions.find((q) => q.id === 'ns.design.roleDashboards')!;
+    expect(kpi.required).toBe(false);
+    expect(dash.required).toBe(false);
+  });
+
+  it('reportingPlatform still exists alongside the new questions (Pack F adds, does not replace)', () => {
+    const q = approach.questions.find((q) => q.id === 'ns.design.reportingPlatform');
+    expect(q).toBeDefined();
+    expect(q!.inputType).toBe('SINGLE_SELECT');
+  });
+});

@@ -38,6 +38,8 @@ import {
 import { generateCurrencies } from '../src/services/generators/sdfCurrencyGenerator.js';
 import { generateWorkflows } from '../src/services/generators/sdfWorkflowGenerator.js';
 import { generateWorkflowActionScripts } from '../src/services/generators/sdfWorkflowActionScriptGenerator.js';
+import { generateSavedSearches } from '../src/services/generators/sdfSavedSearchGenerator.js';
+import { generateDashboards } from '../src/services/generators/sdfDashboardGenerator.js';
 import { validateSDFBundle } from '../src/services/generators/sdfValidator.js';
 import netsuiteAdaptor from '@ofoq/adaptor-netsuite';
 
@@ -223,6 +225,29 @@ const answers: Record<string, unknown> = {
     'Workflow Action scripts for $25k+ approval routing on POs and Bills\n' +
     'Suitelet for consolidated AR aging dashboard (multi-subsidiary)',
   'ns.design.reportingPlatform': 'MIXED',
+
+  // Pack F — KPI catalog drives the saved-search generator beyond
+  // the universal starter library. Format: "<workstream>: <name>: <desc>".
+  'ns.design.kpiCatalog':
+    'P2P: Open PO Count: count of POs not yet received\n' +
+    'P2P: PO Spend by Vendor: total committed spend YTD by vendor\n' +
+    'O2C: AR Aging > 60 Days: customer balances over 60 days\n' +
+    'O2C: New Customer Adds: customers created in the last 30 days\n' +
+    'R2R: Trial Balance by Subsidiary: TB rolled up per subsidiary\n' +
+    'R2R: JE Audit Trail: journal entries posted in the last 7 days\n' +
+    'MFG: Open Production Orders: assembly builds not yet completed\n' +
+    'INV: Lots Expiring 30 Days: items with lot expiry < 30 days out',
+
+  // Pack F — Role-specific dashboards. Each line "<role>: <KPIs>"
+  // emits one publisheddashboard XML wired to NetSuite's role-aware
+  // Center (ACCOUNTING_CENTER for finance, SALES_CENTER for sales,
+  // INVENTORY_CENTER for ops, EXECUTIVE_CENTER for C-suite, etc.).
+  'ns.design.roleDashboards':
+    'CFO: Trial Balance, AR Aging, Open AR, Top Customers\n' +
+    'AP Clerk: Pending Bills, Open PO\n' +
+    'AR Clerk: AR Aging, Open AR, Top Customers\n' +
+    'Sales Manager: Top Customers, Open Sales Orders, New Customer Adds\n' +
+    'Inventory Manager: Inventory Variance, Lots Expiring, Open Production Orders',
   'ns.design.customRecords':
     'Approval Tracker (custom record — captures full chain per transaction)\n' +
     'Vendor Onboarding Request (workflow-driven; replaces current spreadsheet)\n' +
@@ -442,6 +467,17 @@ const wfaScriptsResult = generateWorkflowActionScripts({
   clientName,
 });
 
+// Pack F — saved searches + dashboards. Saved searches run first
+// because dashboards reference their scriptids for KPI portlet wiring.
+const savedSearchesResult = generateSavedSearches({
+  kpiCatalogAnswer: answers['ns.design.kpiCatalog'] as string | undefined,
+  customRecordsAnswer: answers['ns.design.customRecords'] as string | undefined,
+});
+const dashboardsResult = generateDashboards({
+  roleDashboardsAnswer: answers['ns.design.roleDashboards'] as string | undefined,
+  savedSearches: savedSearchesResult.emitted,
+});
+
 // Pack A — Manifest derives feature dependencies from the wizard
 // answers (was hardcoded to {CUSTOMRECORDS, SERVERSIDESCRIPTING}).
 // Drives SUBSIDIARIES / INTERCOMPANY / MULTICURRENCY / etc. on
@@ -535,6 +571,8 @@ const allSdfFiles: Record<string, string> = {
   ...txnFormsResult.files,
   ...entryFormsResult.files,
   ...workflowsResult.files,
+  ...savedSearchesResult.files,
+  ...dashboardsResult.files,
 };
 const validation = validateSDFBundle(allSdfFiles);
 if (!validation.ok) {
@@ -616,6 +654,20 @@ for (const [relPath, content] of Object.entries(wfaScriptsResult.files)) {
   process.stdout.write(`  ✓ SDF/${relPath}\n`);
 }
 
+for (const [relPath, content] of Object.entries(savedSearchesResult.files)) {
+  const fullPath = path.join(sdfRoot, relPath);
+  await fs.mkdir(path.dirname(fullPath), { recursive: true });
+  await fs.writeFile(fullPath, content, 'utf8');
+  process.stdout.write(`  ✓ SDF/${relPath}\n`);
+}
+
+for (const [relPath, content] of Object.entries(dashboardsResult.files)) {
+  const fullPath = path.join(sdfRoot, relPath);
+  await fs.mkdir(path.dirname(fullPath), { recursive: true });
+  await fs.writeFile(fullPath, content, 'utf8');
+  process.stdout.write(`  ✓ SDF/${relPath}\n`);
+}
+
 // ── Real-logic SuiteScript: PO approval User Event ──────────────────────────
 // First real-LOGIC SuiteScript file. Reads the wizard's free-text
 // p2p.purchasing.poApprovalTiers answer and emits a deployable User Event
@@ -667,7 +719,9 @@ console.log(
     `${Object.keys(txnFormsResult.files).length} transaction form(s) + ` +
     `${Object.keys(entryFormsResult.files).length} entry form(s) + ` +
     `${workflowsResult.emitted.length} workflow(s) + ` +
-    `${wfaScriptsResult.emitted.length} WFA script(s)`,
+    `${wfaScriptsResult.emitted.length} WFA script(s) + ` +
+    `${savedSearchesResult.emitted.length} saved search(es) + ` +
+    `${dashboardsResult.emitted.length} dashboard(s)`,
 );
 if (missingTerms === 0) {
   // eslint-disable-next-line no-console
