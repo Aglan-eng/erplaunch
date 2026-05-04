@@ -8,6 +8,35 @@ import { SectionSuggestionPanel } from '../SectionSuggestionPanel';
 import { StepComments } from '../StepComments';
 import { ImageUpload } from '../ImageUpload';
 import { AIAdvisorPanel } from '../AIAdvisorPanel';
+import { ApprovalChainEditor } from '../ApprovalChainEditor';
+
+// Phase 24 — approval-boolean question id → structured chain editor wiring.
+// When a boolean is rendered AND its current value is true, the editor
+// drops in immediately below it. Mirrors the 5 entries in
+// approvalChainHelpers.APPROVAL_FLOW_KEYS (kept as a small static map
+// here to avoid pulling the api package into the web bundle).
+const APPROVAL_EDITORS: Record<string, { structuredKey: string; flowLabel: string }> = {
+  'p2p.purchasing.poApprovalRequired': {
+    structuredKey: 'p2p.purchasing.approvalChainStructured',
+    flowLabel: 'Purchase Order Approval',
+  },
+  'p2p.bills.billApprovalRequired': {
+    structuredKey: 'p2p.bills.approvalChainStructured',
+    flowLabel: 'Vendor Bill Approval',
+  },
+  'o2c.salesOrders.soApprovalRequired': {
+    structuredKey: 'o2c.salesOrders.approvalChainStructured',
+    flowLabel: 'Sales Order Approval',
+  },
+  'r2r.journalEntries.approvalRequired': {
+    structuredKey: 'r2r.journalEntries.approvalChainStructured',
+    flowLabel: 'Journal Entry Approval',
+  },
+  'p2p.expenses.expenseApproval': {
+    structuredKey: 'p2p.expenses.approvalChainStructured',
+    flowLabel: 'Expense Report Approval',
+  },
+};
 import { useWizardProgress } from '@/hooks/useWizardProgress';
 import { useWizardStore } from '@/stores/wizardStore';
 import { engagementsApi } from '@/lib/api';
@@ -121,9 +150,26 @@ export function FlowSectionStep({ sectionKey, engagementId }: FlowSectionStepPro
       />
 
       <div className="space-y-4">
-        {questions.map((q) => (
-          <QuestionCard key={q.id} question={q} engagementId={engagementId} />
-        ))}
+        {questions.map((q) => {
+          // Phase 24 — when this question is one of the 5 approval booleans
+          // AND the current answer is true, drop the structured chain editor
+          // in beneath it. The editor reads/writes its own answer key so
+          // QuestionCard above is unchanged.
+          const editorWiring = APPROVAL_EDITORS[q.id];
+          const showEditor = editorWiring && answers[q.id] === true;
+          return (
+            <React.Fragment key={q.id}>
+              <QuestionCard question={q} engagementId={engagementId} />
+              {showEditor && (
+                <ApprovalChainEditor
+                  engagementId={engagementId}
+                  structuredKey={editorWiring.structuredKey}
+                  flowLabel={editorWiring.flowLabel}
+                />
+              )}
+            </React.Fragment>
+          );
+        })}
 
         {questions.length === 0 && (
           <div className="rounded-xl border border-dashed border-gray-200 p-8 text-center text-sm text-gray-400">

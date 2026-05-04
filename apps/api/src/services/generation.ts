@@ -15,6 +15,10 @@ import {
   generateSdfStructuredCustomFields,
   resolveLegacyCustomFieldsScope,
 } from './generators/sdfStructuredCustomFieldsGenerator.js';
+import {
+  parseApprovalChain,
+  chainToLegacyTextarea,
+} from './generators/approvalChainHelpers.js';
 import { generateSdfCustomList } from './generators/sdfCustomListGenerator.js';
 import { generateTransactionForms } from './generators/sdfTransactionFormGenerator.js';
 import { generateEntryForms } from './generators/sdfEntryFormGenerator.js';
@@ -1211,7 +1215,22 @@ export async function processJob(jobId: string, db: DbModule) {
       // without that field, the script's setValue() blows up at
       // runtime. Object.assign-merging into sdfFiles puts these next
       // to the heavy generator's output for a single validator pass.
-      const poApprovalAnswer = answers['p2p.purchasing.poApprovalTiers'];
+      // Phase 24 precedence: when the structured approval chain answer is
+      // populated for PO, synthesise a legacy `poApprovalTiers` TEXTAREA
+      // from it in-memory and feed that to the PO User Event script
+      // generator. Mirrors Phase 23's precedence pattern — structured wins
+      // when present. The persisted answers map is NOT mutated; this is a
+      // read-only synthesis at orchestration time so the consultant doesn't
+      // have to fill both keys.
+      const rawPoApprovalAnswer = answers['p2p.purchasing.poApprovalTiers'];
+      const poApprovalChain = parseApprovalChain(
+        answers['p2p.purchasing.approvalChainStructured'],
+      );
+      const synthesisedPoTiers = chainToLegacyTextarea(
+        poApprovalChain,
+        answers['r2r.currencies.baseCurrency'] as string | null | undefined,
+      );
+      const poApprovalAnswer = synthesisedPoTiers ?? rawPoApprovalAnswer;
       const willEmitPoScript =
         typeof poApprovalAnswer === 'string' && poApprovalAnswer.trim().length > 0;
       // Phase 23 precedence: when the structured editor answer is

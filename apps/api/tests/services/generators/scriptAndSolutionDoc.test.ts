@@ -123,3 +123,230 @@ describe('solutionDocGenerator: Fix #6 — approval workflow described in prose'
     expect(doc).not.toMatch(/##+\s+(\d+\.\d+\s+)?Approval Workflows/);
   });
 });
+
+// ─── Phase 24 — Approval Chain detail capture + Section 4.3 enrichment ─────
+
+describe('Phase 24 — Section 4.3 enrichment + JE/Expense gap closure', () => {
+  const NETSUITE_CTX = {
+    id: 'netsuite',
+    name: 'NetSuite',
+    editionLabel: 'NetSuite Starter',
+    consultantQualifier: 'NetSuite',
+    nextStepLanguage: 'the NetSuite build phase',
+  };
+
+  const ODOO_CTX = {
+    id: 'odoo',
+    name: 'Odoo',
+    editionLabel: 'Odoo Enterprise',
+    consultantQualifier: 'Odoo',
+    nextStepLanguage: 'the Odoo configuration phase',
+  };
+
+  const SAMPLE_CHAIN = {
+    byCurrency: {
+      USD: [
+        { lowerBound: 0, upperBound: 5000, role: 'Auto-approve', escalationHours: 0, alternateApprover: '' },
+        { lowerBound: 5001, upperBound: 50000, role: 'Department Manager', escalationHours: 24, alternateApprover: 'Director' },
+        { lowerBound: 50001, upperBound: null, role: 'CFO', escalationHours: 48, alternateApprover: '' },
+      ],
+    },
+    selfApprovalBypassUpTo: { USD: 1000 },
+    notes: 'Credit-hold transition triggers when customer overdue >30d.',
+  };
+
+  // ── Gap closure: JE + Expense were captured but never rendered in Section 4.3 ──
+
+  it('renders JE approval row in Section 4.3 when r2r.journalEntries.approvalRequired is true (silent gap closed)', () => {
+    const doc = generateSolutionDoc({
+      clientName: 'Aurora',
+      adaptor: NETSUITE_CTX,
+      license: { edition: 'STARTER', modules: [] },
+      answers: { 'r2r.journalEntries.approvalRequired': true },
+      conflicts: [],
+    });
+    expect(doc).toMatch(/##+\s+(\d+\.\d+\s+)?Approval Workflows/);
+    expect(doc).toContain('Journal Entry Approval');
+    expect(doc).toContain('Journal Entry');
+  });
+
+  it('renders Expense Report approval row when p2p.expenses.expenseApproval is true (silent gap closed)', () => {
+    const doc = generateSolutionDoc({
+      clientName: 'Aurora',
+      adaptor: NETSUITE_CTX,
+      license: { edition: 'STARTER', modules: [] },
+      answers: { 'p2p.expenses.expenseApproval': true },
+      conflicts: [],
+    });
+    expect(doc).toMatch(/##+\s+(\d+\.\d+\s+)?Approval Workflows/);
+    expect(doc).toContain('Expense Report Approval');
+    expect(doc).toContain('Expense Report');
+  });
+
+  // ── Structured chain rendering ──
+
+  it('renders detailed tier table + SuiteFlow build steps when structured chain is populated for PO', () => {
+    const doc = generateSolutionDoc({
+      clientName: 'Aurora',
+      adaptor: NETSUITE_CTX,
+      license: { edition: 'STARTER', modules: [] },
+      answers: {
+        'p2p.purchasing.poApprovalRequired': true,
+        'p2p.purchasing.approvalChainStructured': JSON.stringify(SAMPLE_CHAIN),
+        'r2r.currencies.baseCurrency': 'USD',
+      },
+      conflicts: [],
+    });
+    expect(doc).toContain('Detailed Approval Chains (Phase 24)');
+    expect(doc).toContain('Purchase Order Approval — Detailed Tier Structure');
+    expect(doc).toContain('Department Manager');
+    expect(doc).toContain('Tier table — USD');
+    expect(doc).toContain('How to build this in NetSuite SuiteFlow');
+    expect(doc).toContain('Customization → Workflow → Workflows → New');
+    expect(doc).toContain('Init Trigger:** On Create AND On Update');
+    expect(doc).toContain('role-based recipients, not hard-coded user IDs');
+    expect(doc).toContain('Self-approval bypass');
+  });
+
+  it('renders ALL 5 flows when all booleans + chains populated', () => {
+    const fiveFlows: Record<string, unknown> = {
+      'r2r.currencies.baseCurrency': 'USD',
+    };
+    const flows = [
+      ['p2p.purchasing.poApprovalRequired', 'p2p.purchasing.approvalChainStructured'],
+      ['p2p.bills.billApprovalRequired', 'p2p.bills.approvalChainStructured'],
+      ['o2c.salesOrders.soApprovalRequired', 'o2c.salesOrders.approvalChainStructured'],
+      ['r2r.journalEntries.approvalRequired', 'r2r.journalEntries.approvalChainStructured'],
+      ['p2p.expenses.expenseApproval', 'p2p.expenses.approvalChainStructured'],
+    ];
+    for (const [boolKey, chainKey] of flows) {
+      fiveFlows[boolKey] = true;
+      fiveFlows[chainKey] = JSON.stringify(SAMPLE_CHAIN);
+    }
+
+    const doc = generateSolutionDoc({
+      clientName: 'Aurora',
+      adaptor: NETSUITE_CTX,
+      license: { edition: 'STARTER', modules: [] },
+      answers: fiveFlows,
+      conflicts: [],
+    });
+    expect(doc).toContain('Purchase Order Approval — Detailed Tier Structure');
+    expect(doc).toContain('Vendor Bill Approval — Detailed Tier Structure');
+    expect(doc).toContain('Sales Order Approval — Detailed Tier Structure');
+    expect(doc).toContain('Journal Entry Approval — Detailed Tier Structure');
+    expect(doc).toContain('Expense Report Approval — Detailed Tier Structure');
+  });
+
+  it('falls back to generic-prose row only when boolean is true but structured chain is empty/absent', () => {
+    const doc = generateSolutionDoc({
+      clientName: 'Aurora',
+      adaptor: NETSUITE_CTX,
+      license: { edition: 'STARTER', modules: [] },
+      answers: { 'p2p.purchasing.poApprovalRequired': true },
+      conflicts: [],
+    });
+    expect(doc).toContain('PO Approval | Purchase Order | Before Submit');
+    expect(doc).not.toContain('Detailed Approval Chains (Phase 24)');
+    expect(doc).not.toContain('Detailed Tier Structure');
+  });
+
+  it('renders ⚠ callout when chain has gaps but still emits the table', () => {
+    const incompleteChain = {
+      byCurrency: {
+        USD: [
+          { lowerBound: 0, upperBound: 5000, role: 'A', escalationHours: 0, alternateApprover: '' },
+          { lowerBound: 10000, upperBound: 50000, role: 'B', escalationHours: 0, alternateApprover: '' },
+        ],
+      },
+      selfApprovalBypassUpTo: {},
+      notes: '',
+    };
+    const doc = generateSolutionDoc({
+      clientName: 'Aurora',
+      adaptor: NETSUITE_CTX,
+      license: { edition: 'STARTER', modules: [] },
+      answers: {
+        'p2p.purchasing.poApprovalRequired': true,
+        'p2p.purchasing.approvalChainStructured': JSON.stringify(incompleteChain),
+        'r2r.currencies.baseCurrency': 'USD',
+      },
+      conflicts: [],
+    });
+    expect(doc).toContain('⚠');
+    expect(doc).toContain('Incomplete chain');
+    expect(doc).toContain('Gap');
+    expect(doc).toContain('Tier table — USD');
+  });
+
+  it('renders info-level note when R2R Currencies section is empty', () => {
+    const doc = generateSolutionDoc({
+      clientName: 'Aurora',
+      adaptor: NETSUITE_CTX,
+      license: { edition: 'STARTER', modules: [] },
+      answers: {
+        'p2p.purchasing.poApprovalRequired': true,
+        'p2p.purchasing.approvalChainStructured': JSON.stringify(SAMPLE_CHAIN),
+        // r2r.currencies.baseCurrency intentionally omitted
+      },
+      conflicts: [],
+    });
+    expect(doc).toContain('R2R → Currencies section is incomplete');
+  });
+
+  // ── Banlist regression — structured chain on Odoo produces zero NetSuite content ──
+
+  it('produces zero NetSuite SuiteFlow content when adaptor is Odoo, even with structured chain populated', () => {
+    const doc = generateSolutionDoc({
+      clientName: 'Sahel',
+      adaptor: ODOO_CTX,
+      license: { edition: 'ENTERPRISE', modules: [] },
+      answers: {
+        'p2p.purchasing.poApprovalRequired': true,
+        'p2p.purchasing.approvalChainStructured': JSON.stringify(SAMPLE_CHAIN),
+        'r2r.journalEntries.approvalRequired': true,
+        'r2r.journalEntries.approvalChainStructured': JSON.stringify(SAMPLE_CHAIN),
+      },
+      conflicts: [],
+    });
+    // The whole NetSuite Section 4.3 is gated on adaptor.id === 'netsuite'.
+    expect(doc).not.toContain('Detailed Approval Chains (Phase 24)');
+    expect(doc).not.toContain('Detailed Tier Structure');
+    expect(doc).not.toContain('NetSuite UI');
+    expect(doc).not.toContain('SuiteFlow');
+    expect(doc).not.toContain('suitecloud object:import');
+    // Refinement #4: also assert no NetSuite record-type names leak.
+    // "Purchase Order" is a generic ERP term, but the BLOCK referencing
+    // it (Approval Workflows) shouldn't appear at all on Odoo. We can't
+    // assert absence of "Purchase Order" globally (Odoo plans mention POs
+    // too), so we assert absence of the specific Section 4.3 surface.
+    expect(doc).not.toContain('Customization → Workflow');
+    expect(doc).not.toContain('Vendor Bill Approval — Detailed Tier Structure');
+    expect(doc).not.toContain('Journal Entry Approval — Detailed Tier Structure');
+  });
+
+  // ── Pack-B / Pack-H regression unchanged ──
+  // The 32 sdfCustomFieldsGenerator + 23 sdfTransactionFormGenerator + 13
+  // sdfEntryFormGenerator tests run independently. This block only
+  // confirms the existing Section 4.3 prose-row tests above (lines 86-124)
+  // continue to pass with Phase 24 enrichment in place — they assert
+  // shape we preserved by appending the structured block beneath the
+  // generic-prose table rather than replacing it.
+
+  it('Phase 6 architectural decision still holds: no customworkflow_*.xml emitted (regression)', () => {
+    const doc = generateSolutionDoc({
+      clientName: 'Aurora',
+      adaptor: NETSUITE_CTX,
+      license: { edition: 'STARTER', modules: [] },
+      answers: {
+        'p2p.purchasing.poApprovalRequired': true,
+        'p2p.purchasing.approvalChainStructured': JSON.stringify(SAMPLE_CHAIN),
+      },
+      conflicts: [],
+    });
+    // Solution Design is prose, not XML — we shouldn't see any
+    // <customworkflow ...> markup leak in even when chains are detailed.
+    expect(doc).not.toMatch(/<customworkflow/);
+    expect(doc).not.toMatch(/customworkflow_[a-z0-9_]+\.xml/);
+  });
+});

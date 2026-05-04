@@ -1,5 +1,11 @@
 import MarkdownIt from 'markdown-it';
 import type { AdaptorContext, AdaptorQuestion } from './brdGenerator.js';
+import {
+  APPROVAL_FLOW_KEYS,
+  parseApprovalChain,
+  chainIsEmpty,
+  renderApprovalChainSection,
+} from './approvalChainHelpers.js';
 
 /** Mirror of brdGenerator.formatAnswer — kept inline so this module
  *  stays standalone. Same input/output contract. */
@@ -382,10 +388,21 @@ export function generateSolutionDoc(data: SolutionDocData): string {
     // SOAP webservices namespace and the <sendemailaction> shape). Instead
     // the consultant authors these in the NetSuite UI, then exports via SDF
     // for source-controlled promotion to higher environments.
+    //
+    // Phase 24: when an approval flow has a structured chain captured via
+    // ApprovalChainEditor (`<flow>.<section>.approvalChainStructured`),
+    // render detailed per-currency tier tables + concrete SuiteFlow build
+    // steps in addition to the generic-prose row. Empty chains fall back
+    // to the generic prose only — no regression for engagements that
+    // haven't filled the structured editor yet. JE + Expense flows are
+    // ALSO surfaced here (pre-Phase-24 they were captured but never
+    // rendered — silent gap closed).
     const poApproval = answers['p2p.purchasing.poApprovalRequired'] === true;
     const billApproval = answers['p2p.bills.billApprovalRequired'] === true;
     const soApproval = answers['o2c.salesOrders.soApprovalRequired'] === true;
-    if (poApproval || billApproval || soApproval) {
+    const jeApproval = answers['r2r.journalEntries.approvalRequired'] === true;
+    const expenseApproval = answers['p2p.expenses.expenseApproval'] === true;
+    if (poApproval || billApproval || soApproval || jeApproval || expenseApproval) {
       doc += `### 4.3 Approval Workflows — Manual Implementation Required\n\n`;
       doc += `The following approval workflows must be authored in the NetSuite UI `;
       doc += `(Customization → Workflow → Workflows → New). Oracle guidance is to `;
@@ -393,6 +410,11 @@ export function generateSolutionDoc(data: SolutionDocData): string {
       doc += `the XML; the approval actions (email, state transitions, role routing) `;
       doc += `use platform objects the SDF validator will only accept when they come `;
       doc += `from a UI export.\n\n`;
+
+      // Generic-prose summary table — always rendered when at least one
+      // approval is required, regardless of whether the structured chain
+      // is filled in. Provides the high-level overview; structured tier
+      // tables (when present) drop in below per flow.
       doc += `| Workflow | Record Type | Trigger | Notes |\n| :--- | :--- | :--- | :--- |\n`;
       if (poApproval) {
         doc += `| PO Approval | Purchase Order | Before Submit | Route to Procurement Manager on threshold; escalate to CFO above the second tier. Use role-based recipients, not hard-coded user IDs. |\n`;
@@ -403,9 +425,48 @@ export function generateSolutionDoc(data: SolutionDocData): string {
       if (soApproval) {
         doc += `| Sales Order Approval | Sales Order | Before Submit | Route by order value or customer credit tier. Wire a transition to a "Credit Hold" state when the customer has an overdue AR balance. |\n`;
       }
+      if (jeApproval) {
+        doc += `| Journal Entry Approval | Journal Entry | Before Submit | Route manual JEs by amount + posting period. Block posting into a closed period unless the workflow's CFO step explicitly re-opens it. |\n`;
+      }
+      if (expenseApproval) {
+        doc += `| Expense Report Approval | Expense Report | Before Submit | Default route to the employee's direct manager; override to Finance for amounts over the per-currency threshold. Pair with per-diem rate rules where configured. |\n`;
+      }
       doc += `\n**Checklist for the consultant:** (1) build the workflow in the UI of the lowest environment, `;
       doc += `(2) run end-to-end with a test record, (3) export via \`suitecloud object:import --type workflow\`, `;
       doc += `(4) commit the exported XML into the SDF bundle for promotion.\n\n`;
+
+      // Phase 24 — per-flow structured tier tables + SuiteFlow build
+      // instructions for any flow that has a populated structured chain.
+      // Empty chains skip this block (generic-prose row above is the
+      // fallback). Renderer is NetSuite-only by construction (banlist
+      // safety) — but the outer `if (isNetSuite)` already enforces this.
+      const baseCurrency = answers['r2r.currencies.baseCurrency'] as string | null | undefined;
+      const additionalCurrencies = answers['r2r.currencies.additionalCurrencies'] as
+        | string
+        | null
+        | undefined;
+      const validationContext = { baseCurrency, additionalCurrencies };
+
+      const renderedFlows: string[] = [];
+      for (const flowKey of APPROVAL_FLOW_KEYS) {
+        if (answers[flowKey.booleanKey] !== true) continue;
+        const chain = parseApprovalChain(answers[flowKey.structuredKey]);
+        if (chainIsEmpty(chain)) continue;
+        const block = renderApprovalChainSection(chain, flowKey.flowLabel, {
+          adaptorId: adaptor.id,
+          netsuiteRecordType: flowKey.netsuiteRecordType,
+          validationContext,
+        });
+        if (block.length > 0) renderedFlows.push(block);
+      }
+      if (renderedFlows.length > 0) {
+        doc += `#### Detailed Approval Chains (Phase 24)\n\n`;
+        doc += `For each flow below, the consultant has captured a structured tier `;
+        doc += `chain via the wizard's Approval Chain editor. Build the corresponding `;
+        doc += `SuiteFlow workflow with the exact tier boundaries, role assignments, `;
+        doc += `and escalation hours documented per flow.\n\n`;
+        doc += renderedFlows.join('\n');
+      }
     }
   } else {
     // Platform-neutral placeholder. The Phase-4 follow-up replaces this with
