@@ -41,6 +41,15 @@ const MGMT_ITEMS: SidebarItem[] = [
   { key: 'activity',        label: 'Activity Feed',     progress: 0, icon: Activity      },
 ];
 
+// Phase 23 — Customizations group. First item is Custom Fields; future
+// Phase 25/26 will add Roles + Templates here. NetSuite-only feature
+// surface today; the structured-fields generator self-gates so opening
+// this section on an Odoo engagement is harmless (the answer simply
+// won't be consumed by the SDF pipeline that's not running for Odoo).
+const CUSTOMIZATIONS_ITEMS: SidebarItem[] = [
+  { key: 'customizations.customFields', label: 'Custom Fields', progress: 0, icon: Settings2 },
+];
+
 // NetSuite fallback — used when the adaptor query is still loading, fails,
 // or the active engagement hasn't migrated to adaptor-driven sections yet.
 // Any other adaptor (Odoo, custom:*) produces its sidebar groups by
@@ -206,6 +215,7 @@ export function WizardSidebar({ engagementId, sectionProgress, licenseComplete, 
 
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({
     mgmt: false,
+    customizations: false,
     r2r: false,
     p2p: false,
     o2c: false,
@@ -339,6 +349,22 @@ export function WizardSidebar({ engagementId, sectionProgress, licenseComplete, 
     );
   };
 
+  // Phase 23 — Customizations group. Sits between Project Mgmt and
+  // Business Flows in the sidebar.
+  const renderCustomizationsSection = () => {
+    const hasActive = CUSTOMIZATIONS_ITEMS.some((i) => currentSection === i.key);
+    return (
+      <div>
+        {renderSectionHeader({ id: 'customizations', label: 'Customizations', hasActive })}
+        {!collapsed.customizations && (
+          <div className="mt-0.5 space-y-0.5 pl-1">
+            {CUSTOMIZATIONS_ITEMS.map((item) => renderItem(item))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderFlowGroup = (group: FlowGroup) => {
     const sections = group.sections.map((s) => {
       const subKey = s.key.replace(`${group.id}.`, '');
@@ -388,6 +414,11 @@ export function WizardSidebar({ engagementId, sectionProgress, licenseComplete, 
         style={{ scrollbarWidth: 'thin', scrollbarColor: '#e2e8f0 transparent' }}>
         <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] px-1 pt-1 pb-1.5">Project Mgmt</p>
         {renderMgmtSection()}
+
+        <div className="h-px bg-slate-100 my-2.5 mx-1" />
+
+        <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] px-1 pt-1 pb-1.5">Customizations</p>
+        {renderCustomizationsSection()}
 
         <div className="h-px bg-slate-100 my-2.5 mx-1" />
 

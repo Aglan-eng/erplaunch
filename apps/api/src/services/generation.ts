@@ -11,6 +11,10 @@ import { generateSdfManifest } from './generators/sdfManifestGenerator.js';
 import { generateSdfDeploy } from './generators/sdfDeployGenerator.js';
 import { generatePoApprovalScript } from './generators/sdfPoApprovalScriptGenerator.js';
 import { generateSdfCustomFields } from './generators/sdfCustomFieldsGenerator.js';
+import {
+  generateSdfStructuredCustomFields,
+  resolveLegacyCustomFieldsScope,
+} from './generators/sdfStructuredCustomFieldsGenerator.js';
 import { generateSdfCustomList } from './generators/sdfCustomListGenerator.js';
 import { generateTransactionForms } from './generators/sdfTransactionFormGenerator.js';
 import { generateEntryForms } from './generators/sdfEntryFormGenerator.js';
@@ -1210,8 +1214,20 @@ export async function processJob(jobId: string, db: DbModule) {
       const poApprovalAnswer = answers['p2p.purchasing.poApprovalTiers'];
       const willEmitPoScript =
         typeof poApprovalAnswer === 'string' && poApprovalAnswer.trim().length > 0;
+      // Phase 23 precedence: when the structured editor answer is
+      // populated, the legacy TEXTAREA is gated off so Pack B + Pack H
+      // stop emitting — preventing double-emission of fields with
+      // disjoint scriptid prefixes (cust*_<slug> vs cust*_nsix_<slug>)
+      // landing on the same NetSuite tenant during the migration window.
+      // The synthetic includePoApprovalRequiredField auto-add still runs
+      // either way — it's required by the PO approval User Event script.
+      const effectiveCustomFieldsScope = resolveLegacyCustomFieldsScope(
+        answers['ns.design.customFieldsScope'] as string | undefined,
+        answers['ns.design.customFieldsStructured'] as string | undefined,
+      );
+
       const customFieldsResult = generateSdfCustomFields({
-        customFieldsScopeAnswer: answers['ns.design.customFieldsScope'] as string | undefined,
+        customFieldsScopeAnswer: effectiveCustomFieldsScope,
         includePoApprovalRequiredField: willEmitPoScript,
       });
       Object.assign(sdfFiles, customFieldsResult.files);
@@ -1230,6 +1246,33 @@ export async function processJob(jobId: string, db: DbModule) {
         sdfFiles[`Objects/${field.selectListScriptid}.xml`] = listXml;
       }
 
+      // Phase 23 — Structured Custom Fields. Reads the new structured
+      // answer key `ns.design.customFieldsStructured` (JSON-stringified
+      // Map<recordType, StructuredCustomField[]>) and emits XML with
+      // explicit per-field type/required/searchable/showInList/default/
+      // helpText. Coexists additively with Pack B — structured uses
+      // `cust*_nsix_<slug>` filenames, Pack B uses `cust*_<slug>`. The
+      // generator self-gates on adaptorId === 'netsuite' so Odoo bundles
+      // get nothing even if the answer is somehow populated.
+      const structuredCustomFieldsResult = generateSdfStructuredCustomFields({
+        adaptorId,
+        structuredAnswer: answers['ns.design.customFieldsStructured'] as
+          | string
+          | undefined,
+      });
+      Object.assign(sdfFiles, structuredCustomFieldsResult.files);
+
+      // Same SELECT companion-list contract as Pack B — emit a
+      // placeholder customlist for every structured SELECT field.
+      for (const field of structuredCustomFieldsResult.emitted) {
+        if (field.fieldtype !== 'SELECT' || !field.selectListScriptid) continue;
+        const listXml = generateSdfCustomList({
+          listScriptid: field.selectListScriptid,
+          label: field.originalLabel,
+        });
+        sdfFiles[`Objects/${field.selectListScriptid}.xml`] = listXml;
+      }
+
       // Pack H — Custom Forms (Transaction + Entry). Purely derivative
       // from Pack B's custom field map: re-parses the same wizard
       // answer and emits one transactionform / entryform XML per
@@ -1237,15 +1280,20 @@ export async function processJob(jobId: string, db: DbModule) {
       // form embeds those fields under a "Custom Fields" fieldgroup so
       // the consultant doesn't have to drag them onto stock forms
       // manually after deploy.
+      // Phase 23 precedence applies to Pack H too — both transaction
+      // and entry form generators read the same TEXTAREA answer to drag
+      // fields onto custom forms. When structured wins, Pack H gets
+      // empty input → no auto-form-embedding. Documented Phase 23.5
+      // follow-up to bridge structured fields into form layout.
       const txnFormsResult = generateTransactionForms({
-        customFieldsScope: answers['ns.design.customFieldsScope'] as string | undefined,
+        customFieldsScope: effectiveCustomFieldsScope,
         clientName: eng.clientName as string,
         poApprovalInScope: willEmitPoScript,
       });
       Object.assign(sdfFiles, txnFormsResult.files);
 
       const entryFormsResult = generateEntryForms({
-        customFieldsScope: answers['ns.design.customFieldsScope'] as string | undefined,
+        customFieldsScope: effectiveCustomFieldsScope,
         clientName: eng.clientName as string,
       });
       Object.assign(sdfFiles, entryFormsResult.files);

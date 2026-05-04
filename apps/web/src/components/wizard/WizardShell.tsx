@@ -16,6 +16,7 @@ import { IssueTrackerStep } from './steps/IssueTrackerStep';
 import { DecisionLogStep } from './steps/DecisionLogStep';
 import { MeetingNotesStep } from './steps/MeetingNotesStep';
 import { MigrationTrackerStep } from './steps/MigrationTrackerStep';
+import { CustomFieldsStep } from './steps/CustomFieldsStep';
 import { DataCollectionPage } from '@/pages/DataCollectionPage';
 import { AIProfileGenerator } from './AIProfileGenerator';
 import { HelpDrawer } from './HelpDrawer';
@@ -324,6 +325,13 @@ export function WizardShell() {
 
     if (currentSection === 'migration') {
       return <MigrationTrackerStep engagementId={engagementId} />;
+    }
+
+    // Phase 23 — Customizations group. First (and only) item this phase
+    // is Custom Fields; future Phase 25/26 will add Roles + Templates
+    // here under the same `customizations.*` namespace.
+    if (currentSection === 'customizations.customFields') {
+      return <CustomFieldsStep engagementId={engagementId} />;
     }
 
     if (currentSection === 'activity') {
