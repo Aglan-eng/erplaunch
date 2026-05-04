@@ -55,10 +55,15 @@ jobs:
         run: pnpm -r --if-present run lint
 
       # Always run ESLint at the repo root against the shared .eslintrc.js.
-      # Uses pnpm dlx so we don't need to add eslint to the root package.json.
+      # Uses npx so we don't need to add eslint to the root package.json.
+      # NOTE: pnpm 10's `dlx` dropped the `-p` flag that older pnpm versions
+      # accepted as an npm-ism — passing `-p` now errors with
+      # "Invalid option '-p' - perhaps you meant '-c'?". npx still
+      # accepts `-p` and it's the simplest fix without adding eslint as
+      # a root dev-dep.
       - name: ESLint (repo root)
         run: |
-          pnpm dlx \
+          npx -y \
             -p eslint@8 \
             -p @typescript-eslint/parser@^7 \
             -p @typescript-eslint/eslint-plugin@^7 \
@@ -110,6 +115,15 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+
+      - name: Build workspace packages
+        # @ofoq/adaptor-sdk + @ofoq/adaptor-netsuite + @ofoq/adaptor-odoo
+        # cross-import each other's compiled types via ./dist/index.d.ts.
+        # Tests in adaptor-netsuite and adaptor-odoo fail to resolve
+        # @ofoq/adaptor-sdk if its dist isn't built first — same fix the
+        # typecheck job already applies. Without this, the unit-tests
+        # job hits "Failed to resolve entry for package '@ofoq/adaptor-sdk'".
+        run: pnpm --filter "./packages/**" -r run build
 
       - name: Run unit tests
         env:
