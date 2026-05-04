@@ -50,6 +50,25 @@ Authorised redirect URIs:
 
 **Rotation**: Reset Secret in Google Cloud Console → paste new value into Render `GOOGLE_CLIENT_SECRET` → save (Render auto-restarts). Old secret invalidates immediately. No user impact — existing JWT cookies remain valid; only new sign-ins go through the rotated secret.
 
+## Platform-default SMTP — required for portal magic-link delivery (Phase 22)
+
+| Variable | Purpose | Notes |
+|---|---|---|
+| `SMTP_HOST` | SMTP server host. e.g. `smtp.resend.com`, `smtp.sendgrid.net`. | Required. |
+| `SMTP_PORT` | SMTP port. `465` for TLS, `587` for STARTTLS, `25` for plain. | Required. |
+| `SMTP_USER` | SMTP username. For Resend: literal `resend`. For SendGrid: literal `apikey`. For Gmail: full address. | Required. |
+| `SMTP_PASS` | SMTP password / API key. **Treat as a secret** — set via Render's secret env, not blueprint. | Required. |
+| `SMTP_FROM` | From-address used on outbound mail. Must be a domain you've verified with the SMTP provider. | Required. |
+| `SMTP_FROM_NAME` | Display name on the From header. | Optional. Defaults to none. |
+| `SMTP_SECURE` | `true` to force TLS, `false` to force plain. Defaults to `true` when port=465, `false` otherwise. | Optional. |
+
+Used by `apps/api/src/services/emailTransport.ts` as a fallback when a firm has no `FirmEmailSettings` row (i.e. always today, until the firm-SMTP UI ships per roadmap GA #4). If any of `SMTP_HOST/PORT/USER/PASS/FROM` is unset, magic-link emails throw and the route swallows the error — clients see "Check your email" but no email arrives. **Set these before pilot.**
+
+Quick provider setup:
+- **Resend** (recommended for pilot, free up to 3k/month, fastest setup): sign up at resend.com → create API key → use `smtp.resend.com:465`, user=`resend`, pass=API key, from=`onboarding@resend.dev` (or a verified domain). Done.
+- **SendGrid**: sign up → create API key (Mail Send permission) → use `smtp.sendgrid.net:465`, user=`apikey`, pass=API key, from = a verified single sender.
+- **Gmail SMTP**: works for low-volume testing only. App Password required (not your normal password). 500/day cap. Use `smtp.gmail.com:465`.
+
 ## Unused in pilot (set to blank or omit)
 
 `JWT_REFRESH_SECRET`, `JWT_REFRESH_EXPIRES_IN`, `TWILIO_*`, `SENDGRID_*` — reserved for the channels/refresh workstreams post-pilot. Safe to leave blank.
