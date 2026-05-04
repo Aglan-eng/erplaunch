@@ -9,6 +9,23 @@ import {
   ChevronDown, ChevronUp, User,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import {
+  PortalBrandedHeader,
+  getPortalBrandingStyle,
+  type FirmBranding,
+} from '@/components/portal/PortalBrandedHeader';
+import { PortalSupportFooter } from '@/components/portal/PortalSupportFooter';
+
+// Phase 27 — fallback when the API somehow doesn't return a branding block.
+// The DB layer always populates one (DEFAULT_BRANDING in firmBranding.ts),
+// so this is defensive for older payloads / mocked test data only.
+const DEFAULT_PORTAL_BRANDING: FirmBranding = {
+  displayName: 'ERPLaunch',
+  logoUrl: null,
+  primaryColor: '#4f46e5',
+  secondaryColor: '#818cf8',
+  supportEmail: null,
+};
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -294,6 +311,10 @@ export function ClientPortalPage() {
   }
 
   const { engagement, authenticatedMember, members, risks, issues, decisions, todos, meetings, dataCollection } = data;
+  // Phase 27 — branding was already in the API payload (portal.ts:235);
+  // this just consumes it. Fallback covers older payloads / test mocks.
+  const branding: FirmBranding = (data.branding as FirmBranding | undefined) ?? DEFAULT_PORTAL_BRANDING;
+  const portalStyle = getPortalBrandingStyle(branding);
   const ps = engagement?.portalSettings ?? {};
 
   const stageIndex    = STAGE_ORDER.indexOf(engagement?.status ?? 'DISCOVERY');
@@ -322,45 +343,43 @@ export function ClientPortalPage() {
   const pendingTodos   = openTodos.length;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50" style={portalStyle}>
 
-      {/* Gradient accent strip */}
-      <div className="h-1 w-full bg-gradient-to-r from-brand-500 via-blue-400 to-brand-600" />
+      {/* Phase 27 — gradient accent strip uses firm primary→secondary colours */}
+      <div className="h-1 w-full bg-gradient-to-r from-[var(--portal-primary)] to-[var(--portal-secondary)]" />
 
       {/* Header */}
       <header className="bg-white border-b border-gray-100 shadow-sm">
         <div className="max-w-3xl mx-auto px-6 py-5">
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div className="flex items-center gap-4">
-              <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center flex-shrink-0 shadow-md shadow-brand-200">
-                <span className="text-white font-black text-sm">O</span>
+          {/* Phase 27 — branded header tile + displayName prefix surfaced via
+              the shared PortalBrandedHeader component. The right-slot keeps
+              the existing status-badge + on-track / needs-attention / active
+              indicator + today's-date column unchanged. */}
+          <PortalBrandedHeader
+            branding={branding}
+            clientName={engagement?.clientName}
+            rightSlot={
+              <div className="flex flex-col items-end gap-1.5">
+                <span className={cn('text-xs font-bold px-3 py-1 rounded-full border', STATUS_COLORS[engagement?.status] ?? 'bg-gray-100 text-gray-600 border-gray-200')}>
+                  {STATUS_LABELS[engagement?.status] ?? engagement?.status}
+                </span>
+                {allClear ? (
+                  <span className="flex items-center gap-1 text-[10px] font-semibold text-green-600">
+                    <CircleCheck className="h-3 w-3" /> On track
+                  </span>
+                ) : hasBlockers ? (
+                  <span className="flex items-center gap-1 text-[10px] font-semibold text-red-500">
+                    <AlertCircle className="h-3 w-3" /> Needs attention
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1 text-[10px] font-semibold text-amber-500">
+                    <Clock className="h-3 w-3" /> Active items
+                  </span>
+                )}
+                <p className="text-[10px] text-gray-400">{today}</p>
               </div>
-              <div>
-                <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Client Project Portal</p>
-                <h1 className="text-xl font-black text-gray-900 mt-0.5">{engagement?.clientName}</h1>
-              </div>
-            </div>
-
-            <div className="flex flex-col items-end gap-1.5">
-              <span className={cn('text-xs font-bold px-3 py-1 rounded-full border', STATUS_COLORS[engagement?.status] ?? 'bg-gray-100 text-gray-600 border-gray-200')}>
-                {STATUS_LABELS[engagement?.status] ?? engagement?.status}
-              </span>
-              {allClear ? (
-                <span className="flex items-center gap-1 text-[10px] font-semibold text-green-600">
-                  <CircleCheck className="h-3 w-3" /> On track
-                </span>
-              ) : hasBlockers ? (
-                <span className="flex items-center gap-1 text-[10px] font-semibold text-red-500">
-                  <AlertCircle className="h-3 w-3" /> Needs attention
-                </span>
-              ) : (
-                <span className="flex items-center gap-1 text-[10px] font-semibold text-amber-500">
-                  <Clock className="h-3 w-3" /> Active items
-                </span>
-              )}
-              <p className="text-[10px] text-gray-400">{today}</p>
-            </div>
-          </div>
+            }
+          />
 
           {/* Authenticated member banner */}
           {authenticatedMember ? (
@@ -690,6 +709,8 @@ export function ClientPortalPage() {
             <p className="text-xs text-gray-400 mt-1">Your project is on track — great work!</p>
           </div>
         )}
+
+        <PortalSupportFooter branding={branding} className="mt-8 text-center" />
 
         <div className="text-center py-4">
           <p className="text-[10px] text-gray-300 font-medium">Powered by ERPLaunch</p>

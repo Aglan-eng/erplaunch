@@ -78,3 +78,99 @@ describe('GET /engagements/portal/:token — branding block', () => {
     expect(res.statusCode).toBe(404);
   });
 });
+
+// ─── Phase 27 — lightweight pre-auth branding endpoint ─────────────────────
+
+describe('GET /engagements/portal/:token/branding (Phase 27)', () => {
+  it('returns 200 with branding + clientName for a valid token', async () => {
+    const { token } = await seedEngagementWithToken({ firmName: 'Acme Consulting' });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/engagements/portal/${token}/branding`,
+    });
+    expect(res.statusCode).toBe(200);
+
+    const body = res.json() as {
+      data: { branding: Record<string, unknown>; clientName: string };
+    };
+    expect(body.data.branding).toBeDefined();
+    expect(body.data.branding.displayName).toBe('Acme Consulting');
+    expect(body.data.clientName).toBeDefined();
+    expect(typeof body.data.clientName).toBe('string');
+  });
+
+  it('returns 404 for unknown tokens', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/engagements/portal/does-not-exist/branding',
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('branding shape matches the post-auth endpoint contract', async () => {
+    const { token } = await seedEngagementWithToken({ firmName: 'Shape Test' });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/engagements/portal/${token}/branding`,
+    });
+    const body = res.json() as {
+      data: {
+        branding: {
+          displayName: string;
+          logoUrl: string | null;
+          primaryColor: string;
+          secondaryColor: string;
+          supportEmail: string | null;
+        };
+      };
+    };
+    // Contract: displayName / primaryColor / secondaryColor always populated;
+    // logoUrl + supportEmail may be null.
+    expect(typeof body.data.branding.displayName).toBe('string');
+    expect(typeof body.data.branding.primaryColor).toBe('string');
+    expect(typeof body.data.branding.secondaryColor).toBe('string');
+    expect(['string', 'object']).toContain(typeof body.data.branding.logoUrl); // null is 'object'
+    expect(['string', 'object']).toContain(typeof body.data.branding.supportEmail);
+  });
+
+  it('returns custom branding when the firm has configured it', async () => {
+    const { token, firmId } = await seedEngagementWithToken({ firmName: 'Pre-auth Test' });
+
+    const db = getDb();
+    await db.execute({
+      sql: `UPDATE Firm SET displayName = ?, logoUrl = ?, primaryColor = ?, secondaryColor = ?, supportEmail = ? WHERE id = ?`,
+      args: [
+        'Pre-auth Display',
+        '/u/preauth.png',
+        '#aabbcc',
+        '#ddeeff',
+        'preauth@example.test',
+        firmId,
+      ],
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/engagements/portal/${token}/branding`,
+    });
+    const body = res.json() as { data: { branding: Record<string, unknown> } };
+    expect(body.data.branding.displayName).toBe('Pre-auth Display');
+    expect(body.data.branding.logoUrl).toBe('/u/preauth.png');
+    expect(body.data.branding.primaryColor).toBe('#aabbcc');
+    expect(body.data.branding.secondaryColor).toBe('#ddeeff');
+    expect(body.data.branding.supportEmail).toBe('preauth@example.test');
+  });
+
+  it('does not require auth (pre-auth surface — magic-link request page hits it)', async () => {
+    const { token } = await seedEngagementWithToken({ firmName: 'No-Auth Test' });
+
+    // No Authorization header, no portal_token cookie — must still 200.
+    const res = await app.inject({
+      method: 'GET',
+      url: `/engagements/portal/${token}/branding`,
+    });
+    expect(res.statusCode).toBe(200);
+  });
+});

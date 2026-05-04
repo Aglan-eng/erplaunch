@@ -135,6 +135,33 @@ export async function portalRoutes(fastify: FastifyInstance) {
 
   // ─── Public portal endpoints (no auth) ──────────────────────────────────────
 
+  // Phase 27 — GET /engagements/portal/:token/branding
+  //
+  // Lightweight pre-auth endpoint that returns ONLY the firm branding block
+  // and the engagement's clientName. The PortalLoginPage (sign-in screen)
+  // hits this on mount so the magic-link request page can render with the
+  // firm's logo / displayName / colors before the user has authenticated.
+  //
+  // Why a separate endpoint instead of reusing GET /engagements/portal/:token:
+  // the full endpoint ships ~15 KB of engagement / members / todos / meetings /
+  // data-collection state to the response. Pre-auth, the magic-link page
+  // needs only the firm header — shipping the rest to an unauthenticated
+  // visitor is wasteful (and subtly information-leaky if the token is
+  // shoulder-surfed).
+  //
+  // Same 404-on-bad-token semantics as the full endpoint.
+  fastify.get('/engagements/portal/:token/branding', async (request, reply) => {
+    const { token } = request.params as { token: string };
+    const engagement = await db.findEngagementByPortalToken(token);
+    if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+
+    const engagementId = (engagement as { id: string }).id;
+    const clientName = (engagement as { clientName?: string }).clientName ?? '';
+    const branding = await db.getFirmBrandingByEngagementId(engagementId);
+
+    return reply.send({ data: { branding, clientName } });
+  });
+
   // GET /engagements/portal/:token — main portal data
   // Accepts ?member=inviteToken to authenticate as a specific member
   fastify.get('/engagements/portal/:token', async (request, reply) => {
