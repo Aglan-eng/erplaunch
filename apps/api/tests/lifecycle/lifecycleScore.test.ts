@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import path from 'node:path';
 import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
 import {
   scoreBundle,
   type BundleScore,
@@ -12,6 +13,26 @@ import {
   type AdaptorId,
   type BundleSnapshot,
 } from './_helpers.js';
+
+// CI does not generate demo bundles before running tests — these are
+// developer-only artefacts produced by
+// `pnpm --filter @ofoq/api exec tsx scripts/generate-{netsuite,odoo}-demo-bundle.ts`.
+// When the bundle directories are missing, the harness skips rather than
+// fails: the test is meaningful for local pre-release verification, but
+// in CI without bundles it would just be artefact-dependency theatre.
+const ODOO_BUNDLE_ROOT = path.join(NSIX_ROOT, 'ODOO_DEMO_BUNDLE');
+const NETSUITE_BUNDLE_ROOT = path.join(NSIX_ROOT, 'NETSUITE_DEMO_BUNDLE');
+const BUNDLES_AVAILABLE =
+  fsSync.existsSync(ODOO_BUNDLE_ROOT) && fsSync.existsSync(NETSUITE_BUNDLE_ROOT);
+
+if (!BUNDLES_AVAILABLE) {
+  // eslint-disable-next-line no-console
+  console.warn(
+    '[lifecycleScore] Skipping — demo bundles not present. ' +
+      'Run pnpm --filter @ofoq/api exec tsx scripts/generate-{netsuite,odoo}-demo-bundle.ts ' +
+      'locally to enable.',
+  );
+}
 
 /**
  * Lifecycle validation harness — automated 9-phase coverage scoring of
@@ -52,6 +73,7 @@ interface AdaptorRun {
 let runs: AdaptorRun[] = [];
 
 beforeAll(async () => {
+  if (!BUNDLES_AVAILABLE) return; // describe.skipIf below handles the it-block skip.
   const adaptors: AdaptorId[] = ['odoo', 'netsuite'];
   runs = [];
   for (const adaptor of adaptors) {
@@ -175,7 +197,7 @@ async function writeGapReport(runs: AdaptorRun[]): Promise<void> {
 
 // ─── Threshold-gate assertions ───────────────────────────────────────────────
 
-describe('Lifecycle harness — threshold gates', () => {
+describe.skipIf(!BUNDLES_AVAILABLE)('Lifecycle harness — threshold gates', () => {
   it('runs against both adaptor demo bundles', () => {
     expect(runs.length).toBe(2);
     expect(runs.map((r) => r.adaptor).sort()).toEqual(['netsuite', 'odoo']);

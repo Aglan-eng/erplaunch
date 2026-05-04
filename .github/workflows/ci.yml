@@ -54,23 +54,15 @@ jobs:
       - name: Run per-package lint scripts
         run: pnpm -r --if-present run lint
 
-      # Always run ESLint at the repo root against the shared .eslintrc.js.
-      # Uses npx so we don't need to add eslint to the root package.json.
-      # NOTE: pnpm 10's `dlx` dropped the `-p` flag that older pnpm versions
-      # accepted as an npm-ism — passing `-p` now errors with
-      # "Invalid option '-p' - perhaps you meant '-c'?". npx still
-      # accepts `-p` and it's the simplest fix without adding eslint as
-      # a root dev-dep.
+      # ESLint is now installed as a root devDependency alongside the
+      # @typescript-eslint parser + plugin (.eslintrc.js references both).
+      # The previous `pnpm dlx -p ...` / `npx -y -p ...` shapes both fail
+      # because ESLint resolves its parser via Node's normal module
+      # resolution from the project root — temp installs put the modules
+      # somewhere ESLint can't see. The `pnpm install --frozen-lockfile`
+      # above puts them in node_modules where ESLint expects them.
       - name: ESLint (repo root)
-        run: |
-          npx -y \
-            -p eslint@8 \
-            -p @typescript-eslint/parser@^7 \
-            -p @typescript-eslint/eslint-plugin@^7 \
-            eslint "apps/**/*.{ts,tsx,js,jsx}" "packages/**/*.{ts,tsx,js,jsx}" \
-              --ignore-pattern "**/dist/**" \
-              --ignore-pattern "**/node_modules/**" \
-              --max-warnings 0
+        run: pnpm -w run lint
 
   # ----------------------------------------------------------------------------
   # Type-check — tsc --noEmit across the workspace
