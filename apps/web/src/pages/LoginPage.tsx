@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { ErplaunchLogo } from '@/components/ui/ErplaunchLogo';
 import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
 
 export function LoginPage() {
@@ -51,10 +52,12 @@ export function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-brand-900 to-brand-700 p-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center h-12 w-12 rounded-xl bg-white/10 mb-4">
-            <span className="text-white font-bold text-xl">E</span>
+          {/* Phase 38.5 — replaced the 'E' placeholder with the proper
+              ERPLaunch glyph + wordmark lockup. light-on-dark variant
+              picks up the brand-700 gradient backdrop. */}
+          <div className="inline-flex justify-center mb-3">
+            <ErplaunchLogo size="lg" variant="light-on-dark" />
           </div>
-          <h1 className="text-2xl font-bold text-white">ERPLaunch</h1>
           <p className="mt-1 text-brand-200 text-sm">AI-native implementation platform</p>
         </div>
 

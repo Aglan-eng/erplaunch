@@ -11,6 +11,7 @@ import { engagementsApi, authApi } from '@/lib/api';
 import { EngagementCard } from '@/components/dashboard/EngagementCard';
 import { NewEngagementModal } from '@/components/dashboard/NewEngagementModal';
 import { Button } from '@/components/ui/Button';
+import { ErplaunchLogo } from '@/components/ui/ErplaunchLogo';
 import { PipelinePage } from './PipelinePage';
 import { cn } from '@/lib/utils';
 
@@ -300,14 +301,15 @@ export function DashboardPage() {
       {/* Header */}
       <header className="bg-white border-b border-gray-100 shadow-sm sticky top-0 z-20">
         <div className="max-w-7xl mx-auto px-6 py-3.5 flex items-center justify-between">
+          {/* Phase 38.5 — proper ERPLaunch lockup + firm name inline. */}
           <div className="flex items-center gap-3">
-            <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center shadow-sm">
-              <Layers className="h-4 w-4 text-white" />
-            </div>
-            <div>
-              <h1 className="text-sm font-bold text-gray-900 leading-tight">ERPLaunch</h1>
-              <p className="text-[11px] text-gray-400 leading-tight">{user?.firm?.name}</p>
-            </div>
+            <ErplaunchLogo size="md" />
+            {user?.firm?.name && (
+              <>
+                <span className="text-gray-300 text-base leading-none" aria-hidden>·</span>
+                <span className="text-sm font-semibold text-gray-700">{user.firm.name}</span>
+              </>
+            )}
           </div>
 
           <div className="flex items-center gap-2.5">
