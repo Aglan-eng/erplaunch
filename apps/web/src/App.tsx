@@ -7,6 +7,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 const LoginPage = lazy(() => import('./pages/LoginPage').then(m => ({ default: m.LoginPage })));
 const SignupPage = lazy(() => import('./pages/SignupPage').then(m => ({ default: m.SignupPage })));
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then(m => ({ default: m.DashboardPage })));
+const ArchivedDashboardPage = lazy(() => import('./pages/ArchivedDashboardPage').then(m => ({ default: m.ArchivedDashboardPage })));
 const WizardPage = lazy(() => import('./pages/WizardPage').then(m => ({ default: m.WizardPage })));
 const ClientPortalPage = lazy(() => import('./pages/ClientPortalPage').then(m => ({ default: m.ClientPortalPage })));
 const PortalLoginPage = lazy(() => import('./pages/PortalLoginPage').then(m => ({ default: m.PortalLoginPage })));
@@ -58,6 +59,14 @@ function AppRoutes() {
           element={
             <RequireAuth>
               <ErrorBoundary><DashboardPage /></ErrorBoundary>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/dashboard/archived"
+          element={
+            <RequireAuth>
+              <ErrorBoundary><ArchivedDashboardPage /></ErrorBoundary>
             </RequireAuth>
           }
         />
