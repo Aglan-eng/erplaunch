@@ -59,11 +59,19 @@ export async function parseCustomAdaptor(opts: ParseOptions): Promise<void> {
       return;
     }
 
+    // Phase 37.3 — soften phases. Claude sometimes returns
+    // `phases.defaultPhases: []` when the source doc only describes phases
+    // implicitly (numbered sections, a "Methodology" heading, etc.) and the
+    // strict schema makes the LLM bail rather than half-fill. Run a
+    // heuristic extractor over the source text in that case so we recover
+    // the phase names + order at minimum.
+    const phases = normalizePhases(draft.phases, truncated);
+
     await db.savePlatformAdaptorDraft(customAdaptorId, {
       manifest: draft.manifest,
       schema: draft.schema,
       license: draft.license,
-      phases: draft.phases,
+      phases,
       generators: draft.generators,
       // Phase 14: Claude may emit a rules block today; we accept whatever it
       // produced as long as it parses as { id, version, rules: [] }. Falls
@@ -281,7 +289,25 @@ Rules you MUST follow:
 - Keep total output under ~8000 tokens. Prefer depth in a few high-value sections over shallow coverage of everything.
 - If the source docs don't mention something (e.g. licensing), infer a reasonable default instead of leaving arrays empty; editions must have at least one entry.
 - Always include at least "brd" and "solution-doc" generators.
-- Return EXACTLY the JSON object described — no wrapper, no commentary.`;
+- Return EXACTLY the JSON object described — no wrapper, no commentary.
+
+PHASES — extract these aggressively. Scan the source documents for ANY of:
+- Sections titled "Phases", "Methodology", "Implementation Approach",
+  "Stages", "Lifecycle", or any synonym ("Project Stages", "Implementation
+  Plan", "Roadmap").
+- Numbered or bulleted lists of implementation steps under such a heading
+  (e.g. "1. Plan / 2. Build / 3. Validate" — those are phases).
+- Names like Define / Discovery / Configure / Train / Test / UAT / Deploy
+  / Cutover / Go-Live / Go Live / Refine / Hypercare — these are
+  conventional ERP phase names; extract every one you encounter.
+
+For each phase, populate at minimum { id, label, order, trigger }. Use
+trigger='REQUIREMENT' by default and only switch to 'LICENSE' when the
+source explicitly says the phase is gated by a license/edition. Do not
+fabricate a "duration" or "objectives" field unless the source explicitly
+states them. Returning fewer phases than the source describes — or an
+empty defaultPhases array when phases are visible in the text — is a
+PARSE FAILURE.`;
 
 interface PlatformAdaptorDraft {
   manifest: unknown;
@@ -319,4 +345,155 @@ Produce the adaptor JSON now. JSON only.`;
   } catch (err) {
     throw new Error(`Claude output was not valid JSON: ${(err as Error).message}`);
   }
+}
+
+// ─── Phase 37.3 — phase normalization & heuristic extraction ─────────────────
+//
+// The single-prompt Claude call sometimes returns `phases.defaultPhases: []`
+// even when the source clearly enumerates phases (the JDE primer was the
+// PO-flagged regression). Rather than constrain Claude further (which made
+// Claude bail in early experiments) we run a heuristic over the source text
+// after the fact and merge it in when Claude came back empty.
+
+interface NormalizedPhase {
+  id: string;
+  label: string;
+  order: number;
+  trigger: 'LICENSE' | 'REQUIREMENT';
+  objectives?: string[];
+}
+
+interface NormalizedPhaseModel {
+  defaultPhases: NormalizedPhase[];
+}
+
+const PHASE_SECTION_PATTERN =
+  /^[#\s>\-*]*(?:phases?|methodology|implementation\s+approach|stages?|lifecycle|implementation\s+plan|roadmap|project\s+stages?)\b[^\n]*$/im;
+
+const NUMBERED_LINE_PATTERN = /^\s*(\d+)[.)]\s+(.+?)\s*$/;
+const BULLET_LINE_PATTERN = /^\s*[-*•]\s+(.+?)\s*$/;
+
+function slugifyPhaseId(label: string): string {
+  return label
+    .toLowerCase()
+    .replace(/\s*\/\s*/g, '-')      // "Define / Discovery" → "define-discovery"
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64) || 'phase';
+}
+
+/**
+ * Heuristic phase extraction. Locates the first phase-section heading,
+ * walks forward until the list ends, and returns one phase per
+ * numbered or bulleted item. Strips trailing description text after a
+ * dash/em-dash so the label is the phase name only.
+ *
+ * Exported for direct unit testing.
+ */
+export function extractPhasesFromText(sourceText: string): NormalizedPhase[] {
+  if (!sourceText || typeof sourceText !== 'string') return [];
+
+  const lines = sourceText.split(/\r?\n/);
+  let i = 0;
+  // Find the first phase-section heading.
+  for (; i < lines.length; i++) {
+    if (PHASE_SECTION_PATTERN.test(lines[i])) break;
+  }
+  if (i >= lines.length) return [];
+
+  // Walk forward collecting numbered or bulleted items. Stop on a blank
+  // line followed by a non-list line, or on the next clearly-different
+  // heading.
+  const items: { order: number; label: string }[] = [];
+  let nextOrder = 1;
+  i++;
+  let blankSeen = false;
+  for (; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.trim() === '') {
+      if (items.length > 0) blankSeen = true;
+      continue;
+    }
+    const numbered = line.match(NUMBERED_LINE_PATTERN);
+    const bullet = line.match(BULLET_LINE_PATTERN);
+    if (numbered) {
+      const ord = Number(numbered[1]);
+      const raw = numbered[2];
+      items.push({ order: Number.isFinite(ord) && ord > 0 ? ord : nextOrder, label: cleanPhaseLabel(raw) });
+      nextOrder = (items[items.length - 1].order ?? nextOrder) + 1;
+      blankSeen = false;
+    } else if (bullet) {
+      items.push({ order: nextOrder, label: cleanPhaseLabel(bullet[1]) });
+      nextOrder++;
+      blankSeen = false;
+    } else if (blankSeen) {
+      // Non-list, non-blank line after the list — end of the section.
+      break;
+    } else if (/^[#=].*/.test(line.trim())) {
+      // A new heading also ends the phase section.
+      break;
+    }
+    // Continuation lines of an earlier item (indented description text)
+    // are ignored — we keep just the leading label.
+  }
+
+  return items.map((it, idx) => ({
+    id: slugifyPhaseId(it.label),
+    label: it.label,
+    order: it.order || idx + 1,
+    trigger: 'REQUIREMENT' as const,
+  }));
+}
+
+function cleanPhaseLabel(raw: string): string {
+  // Strip trailing description after an em-dash or hyphen-with-spaces.
+  // "Define / Discovery — high-level scoping" → "Define / Discovery"
+  return raw
+    .replace(/\s+[—–-]\s+.*$/, '')
+    .replace(/\s+\(.*\)\s*$/, '') // strip trailing parentheticals
+    .trim();
+}
+
+/**
+ * Apply the heuristic fallback when Claude's phases block is empty/null.
+ * Always returns a well-formed PhaseModel-shaped object — non-empty
+ * `defaultPhases` when the source described phases, otherwise an empty
+ * array (validator still passes; downstream UI shows the consultant a
+ * gentle "no phases inferred" prompt).
+ *
+ * Exported for unit testing of the merge semantics.
+ */
+export function normalizePhases(rawPhases: unknown, sourceText: string): NormalizedPhaseModel {
+  const claudeArr = Array.isArray((rawPhases as { defaultPhases?: unknown })?.defaultPhases)
+    ? ((rawPhases as { defaultPhases: unknown[] }).defaultPhases)
+    : [];
+
+  const fillFromClaude = (raw: unknown, idx: number): NormalizedPhase | null => {
+    if (!raw || typeof raw !== 'object') return null;
+    const r = raw as { id?: unknown; label?: unknown; name?: unknown; order?: unknown; trigger?: unknown; objectives?: unknown };
+    const label = (typeof r.label === 'string' && r.label.trim())
+      || (typeof r.name === 'string' && r.name.trim());
+    if (!label) return null;
+    const id = (typeof r.id === 'string' && r.id.trim()) ? r.id : slugifyPhaseId(label);
+    const order = typeof r.order === 'number' && Number.isFinite(r.order) ? r.order : idx + 1;
+    const trigger = r.trigger === 'LICENSE' ? 'LICENSE' : 'REQUIREMENT';
+    const out: NormalizedPhase = { id, label, order, trigger };
+    if (Array.isArray(r.objectives)) {
+      out.objectives = r.objectives.filter((o): o is string => typeof o === 'string');
+    }
+    return out;
+  };
+
+  const claudePhases = claudeArr
+    .map(fillFromClaude)
+    .filter((p): p is NormalizedPhase => p !== null);
+
+  if (claudePhases.length > 0) {
+    return { defaultPhases: claudePhases };
+  }
+
+  // Claude came back empty (or with only un-fillable shapes) — try the
+  // text heuristic.
+  const heuristic = extractPhasesFromText(sourceText);
+  return { defaultPhases: heuristic };
 }
