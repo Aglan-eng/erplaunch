@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { engagementsApi } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import {
-  Sparkles, Download, Upload, CheckCircle2, Clock, AlertCircle, TriangleAlert,
+  Sparkles, Download, Upload, CheckCircle2, Clock, TriangleAlert,
   ChevronDown, ChevronRight, X, FileSpreadsheet, Plus, Loader2, RefreshCw,
   CircleCheck, ArrowUpRight, Trash2, MessageSquare,
 } from 'lucide-react';
@@ -128,7 +128,6 @@ function CollectionItemCard({
   const [uploading, setUploading] = useState(false);
   const [validatingId, setValidatingId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const qc = useQueryClient();
 
   const { data: files, refetch: refetchFiles } = useQuery<DataFile[]>({
     queryKey: ['dataFiles', item.id],

@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Zap, Download, Loader, CircleCheck, CircleX, TriangleAlert, Code, Package, Archive, FileText } from 'lucide-react';
+import { Zap, Download, Loader, CircleCheck, CircleX, Code, Package, Archive, FileText } from 'lucide-react';
 import { engagementsApi } from '@/lib/api';
 import { SectionIntroCard } from '../SectionIntroCard';
 import { Button } from '@/components/ui/Button';

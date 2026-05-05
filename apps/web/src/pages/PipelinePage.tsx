@@ -837,7 +837,6 @@ function PipelineView({ engagements, onMembersClick, onDatesClick }: {
                 const health = getHealthScore(eng);
                 const blocks = eng.conflicts?.filter((c) => c.severity === 'BLOCK').length ?? 0;
                 const warns  = eng.conflicts?.filter((c) => c.severity === 'WARN').length ?? 0;
-                const days = getDaysLeft(eng);
                 const risk = getDeadlineRisk(eng);
                 return (
                   <tr key={eng.id} className="hover:bg-gray-50/50 transition-colors">

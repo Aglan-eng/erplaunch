@@ -1,4 +1,4 @@
-import { initDb, getDb, listEngagements, createJob, findJobById, upsertProfile, replaceConflicts } from './src/db/index.ts';
+import { initDb, getDb, listEngagements, createJob, replaceConflicts } from './src/db/index.ts';
 import { processJob } from './src/services/generation.ts';
 import * as db from './src/db/index.ts';
 import * as fs from 'fs/promises';
@@ -32,6 +32,7 @@ async function verify() {
   console.log(`Created Job: ${job.id}`);
 
   // 3. Process Job
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- one-off sprint-verification script; db namespace import shape conflicts with processJob's narrower DbClient param.
   await processJob(job.id as string, db as any);
 
   // 4. Verify Folder Structure

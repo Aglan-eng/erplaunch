@@ -1,6 +1,8 @@
 export interface RiskData {
   clientName: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- DB Row passthrough; §6.1 will retype.
   conflicts: any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see conflicts cast above.
   warnings: any[];
 }
 

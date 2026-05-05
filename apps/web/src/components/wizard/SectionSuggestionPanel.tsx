@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Sparkles, Loader, CircleCheck, AlertTriangle, Check, CheckCheck, X,
+  Sparkles, Loader, CircleCheck, Check, CheckCheck, X,
 } from 'lucide-react';
 import { engagementsApi } from '@/lib/api';
 import { useWizardStore } from '@/stores/wizardStore';

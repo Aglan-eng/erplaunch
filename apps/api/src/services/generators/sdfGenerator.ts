@@ -2,6 +2,7 @@ import { getMappingsForAnswers } from '@ofoq/shared';
 
 export interface SDFData {
   modules: string[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- JSON-blob answers; see brdGenerator BRDData.
   answers: Record<string, any>;
   clientName?: string;
 }
@@ -36,6 +37,7 @@ export interface SDFPackageResult {
 }
 
 /** Helper: look up a flat dot-key answer (e.g. 'r2r.fiscalClose.autoLockAfterApproval') — fixed v2 */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic JSON-blob lookup; return type widens at the per-question call site.
 function ans(answers: Record<string, any>, key: string): any {
   return answers[key];
 }
@@ -45,6 +47,7 @@ function ans(answers: Record<string, any>, key: string): any {
  * array AND the business profile answers.  This ensures features.xml and
  * manifest.xml accurately reflect what the engagement actually needs.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- JSON-blob answers; see brdGenerator BRDData.
 function deriveFeatures(modules: string[], answers: Record<string, any>): string[] {
   const features = new Set<string>();
 

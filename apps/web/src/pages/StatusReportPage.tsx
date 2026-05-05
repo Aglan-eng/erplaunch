@@ -14,6 +14,12 @@ const ISSUE_COLORS: Record<string, string> = {
   CRITICAL: '#dc2626', HIGH: '#ea580c', MEDIUM: '#d97706', LOW: '#6b7280',
 };
 
+// Minimal shapes for the read-only status-report views over engagement data.
+interface Member { id: string; name: string; role?: string; team?: string }
+interface Risk { id: string; title: string; status?: string; mitigation?: string; riskScore?: string }
+interface Issue { id: string; title: string; status?: string; priority?: string; assignedTo?: string }
+interface Decision { id: string; title: string; decidedBy?: string; decidedAt?: string }
+
 function fmt(d: string | null | undefined) {
   if (!d) return '—';
   return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -70,11 +76,11 @@ export function StatusReportPage() {
   }
 
   const stageIdx = STAGE_ORDER.indexOf(engagement.status ?? 'DISCOVERY');
-  const clientMembers = (members as Array<any>).filter((m: any) => m.team !== 'CONSULTANT');
-  const ofoqMembers = (members as Array<any>).filter((m: any) => m.team === 'CONSULTANT');
-  const openRisks = (risks as Array<any>).filter((r: any) => r.status === 'OPEN');
-  const openIssues = (issues as Array<any>).filter((i: any) => ['OPEN', 'IN_PROGRESS'].includes(i.status));
-  const recentDecisions = (decisions as Array<any>).slice(0, 5);
+  const clientMembers = (members as Member[]).filter((m) => m.team !== 'CONSULTANT');
+  const ofoqMembers = (members as Member[]).filter((m) => m.team === 'CONSULTANT');
+  const openRisks = (risks as Risk[]).filter((r) => r.status === 'OPEN');
+  const openIssues = (issues as Issue[]).filter((i) => ['OPEN', 'IN_PROGRESS'].includes(i.status ?? ''));
+  const recentDecisions = (decisions as Decision[]).slice(0, 5);
 
   const daysLeft = engagement.contractEndDate
     ? Math.ceil((new Date(engagement.contractEndDate).getTime() - Date.now()) / 86_400_000)
@@ -186,7 +192,7 @@ export function StatusReportPage() {
                 </tr>
                 <tr>
                   <td style={{ border: 'none', padding: '3px 0', fontSize: 12, color: '#6b7280' }}>Committee</td>
-                  <td style={{ border: 'none', padding: '3px 0', fontSize: 12, fontWeight: 700, color: '#111827' }}>{(members as Array<any>).length} members</td>
+                  <td style={{ border: 'none', padding: '3px 0', fontSize: 12, fontWeight: 700, color: '#111827' }}>{(members as Member[]).length} members</td>
                 </tr>
               </tbody>
             </table>
@@ -194,7 +200,7 @@ export function StatusReportPage() {
         </div>
 
         {/* ── Committee ── */}
-        {(members as Array<any>).length > 0 && (
+        {(members as Member[]).length > 0 && (
           <div style={{ marginBottom: 28 }}>
             <h2 style={{ fontSize: 14, fontWeight: 800, color: '#111827', margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Project Committee</h2>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
@@ -204,7 +210,7 @@ export function StatusReportPage() {
                   <table>
                     <thead><tr><th>Name</th><th>Role</th></tr></thead>
                     <tbody>
-                      {clientMembers.map((m: any) => (
+                      {clientMembers.map((m) => (
                         <tr key={m.id}><td>{m.name}</td><td style={{ color: '#6b7280' }}>{m.role}</td></tr>
                       ))}
                     </tbody>
@@ -217,7 +223,7 @@ export function StatusReportPage() {
                   <table>
                     <thead><tr><th>Name</th><th>Role</th></tr></thead>
                     <tbody>
-                      {ofoqMembers.map((m: any) => (
+                      {ofoqMembers.map((m) => (
                         <tr key={m.id}><td>{m.name}</td><td style={{ color: '#6b7280' }}>{m.role}</td></tr>
                       ))}
                     </tbody>
@@ -241,10 +247,10 @@ export function StatusReportPage() {
                 </tr>
               </thead>
               <tbody>
-                {openRisks.map((r: any) => (
+                {openRisks.map((r) => (
                   <tr key={r.id}>
                     <td>
-                      <span className="badge" style={{ background: `${RISK_COLORS[r.riskScore] ?? '#6b7280'}20`, color: RISK_COLORS[r.riskScore] ?? '#6b7280' }}>
+                      <span className="badge" style={{ background: `${RISK_COLORS[r.riskScore ?? ''] ?? '#6b7280'}20`, color: RISK_COLORS[r.riskScore ?? ''] ?? '#6b7280' }}>
                         {r.riskScore ?? '—'}
                       </span>
                     </td>
@@ -271,10 +277,10 @@ export function StatusReportPage() {
                 </tr>
               </thead>
               <tbody>
-                {openIssues.map((i: any) => (
+                {openIssues.map((i) => (
                   <tr key={i.id}>
                     <td>
-                      <span className="badge" style={{ background: `${ISSUE_COLORS[i.priority] ?? '#6b7280'}20`, color: ISSUE_COLORS[i.priority] ?? '#6b7280' }}>
+                      <span className="badge" style={{ background: `${ISSUE_COLORS[i.priority ?? ''] ?? '#6b7280'}20`, color: ISSUE_COLORS[i.priority ?? ''] ?? '#6b7280' }}>
                         {i.priority}
                       </span>
                     </td>
@@ -301,7 +307,7 @@ export function StatusReportPage() {
                 </tr>
               </thead>
               <tbody>
-                {recentDecisions.map((d: any) => (
+                {recentDecisions.map((d) => (
                   <tr key={d.id}>
                     <td style={{ fontWeight: 600 }}>{d.title}</td>
                     <td style={{ color: '#6b7280' }}>{d.decidedBy || '—'}</td>

@@ -112,8 +112,12 @@ describe('portalSession: touchPortalSession', () => {
     await touchPortalSession(s.id, newExpiry);
 
     const after = await findPortalSessionByJtiHash(jtiHash);
+    // expiresAt is the deterministic signal that touch ran — lastUsedAt is
+    // populated from SQLite's `datetime('now')` (second-precision), so a
+    // back-to-back create+touch in the same wall-clock second leaves the two
+    // values byte-equal. Phase 33 dropped the lastUsedAt assertion to kill
+    // the resulting flake; expiresAt advancement is the load-bearing check.
     expect(after!.expiresAt).toBe(newExpiry);
-    expect(after!.lastUsedAt).not.toBe(s.lastUsedAt);
   });
 });
 

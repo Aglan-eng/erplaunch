@@ -47,8 +47,8 @@ import { validateSDFBundle, isValidationEnabled } from './generators/sdfValidato
 import { generateScripts } from './generators/scriptGenerator.js';
 import { generateRiskRegister } from './generators/riskGenerator.js';
 import { generateUATPlan, generateUATPlanHtml } from './generators/uatGenerator.js';
-import { generateSolutionDoc, generateSolutionDocHtml } from './generators/solutionDocGenerator.js';
-import { generateTrainingManual, generateTrainingManualHtml } from './generators/trainingManualGenerator.js';
+import { generateSolutionDocHtml } from './generators/solutionDocGenerator.js';
+import { generateTrainingManualHtml } from './generators/trainingManualGenerator.js';
 import { generateImplementationPlanHtml } from './generators/planGenerator.js';
 import { generateOdooConfigurationPlan, generateOdooConfigurationPlanHtml } from './generators/odooConfigurationPlanGenerator.js';
 // Pack T — Test Artifacts (cross-platform — runs for both NetSuite + Odoo).
@@ -229,9 +229,11 @@ export async function processJob(jobId: string, db: DbModule) {
   try {
     await db.updateJob(jobId, { status: 'RUNNING' });
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- DB row is structurally typed but nested keys (`profile.answers["ns.design.x"]`) are looser than TS strict indexing tolerates; AnyShape narrowing here would mean threading types through every generator call. Tracked under §6.1 (NetSuite adaptor extraction).
     const job = await db.findJobById(jobId) as Record<string, any> | null;
     if (!job) return;
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see job-cast comment above.
     const eng = await db.findEngagementById(job.engagementId as string) as Record<string, any> | null;
     if (!eng) return;
 
@@ -242,7 +244,9 @@ export async function processJob(jobId: string, db: DbModule) {
     const docDir = path.join(rootOutputDir, 'Documentation');
     await fs.mkdir(docDir, { recursive: true });
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- license/profile are JSON-blob columns; nested indexing prevents narrower typing without a generator-wide refactor (§6.1).
     const license = (eng.license ?? {}) as Record<string, any>;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see license-cast comment above.
     const profile = (eng.profile ?? {}) as Record<string, any>;
     const answers = profile.answers ?? {};
 
@@ -311,7 +315,9 @@ export async function processJob(jobId: string, db: DbModule) {
 
     const riskContent = generateRiskRegister({
       clientName: eng.clientName as string,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- conflicts is JSON-blob; keep loose for now per §6.1 plan.
       conflicts: eng.conflicts?.filter((c: any) => c.severity === 'BLOCK') ?? [],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- conflicts is JSON-blob; keep loose for now per §6.1 plan.
       warnings: eng.conflicts?.filter((c: any) => c.severity === 'WARN') ?? [],
     });
     await fs.writeFile(path.join(docDir, 'Risk_Register.md'), riskContent);

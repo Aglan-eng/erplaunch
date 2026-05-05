@@ -1,5 +1,5 @@
 import React, { useRef, useState, useCallback } from 'react';
-import { ImagePlus, X, Upload, Loader, ChevronDown, ChevronRight, Paperclip } from 'lucide-react';
+import { ImagePlus, X, Loader, ChevronDown, ChevronRight, Paperclip } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { engagementsApi } from '@/lib/api';
 

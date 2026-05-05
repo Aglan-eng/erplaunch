@@ -6,9 +6,13 @@ export interface UATData {
   /** Adaptor context — required so byline / subtitle / footer flex
    *  per platform. Same shape as BRDData.adaptor. */
   adaptor: AdaptorContext;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- JSON-blob; see brdGenerator BRDData for context.
   answers: Record<string, any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- DB Row passthrough; §6.1 will retype.
   comments?: any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see comments cast above.
   images?: any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see comments cast above.
   aiAdvice?: any[];
 }
 
@@ -214,6 +218,7 @@ function renderAcceptanceCriteriaBlock(style: string, cases: TestCase[]): string
     .join('\n');
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- JSON-blob answers; per-question narrowing happens via the schema lookups inside.
 function buildTestCases(answers: Record<string, any>): TestCase[] {
   const cases: TestCase[] = [];
   let c = 1;

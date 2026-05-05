@@ -29,9 +29,13 @@ export interface TrainingManualData {
    *  pointing at the per-adaptor training that will be issued
    *  separately. */
   adaptor: AdaptorContext;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- JSON-blob; see brdGenerator BRDData for context.
   answers: Record<string, any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- DB Row passthrough; §6.1 will retype.
   comments?: any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see comments cast above.
   images?: any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see comments cast above.
   aiAdvice?: any[];
 }
 
@@ -44,6 +48,7 @@ interface TrainingModule {
   flowPrefix?: string;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- JSON-blob answers.
 function buildModules(answers: Record<string, any>): TrainingModule[] {
   const modules: TrainingModule[] = [];
   const yn = (key: string) => answers[key] === true;

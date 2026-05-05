@@ -320,7 +320,7 @@ export function ProjectSetupStep({ engagementId }: { engagementId: string }) {
       setContractEndDate(eng.contractEndDate ?? '');
       setDatesDirty(false);
     }
-  }, [eng?.startDate, eng?.contractEndDate]);
+  }, [eng]);
 
   const datesMutation = useMutation({
     mutationFn: () => engagementsApi.patch(engagementId, {
@@ -827,7 +827,13 @@ function ClientPortalCard({ engagementId }: { engagementId: string }) {
   const settings: PortalSettings = settingsData ?? DEFAULT_SETTINGS;
 
   // Load portal todos
-  const { data: todosData } = useQuery<any[]>({
+  interface PortalTodoLite {
+    id: string; title: string; priority?: string; assignedTo?: string;
+    dueDate?: string; completedAt?: string | null; completedBy?: string;
+  }
+  interface MemberLite { id: string; name: string; team?: string; email?: string }
+
+  const { data: todosData } = useQuery<PortalTodoLite[]>({
     queryKey: ['portalTodos', engagementId],
     queryFn: () => engagementsApi.listPortalTodos(engagementId),
     enabled: showTodos,
@@ -835,11 +841,11 @@ function ClientPortalCard({ engagementId }: { engagementId: string }) {
   const todos = todosData ?? [];
 
   // Load members (to suggest assignees)
-  const { data: membersData } = useQuery<any[]>({
+  const { data: membersData } = useQuery<MemberLite[]>({
     queryKey: ['members', engagementId],
     queryFn: () => engagementsApi.getMembers(engagementId),
   });
-  const clientMembersWithEmail = (membersData ?? []).filter((m: any) => m.team === 'CLIENT' && m.email);
+  const clientMembersWithEmail = (membersData ?? []).filter((m) => m.team === 'CLIENT' && m.email);
 
   // Settings mutation
   const saveMutation = useMutation({
@@ -852,7 +858,7 @@ function ClientPortalCard({ engagementId }: { engagementId: string }) {
   // Generate portal link
   const generateMutation = useMutation({
     mutationFn: () => engagementsApi.generatePortalToken(engagementId),
-    onSuccess: (data: any) => setPortalUrl(data.url ?? null),
+    onSuccess: (data: { url?: string }) => setPortalUrl(data.url ?? null),
   });
   const copyUrl = () => {
     if (!portalUrl) return;
@@ -865,7 +871,7 @@ function ClientPortalCard({ engagementId }: { engagementId: string }) {
   // Send portal invites
   const inviteMutation = useMutation({
     mutationFn: () => engagementsApi.sendPortalInvites(engagementId),
-    onSuccess: (data: any) => setInviteResult(data),
+    onSuccess: (data: { sent: number; total: number; message: string }) => setInviteResult(data),
   });
 
   // Todo mutations
@@ -1018,7 +1024,7 @@ function ClientPortalCard({ engagementId }: { engagementId: string }) {
                 list={`members-${engagementId}`}
                 className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-brand-300 flex-1" />
               <datalist id={`members-${engagementId}`}>
-                {(membersData ?? []).filter((m: any) => m.team === 'CLIENT').map((m: any) => (
+                {(membersData ?? []).filter((m) => m.team === 'CLIENT').map((m) => (
                   <option key={m.id} value={m.name} />
                 ))}
               </datalist>
@@ -1037,7 +1043,7 @@ function ClientPortalCard({ engagementId }: { engagementId: string }) {
             <p className="text-xs text-gray-400 text-center py-3">No action items yet — add one above.</p>
           ) : (
             <div className="space-y-2">
-              {todos.map((todo: any) => (
+              {todos.map((todo) => (
                 <div key={todo.id} className={cn('flex items-start gap-3 p-3 rounded-xl border bg-white',
                   todo.completedAt ? 'opacity-60 border-gray-100' : 'border-gray-200')}>
                   <CheckSquare className={cn('h-4 w-4 mt-0.5 flex-shrink-0', todo.completedAt ? 'text-green-500' : 'text-gray-300')} />
@@ -1046,7 +1052,7 @@ function ClientPortalCard({ engagementId }: { engagementId: string }) {
                       {todo.title}
                     </p>
                     <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                      <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded border', PRIORITY_COLORS[todo.priority])}>
+                      <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded border', PRIORITY_COLORS[todo.priority ?? ''])}>
                         {todo.priority}
                       </span>
                       {todo.assignedTo && <span className="text-[10px] text-gray-400">→ {todo.assignedTo}</span>}

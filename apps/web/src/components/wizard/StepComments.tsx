@@ -26,7 +26,7 @@ export function StepComments({ engagementId, sectionKey }: StepCommentsProps) {
   // Find comment for this section
   useEffect(() => {
     if (comments && !initialLoadRef.current) {
-      const existing = comments.find((c: any) => c.sectionKey === sectionKey);
+      const existing = (comments as Array<{ sectionKey: string; text?: string }>).find((c) => c.sectionKey === sectionKey);
       if (existing?.text) {
         setText(existing.text);
         setIsOpen(true);

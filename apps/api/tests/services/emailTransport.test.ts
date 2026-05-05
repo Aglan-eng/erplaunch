@@ -4,7 +4,7 @@ import { setupTestDb } from '../_helpers/testDb.js';
 import { getDb } from '../../src/db/index.js';
 import { upsertFirmEmailSettings } from '../../src/db/firmEmailSettings.js';
 import { sendEmailForFirm, __setTestTransportFactory } from '../../src/services/emailTransport.js';
-import nodemailer from 'nodemailer';
+import nodemailer, { type TransportOptions, type Transporter } from 'nodemailer';
 
 const KEY_BACKUP = process.env.ERPLAUNCH_MASTER_KEY;
 let cleanup: () => void;
@@ -47,11 +47,12 @@ describe('emailTransport: sendEmailForFirm', () => {
     const firmId = await seedFirmWithEmail();
 
     // Capture what nodemailer would have been given
-    let capturedOptions: any = null;
-    let capturedMessage: any = null;
+    type SmtpAuthOpts = TransportOptions & { host?: string; port?: number; secure?: boolean; auth?: { user?: string; pass?: string } };
+    let capturedOptions: SmtpAuthOpts | null = null;
+    let capturedMessage: unknown = null;
     __setTestTransportFactory((opts) => {
-      capturedOptions = opts;
-      return nodemailer.createTransport({ jsonTransport: true }) as any;
+      capturedOptions = opts as SmtpAuthOpts;
+      return nodemailer.createTransport({ jsonTransport: true }) as Transporter;
     });
 
     const info = await sendEmailForFirm(firmId, {
@@ -61,11 +62,11 @@ describe('emailTransport: sendEmailForFirm', () => {
       html: '<p>Body</p>',
     });
 
-    expect(capturedOptions.host).toBe('smtp.example.com');
-    expect(capturedOptions.port).toBe(587);
-    expect(capturedOptions.secure).toBe(true);
-    expect(capturedOptions.auth.user).toBe('portal@mail-firm.example');
-    expect(capturedOptions.auth.pass).toBe('smtp-pw');
+    expect(capturedOptions!.host).toBe('smtp.example.com');
+    expect(capturedOptions!.port).toBe(587);
+    expect(capturedOptions!.secure).toBe(true);
+    expect(capturedOptions!.auth!.user).toBe('portal@mail-firm.example');
+    expect(capturedOptions!.auth!.pass).toBe('smtp-pw');
     expect(info).toBeTruthy();
     capturedMessage = info;
     expect(JSON.stringify(capturedMessage)).toContain('client@example.com');
@@ -86,19 +87,19 @@ describe('emailTransport: sendEmailForFirm', () => {
 
   it('sets From header to "<fromName> <fromEmail>" when fromName present', async () => {
     const firmId = await seedFirmWithEmail();
-    let capturedOptions: any = null;
-    __setTestTransportFactory((opts) => {
-      capturedOptions = opts;
-      return nodemailer.createTransport({ jsonTransport: true }) as any;
+    // Captured but unused — set so the factory matches the expected signature.
+    __setTestTransportFactory((_opts) => {
+      return nodemailer.createTransport({ jsonTransport: true }) as Transporter;
     });
-    const info: any = await sendEmailForFirm(firmId, {
+    const info = await sendEmailForFirm(firmId, {
       to: 'c@ex.com',
       subject: 'Subject',
       text: 'Body',
-    });
+    }) as { message: string };
     // jsonTransport stores the message on info.message
-    const msg = JSON.parse(info.message);
+    const msg = JSON.parse(info.message) as { from?: string | { address?: string } };
     expect(msg.from).toBeTruthy();
-    expect(msg.from.address ?? msg.from).toMatch(/portal@mail-firm.example/);
+    const fromAddr = typeof msg.from === 'string' ? msg.from : msg.from?.address;
+    expect(fromAddr ?? msg.from).toMatch(/portal@mail-firm.example/);
   });
 });

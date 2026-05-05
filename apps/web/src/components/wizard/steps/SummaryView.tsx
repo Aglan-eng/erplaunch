@@ -2,7 +2,7 @@ import React from 'react';
 import { useParams } from 'react-router-dom';
 import { useWizardStore } from '@/stores/wizardStore';
 import { useWizardProgress } from '@/hooks/useWizardProgress';
-import { CircleCheck, ChevronRight, LayoutDashboard, FileText, Settings2 } from 'lucide-react';
+import { ChevronRight, LayoutDashboard, FileText, Settings2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { AdaptorPanel } from '../AdaptorPanel';

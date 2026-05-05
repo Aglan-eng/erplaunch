@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   Plus, LogOut, Layers, LayoutGrid, BarChart2, Target, TrendingUp,
-  TriangleAlert, Clock, Zap, Users, Search, SlidersHorizontal, ArrowUpDown,
+  TriangleAlert, Clock, Zap, Users, Search, ArrowUpDown,
   X, ChevronDown, Mail, CheckCircle2,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -33,7 +33,21 @@ const STAGE_COLORS: Record<string, string> = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function getDeadlineRisk(eng: any): 'overdue' | 'at-risk' | 'on-track' | 'none' {
+interface DashboardConflict { severity: string }
+interface DashboardEngagement {
+  id: string;
+  clientName: string;
+  status: string;
+  updatedAt: string;
+  contractEndDate?: string;
+  adaptorId?: string;
+  profile?: { completeness: Record<string, number>; updatedAt: string } | null;
+  conflicts?: DashboardConflict[];
+  jobs?: Array<{ status: string; createdAt: string }>;
+  members?: unknown[];
+}
+
+function getDeadlineRisk(eng: DashboardEngagement): 'overdue' | 'at-risk' | 'on-track' | 'none' {
   if (!eng.contractEndDate || eng.status === 'GO_LIVE') return 'none';
   const days = Math.ceil((new Date(eng.contractEndDate).getTime() - Date.now()) / 86400000);
   if (days < 0) return 'overdue';
@@ -41,12 +55,12 @@ function getDeadlineRisk(eng: any): 'overdue' | 'at-risk' | 'on-track' | 'none' 
   return 'on-track';
 }
 
-function getHealthScore(eng: any): number {
+function getHealthScore(eng: DashboardEngagement): number {
   const vals = Object.values(eng.profile?.completeness ?? {}).filter((v) => typeof v === 'number') as number[];
   const progress = vals.length ? Math.round(vals.reduce((a: number, b) => a + (b as number), 0) / vals.length) : 0;
-  const blocks = eng.conflicts?.filter((c: any) => c.severity === 'BLOCK').length ?? 0;
-  const warns  = eng.conflicts?.filter((c: any) => c.severity === 'WARN').length ?? 0;
-  let score = 60 + Math.round(progress * 0.3) - blocks * 12 - warns * 4 + (STAGE_ORDER.indexOf(eng.status) * 3);
+  const blocks = eng.conflicts?.filter((c) => c.severity === 'BLOCK').length ?? 0;
+  const warns  = eng.conflicts?.filter((c) => c.severity === 'WARN').length ?? 0;
+  let score = 60 + Math.round(progress * 0.3) - blocks * 12 - warns * 4 + (STAGE_ORDER.indexOf(eng.status ?? '') * 3);
   const risk = getDeadlineRisk(eng);
   if (risk === 'overdue') score -= 20;
   else if (risk === 'at-risk') score -= 10;
@@ -55,14 +69,14 @@ function getHealthScore(eng: any): number {
 
 // ─── Stats Bar ────────────────────────────────────────────────────────────────
 
-function StatsBar({ engagements }: { engagements: any[] }) {
+function StatsBar({ engagements }: { engagements: DashboardEngagement[] }) {
   const total       = engagements.length;
   const overdue     = engagements.filter((e) => getDeadlineRisk(e) === 'overdue').length;
   const atRisk      = engagements.filter((e) => getDeadlineRisk(e) === 'at-risk').length;
   const goLive      = engagements.filter((e) => e.status === 'GO_LIVE').length;
   const livePct     = total > 0 ? Math.round((goLive / total) * 100) : 0;
-  const avgHealth   = total > 0 ? Math.round(engagements.reduce((s: number, e: any) => s + getHealthScore(e), 0) / total) : 0;
-  const totalMembers = engagements.reduce((s: number, e: any) => s + (e.members?.length ?? 0), 0);
+  const avgHealth   = total > 0 ? Math.round(engagements.reduce((s, e) => s + getHealthScore(e), 0) / total) : 0;
+  const totalMembers = engagements.reduce((s, e) => s + (e.members?.length ?? 0), 0);
 
   const healthColor = avgHealth >= 70 ? 'text-green-600' : avgHealth >= 40 ? 'text-amber-600' : 'text-red-600';
   const healthBg    = avgHealth >= 70 ? 'bg-green-50' : avgHealth >= 40 ? 'bg-amber-50' : 'bg-red-50';
@@ -251,7 +265,7 @@ export function DashboardPage() {
     queryFn: engagementsApi.list,
   });
 
-  const engagements = (data ?? []) as any[];
+  const engagements = useMemo(() => (data ?? []) as DashboardEngagement[], [data]);
 
   const filtered = useMemo(() => {
     let list = [...engagements];
@@ -461,7 +475,7 @@ export function DashboardPage() {
               <FilteredEmptyState query={search} stage={stageFilter} onClear={clearFilters} />
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filtered.map((engagement: any) => (
+                {filtered.map((engagement) => (
                   <EngagementCard key={engagement.id} engagement={engagement} />
                 ))}
               </div>

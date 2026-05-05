@@ -1,10 +1,12 @@
 export interface ScriptData {
   clientName: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- JSON-blob answers; see brdGenerator BRDData.
   answers: Record<string, any>;
   modules: string[];
 }
 
 /** Helper: look up a flat dot-key answer (e.g. 'r2r.fiscalClose.autoLockAfterApproval') — fixed v2 */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic JSON-blob lookup; return widens at the per-question call site.
 function ans(answers: Record<string, any>, key: string): any {
   return answers[key];
 }

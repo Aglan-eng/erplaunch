@@ -9,7 +9,6 @@ import { customAdaptorRoutes } from '../../src/routes/customAdaptors.js';
 import {
   getDb,
   savePlatformAdaptorDraft,
-  publishCustomAdaptor,
   findCustomAdaptorById,
 } from '../../src/db/index.js';
 

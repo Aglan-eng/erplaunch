@@ -28,7 +28,7 @@
  *   - Standard NetSuite approval routing best practices (Oracle Help).
  */
 
-import { parseApprovalTiers, type ParsedTier } from './approvalTierParser.js';
+import { type ParsedTier } from './approvalTierParser.js';
 
 // ─── Workflow type metadata ──────────────────────────────────────────────────
 

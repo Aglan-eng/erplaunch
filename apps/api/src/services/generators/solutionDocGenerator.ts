@@ -107,10 +107,15 @@ export interface SolutionDocData {
    *  as BRDData.adaptor, built upstream in services/generation.ts. */
   adaptor: AdaptorContext;
   license: { edition: string; modules: string[] };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- JSON-blob answers; see brdGenerator BRDData.
   answers: Record<string, any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- DB Row passthrough; §6.1 will retype.
   conflicts: any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see conflicts cast above.
   comments?: any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see conflicts cast above.
   images?: any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see conflicts cast above.
   aiAdvice?: any[];
 }
 
@@ -144,7 +149,7 @@ export function generateSolutionDoc(data: SolutionDocData): string {
         out += `**Configuration & Best Practices:**\n`;
         flowAdvice.forEach(a => {
           if (a.advice.suggestions?.length) {
-            a.advice.suggestions.forEach((s: any) => out += `- **${s.title}**: ${s.description}\n`);
+            a.advice.suggestions.forEach((s: { title: string; description: string }) => out += `- **${s.title}**: ${s.description}\n`);
           }
         });
         out += `\n`;

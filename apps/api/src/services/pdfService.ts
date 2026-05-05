@@ -81,6 +81,7 @@ export async function convertHtmlToPdf(html: string, outputPath: string): Promis
     // Dynamic import — server starts even if puppeteer/chromium is missing
     const puppeteer = await import('puppeteer').then((m) => m.default ?? m);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- puppeteer is dynamic-imported and the type union depends on whether the package is installed; keeping any avoids requiring the type-only dep for users without Chromium.
     const browser = await (puppeteer as any).launch({
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],

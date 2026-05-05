@@ -46,13 +46,6 @@ function hasChild(xml: string, childTag: string): boolean {
   return re.test(xml);
 }
 
-function childTextMatches(xml: string, childTag: string, allowed: string[]): boolean {
-  const re = new RegExp(`<${childTag}>([^<]+)<\\/${childTag}>`);
-  const m = xml.match(re);
-  if (!m) return false;
-  return allowed.includes(m[1].trim());
-}
-
 function isRelativePath(pathValue: string): boolean {
   // SDF paths start with ~/ (ACP / SuiteApp root) — anything else is invalid.
   return pathValue.startsWith('~/');

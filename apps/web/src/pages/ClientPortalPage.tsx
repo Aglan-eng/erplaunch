@@ -65,6 +65,73 @@ const DATA_STATUS_STYLES: Record<string, { label: string; style: string }> = {
   UPLOADED:   { label: 'Uploaded',   style: 'bg-blue-100 text-blue-700 border-blue-200' },
 };
 
+// ─── Portal payload shapes (read-only views over engagement data) ────────────
+// Lightweight client-side types — the API filters/redacts before sending, so
+// the shape here is intentionally narrower than the server-side DB types.
+
+interface PortalDataItem {
+  id: string;
+  name: string;
+  description?: string;
+  status?: string;
+  fileCount?: number;
+  dueDate?: string;
+}
+
+interface PortalTodo {
+  id: string;
+  title: string;
+  description?: string;
+  priority?: string;
+  assignedTo?: string;
+  dueDate?: string;
+  completedAt?: string | null;
+  completedBy?: string;
+}
+
+interface PortalMember {
+  id: string;
+  name: string;
+  role?: string;
+  team?: string;
+  email?: string;
+}
+
+interface PortalRisk {
+  id: string;
+  title: string;
+  status?: string;
+  description?: string;
+  mitigation?: string;
+  riskScore?: string;
+  impact?: string;
+}
+
+interface PortalIssue {
+  id: string;
+  title: string;
+  status?: string;
+  priority?: string;
+  description?: string;
+  assignedTo?: string;
+}
+
+interface PortalDecision {
+  id: string;
+  title: string;
+  rationale?: string;
+  decidedBy?: string;
+  decidedAt?: string;
+}
+
+interface PortalMeeting {
+  id: string;
+  title: string;
+  date?: string;
+  scheduledAt?: string;
+  notes?: string;
+}
+
 // ─── Local helpers ────────────────────────────────────────────────────────────
 
 const MEMBER_KEY = 'ofoq_portal_member';
@@ -125,14 +192,14 @@ function PortalSkeleton() {
 
 // ─── Data Collection Item ─────────────────────────────────────────────────────
 
-function DataCollectionItem({ item, token, memberToken }: { item: any; token: string; memberToken: string | null }) {
+function DataCollectionItem({ item, token, memberToken }: { item: PortalDataItem; token: string; memberToken: string | null }) {
   const [uploading, setUploading] = useState(false);
   const [uploaded, setUploaded] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const qc = useQueryClient();
 
-  const statusInfo = DATA_STATUS_STYLES[item.status] ?? DATA_STATUS_STYLES.PENDING;
+  const statusInfo = DATA_STATUS_STYLES[item.status ?? 'PENDING'] ?? DATA_STATUS_STYLES.PENDING;
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -187,7 +254,7 @@ function DataCollectionItem({ item, token, memberToken }: { item: any; token: st
               <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full border', statusInfo.style)}>
                 {statusInfo.label}
               </span>
-              {item.fileCount > 0 && (
+              {(item.fileCount ?? 0) > 0 && (
                 <span className="text-[10px] text-gray-400">{item.fileCount} file{item.fileCount !== 1 ? 's' : ''} uploaded</span>
               )}
               {item.dueDate && (
@@ -224,7 +291,7 @@ function DataCollectionItem({ item, token, memberToken }: { item: any; token: st
 
 // ─── Todo Item ────────────────────────────────────────────────────────────────
 
-function TodoItem({ todo, token, memberToken }: { todo: any; token: string; memberToken: string | null }) {
+function TodoItem({ todo, token, memberToken }: { todo: PortalTodo; token: string; memberToken: string | null }) {
   const qc = useQueryClient();
   const isDone = !!todo.completedAt;
 
@@ -239,7 +306,7 @@ function TodoItem({ todo, token, memberToken }: { todo: any; token: string; memb
     onSuccess: () => qc.invalidateQueries({ queryKey: ['portal', token] }),
   });
 
-  const priorityStyle = TODO_PRIORITY_STYLES[todo.priority] ?? TODO_PRIORITY_STYLES.MEDIUM;
+  const priorityStyle = TODO_PRIORITY_STYLES[todo.priority ?? 'MEDIUM'] ?? TODO_PRIORITY_STYLES.MEDIUM;
 
   return (
     <div className={cn('flex items-start gap-3 p-3 rounded-xl border transition-all', isDone ? 'bg-gray-50 border-gray-100 opacity-70' : 'bg-white border-gray-200')}>
@@ -332,16 +399,16 @@ export function ClientPortalPage() {
   const ps = engagement?.portalSettings ?? {};
 
   const stageIndex    = STAGE_ORDER.indexOf(engagement?.status ?? 'DISCOVERY');
-  const openRisks     = (risks     as Array<any>).filter((r: any) => r.status === 'OPEN');
-  const openIssues    = (issues    as Array<any>).filter((i: any) => ['OPEN','IN_PROGRESS'].includes(i.status));
-  const recentDecs    = (decisions as Array<any>).slice(0, 5);
-  const clientMembers = (members   as Array<any>).filter((m: any) => m.team === 'CLIENT' || !m.team);
-  const ofoqMembers   = (members   as Array<any>).filter((m: any) => m.team === 'CONSULTANT');
-  const todoList      = (todos     as Array<any>) ?? [];
-  const openTodos     = todoList.filter((t: any) => !t.completedAt);
-  const doneTodos     = todoList.filter((t: any) => t.completedAt);
-  const meetingList   = (meetings  as Array<any>) ?? [];
-  const dataItems     = (dataCollection as Array<any>) ?? [];
+  const openRisks     = (risks     as PortalRisk[]).filter((r) => r.status === 'OPEN');
+  const openIssues    = (issues    as PortalIssue[]).filter((i) => ['OPEN','IN_PROGRESS'].includes(i.status ?? ''));
+  const recentDecs    = (decisions as PortalDecision[]).slice(0, 5);
+  const clientMembers = (members   as PortalMember[]).filter((m) => m.team === 'CLIENT' || !m.team);
+  const ofoqMembers   = (members   as PortalMember[]).filter((m) => m.team === 'CONSULTANT');
+  const todoList      = (todos     as PortalTodo[]) ?? [];
+  const openTodos     = todoList.filter((t) => !t.completedAt);
+  const doneTodos     = todoList.filter((t) => t.completedAt);
+  const meetingList   = (meetings  as PortalMeeting[]) ?? [];
+  const dataItems     = (dataCollection as PortalDataItem[]) ?? [];
 
   const daysLeft = engagement?.contractEndDate
     ? Math.ceil((new Date(engagement.contractEndDate).getTime() - Date.now()) / 86_400_000)
@@ -349,11 +416,11 @@ export function ClientPortalPage() {
 
   const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 
-  const hasBlockers = openRisks.some((r: any) => (r.riskScore ?? r.impact) === 'CRITICAL') ||
-                      openIssues.some((i: any) => i.priority === 'CRITICAL');
+  const hasBlockers = openRisks.some((r) => (r.riskScore ?? r.impact) === 'CRITICAL') ||
+                      openIssues.some((i) => i.priority === 'CRITICAL');
   const allClear    = openRisks.length === 0 && openIssues.length === 0;
 
-  const pendingUploads = dataItems.filter((d: any) => d.status === 'PENDING').length;
+  const pendingUploads = dataItems.filter((d) => d.status === 'PENDING').length;
   const pendingTodos   = openTodos.length;
 
   return (
@@ -526,7 +593,7 @@ export function ClientPortalPage() {
               </p>
             )}
             <div className="space-y-2">
-              {openTodos.map((todo: any) => (
+              {openTodos.map((todo) => (
                 <TodoItem key={todo.id} todo={todo} token={token!} memberToken={memberToken} />
               ))}
               {doneTodos.length > 0 && (
@@ -535,7 +602,7 @@ export function ClientPortalPage() {
                     <ChevronDown className="h-3 w-3" />{doneTodos.length} completed item{doneTodos.length !== 1 ? 's' : ''}
                   </summary>
                   <div className="mt-2 space-y-2">
-                    {doneTodos.map((todo: any) => (
+                    {doneTodos.map((todo) => (
                       <TodoItem key={todo.id} todo={todo} token={token!} memberToken={memberToken} />
                     ))}
                   </div>
@@ -588,7 +655,7 @@ export function ClientPortalPage() {
               </p>
             )}
             <div className="space-y-2">
-              {dataItems.map((item: any) => (
+              {dataItems.map((item) => (
                 <DataCollectionItem key={item.id} item={item} token={token!} memberToken={memberToken} />
               ))}
             </div>
@@ -603,7 +670,7 @@ export function ClientPortalPage() {
                 <div>
                   <p className="text-[10px] font-black text-blue-600 uppercase tracking-wider mb-3">Client Team</p>
                   <div className="space-y-3">
-                    {clientMembers.map((m: any) => (
+                    {clientMembers.map((m) => (
                       <div key={m.id} className="flex items-center gap-3">
                         <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center text-blue-700 text-xs font-bold flex-shrink-0">
                           {m.name.charAt(0).toUpperCase()}
@@ -622,7 +689,7 @@ export function ClientPortalPage() {
                 <div>
                   <p className="text-[10px] font-black text-violet-600 uppercase tracking-wider mb-3">Implementation Team</p>
                   <div className="space-y-3">
-                    {ofoqMembers.map((m: any) => (
+                    {ofoqMembers.map((m) => (
                       <div key={m.id} className="flex items-center gap-3">
                         <div className="h-8 w-8 rounded-full bg-gradient-to-br from-violet-100 to-violet-200 flex items-center justify-center text-violet-700 text-xs font-bold flex-shrink-0">
                           {m.name.charAt(0).toUpperCase()}
@@ -645,7 +712,7 @@ export function ClientPortalPage() {
         {ps.showRisks !== false && openRisks.length > 0 && (
           <Section title={`Open Risks (${openRisks.length})`} icon={<TriangleAlert className="h-4 w-4" />} collapsible>
             <div className="space-y-2.5">
-              {openRisks.map((r: any) => {
+              {openRisks.map((r) => {
                 const level = r.riskScore ?? r.impact ?? 'LOW';
                 const style = RISK_COLORS[level] ?? RISK_COLORS.LOW;
                 return (
@@ -670,8 +737,8 @@ export function ClientPortalPage() {
         {ps.showIssues !== false && openIssues.length > 0 && (
           <Section title={`Open Issues (${openIssues.length})`} icon={<Clock className="h-4 w-4" />} collapsible>
             <div className="space-y-2.5">
-              {openIssues.map((i: any) => {
-                const style = RISK_COLORS[i.priority] ?? RISK_COLORS.LOW;
+              {openIssues.map((i) => {
+                const style = RISK_COLORS[i.priority ?? ''] ?? RISK_COLORS.LOW;
                 return (
                   <div key={i.id} className="flex items-start gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100">
                     <div className={cn('mt-1.5 h-2 w-2 rounded-full flex-shrink-0', style.dot)} />
@@ -694,7 +761,7 @@ export function ClientPortalPage() {
         {ps.showMeetings === true && meetingList.length > 0 && (
           <Section title="Meetings" icon={<CalendarClock className="h-4 w-4" />} collapsible>
             <div className="space-y-2.5">
-              {meetingList.map((m: any) => {
+              {meetingList.map((m) => {
                 const meetingDate = m.date ?? m.scheduledAt;
                 return (
                   <div key={m.id} className="flex items-start gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100">
@@ -719,7 +786,7 @@ export function ClientPortalPage() {
         {ps.showDecisions === true && recentDecs.length > 0 && (
           <Section title="Recent Decisions" icon={<BookOpen className="h-4 w-4" />} collapsible>
             <div className="space-y-2.5">
-              {recentDecs.map((d: any) => (
+              {recentDecs.map((d) => (
                 <div key={d.id} className="flex items-start gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100">
                   <div className="h-1.5 w-1.5 rounded-full bg-brand-400 mt-2 flex-shrink-0" />
                   <div className="min-w-0 flex-1">

@@ -22,11 +22,11 @@ module.exports = {
     // Underscore-prefixed names are tolerated as a deliberate intent
     // marker (common in destructuring + handler signatures).
     //
-    // Phase 23-prep: demoted from error to warn. Cat-7 cleanup commit
-    // will fix existing violations and re-promote.
+    // Phase 33: re-promoted to error after Cat-7 cleanup landed all
+    // outstanding violations.
     'no-unused-vars': 'off',
     '@typescript-eslint/no-unused-vars': [
-      'warn',
+      'error',
       {
         args: 'after-used',
         argsIgnorePattern: '^_',
@@ -35,13 +35,12 @@ module.exports = {
         destructuredArrayIgnorePattern: '^_',
       },
     ],
-    // Phase 23-prep: demoted from error to warn. Cat-7 cleanup commit
-    // will fix existing violations and re-promote. The current hits are
-    // mostly empty try/catch shapes around defensive parsing.
-    'no-empty': 'warn',
-    // Phase 23-prep: demoted from error to warn. Cat-7 cleanup commit
-    // will fix existing violations and re-promote. One real instance
-    // each — easy to triage in cleanup.
+    // Phase 33: re-promoted to error after Cat-7 cleanup landed.
+    'no-empty': 'error',
+    // Phase 33: re-promoted to error after Cat-7 cleanup landed.
+    'react-hooks/rules-of-hooks': 'error',
+    'react-hooks/exhaustive-deps': 'error',
+    // Still warn-only — single instance, low signal.
     'no-useless-escape': 'warn',
     'no-constant-condition': 'warn',
     // The base no-empty-pattern fires on `function foo({}: Props)` which
@@ -49,5 +48,15 @@ module.exports = {
     // but no props are destructured. Allow the pattern.
     'no-empty-pattern': 'off',
   },
-  ignorePatterns: ['dist/', 'node_modules/', 'build/', 'coverage/'],
+  ignorePatterns: [
+    'dist/',
+    'node_modules/',
+    'build/',
+    'coverage/',
+    // Generated artifacts written by the SDF/SuiteScript generator pipeline.
+    // Linting them surfaces no signal — the generator is the source of truth.
+    'apps/api/outputs/',
+    // Runtime-uploaded blobs (firm logos, data-collection files).
+    'apps/api/uploads/',
+  ],
 };

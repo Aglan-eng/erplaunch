@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import type { Question } from '@ofoq/shared';
 
@@ -136,7 +136,10 @@ interface TableInputProps {
 }
 
 function TableInput({ value, onChange }: TableInputProps) {
-  const rows: string[] = Array.isArray(value) ? (value as string[]) : [];
+  const rows: string[] = useMemo(
+    () => (Array.isArray(value) ? (value as string[]) : []),
+    [value],
+  );
 
   const handleRowChange = useCallback(
     (index: number, text: string) => {

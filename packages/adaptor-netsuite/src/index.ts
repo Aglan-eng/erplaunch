@@ -2,7 +2,6 @@ import type {
   PlatformAdaptor,
   QuestionnaireSchema,
   FlowDefinition,
-  SectionDefinition,
   QuestionDefinition,
   LicenseModel,
   PhaseModel,

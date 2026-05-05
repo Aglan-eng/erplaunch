@@ -56,11 +56,11 @@ async function createTables(db: Client) {
     )
   `);
   // Firm branding (minimal slice for Phase 5.A; full settings UI in §6.8)
-  try { await db.execute(`ALTER TABLE Firm ADD COLUMN displayName TEXT`); } catch {}
-  try { await db.execute(`ALTER TABLE Firm ADD COLUMN logoUrl TEXT`); } catch {}
-  try { await db.execute(`ALTER TABLE Firm ADD COLUMN primaryColor TEXT`); } catch {}
-  try { await db.execute(`ALTER TABLE Firm ADD COLUMN secondaryColor TEXT`); } catch {}
-  try { await db.execute(`ALTER TABLE Firm ADD COLUMN supportEmail TEXT`); } catch {}
+  try { await db.execute(`ALTER TABLE Firm ADD COLUMN displayName TEXT`); } catch { /* swallow — idempotent migration / parse fallback */ }
+  try { await db.execute(`ALTER TABLE Firm ADD COLUMN logoUrl TEXT`); } catch { /* swallow — idempotent migration / parse fallback */ }
+  try { await db.execute(`ALTER TABLE Firm ADD COLUMN primaryColor TEXT`); } catch { /* swallow — idempotent migration / parse fallback */ }
+  try { await db.execute(`ALTER TABLE Firm ADD COLUMN secondaryColor TEXT`); } catch { /* swallow — idempotent migration / parse fallback */ }
+  try { await db.execute(`ALTER TABLE Firm ADD COLUMN supportEmail TEXT`); } catch { /* swallow — idempotent migration / parse fallback */ }
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS User (
@@ -76,8 +76,8 @@ async function createTables(db: Client) {
   // Idempotent ALTER for the Google OAuth sub claim. Stored once and used
   // as the primary key for re-login (an email change in Google never breaks
   // the link, unlike matching on email). Indexed for the lookup hot path.
-  try { await db.execute(`ALTER TABLE User ADD COLUMN googleSub TEXT`); } catch {}
-  try { await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS idx_user_googleSub ON User(googleSub) WHERE googleSub IS NOT NULL`); } catch {}
+  try { await db.execute(`ALTER TABLE User ADD COLUMN googleSub TEXT`); } catch { /* swallow — idempotent migration / parse fallback */ }
+  try { await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS idx_user_googleSub ON User(googleSub) WHERE googleSub IS NOT NULL`); } catch { /* swallow — idempotent migration / parse fallback */ }
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS Engagement (
@@ -93,15 +93,15 @@ async function createTables(db: Client) {
   `);
 
   // Migrate existing Engagement rows — add columns if missing
-  try { await db.execute(`ALTER TABLE Engagement ADD COLUMN startDate TEXT`); } catch {}
-  try { await db.execute(`ALTER TABLE Engagement ADD COLUMN contractEndDate TEXT`); } catch {}
-  try { await db.execute(`ALTER TABLE Engagement ADD COLUMN portalSettings TEXT`); } catch {}
-  try { await db.execute(`ALTER TABLE Engagement ADD COLUMN verticalType TEXT`); } catch {}
-  try { await db.execute(`ALTER TABLE Engagement ADD COLUMN parentEngagementId TEXT REFERENCES Engagement(id)`); } catch {}
-  try { await db.execute(`ALTER TABLE Engagement ADD COLUMN verticalSettings TEXT`); } catch {}
+  try { await db.execute(`ALTER TABLE Engagement ADD COLUMN startDate TEXT`); } catch { /* swallow — idempotent migration / parse fallback */ }
+  try { await db.execute(`ALTER TABLE Engagement ADD COLUMN contractEndDate TEXT`); } catch { /* swallow — idempotent migration / parse fallback */ }
+  try { await db.execute(`ALTER TABLE Engagement ADD COLUMN portalSettings TEXT`); } catch { /* swallow — idempotent migration / parse fallback */ }
+  try { await db.execute(`ALTER TABLE Engagement ADD COLUMN verticalType TEXT`); } catch { /* swallow — idempotent migration / parse fallback */ }
+  try { await db.execute(`ALTER TABLE Engagement ADD COLUMN parentEngagementId TEXT REFERENCES Engagement(id)`); } catch { /* swallow — idempotent migration / parse fallback */ }
+  try { await db.execute(`ALTER TABLE Engagement ADD COLUMN verticalSettings TEXT`); } catch { /* swallow — idempotent migration / parse fallback */ }
   // Platform adaptor (Phase 1A). Every existing engagement defaults to NetSuite
   // since that's what the pilot was — zero behavior change from this column.
-  try { await db.execute(`ALTER TABLE Engagement ADD COLUMN adaptorId TEXT NOT NULL DEFAULT 'netsuite'`); } catch {}
+  try { await db.execute(`ALTER TABLE Engagement ADD COLUMN adaptorId TEXT NOT NULL DEFAULT 'netsuite'`); } catch { /* swallow — idempotent migration / parse fallback */ }
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS ProjectMember (
@@ -116,9 +116,9 @@ async function createTables(db: Client) {
     )
   `);
   // Migrate existing rows — add team column if missing
-  try { await db.execute(`ALTER TABLE ProjectMember ADD COLUMN team TEXT NOT NULL DEFAULT 'CLIENT'`); } catch {}
+  try { await db.execute(`ALTER TABLE ProjectMember ADD COLUMN team TEXT NOT NULL DEFAULT 'CLIENT'`); } catch { /* swallow — idempotent migration / parse fallback */ }
   // Add inviteToken for per-member portal auth
-  try { await db.execute(`ALTER TABLE ProjectMember ADD COLUMN inviteToken TEXT`); } catch {}
+  try { await db.execute(`ALTER TABLE ProjectMember ADD COLUMN inviteToken TEXT`); } catch { /* swallow — idempotent migration / parse fallback */ }
   // Fix legacy 'OFOQ' team value → 'CONSULTANT'
   await db.execute(`UPDATE ProjectMember SET team = 'CONSULTANT' WHERE team = 'OFOQ'`);
 
@@ -542,7 +542,7 @@ async function createTables(db: Client) {
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_customadaptor_status ON CustomAdaptor(status)`);
   // Phase 14: custom adaptors carry their own rule pack. Additive ALTER so
   // existing pilot data (where the column doesn't yet exist) keeps working.
-  try { await db.execute(`ALTER TABLE CustomAdaptor ADD COLUMN parsedRules TEXT`); } catch {}
+  try { await db.execute(`ALTER TABLE CustomAdaptor ADD COLUMN parsedRules TEXT`); } catch { /* swallow — idempotent migration / parse fallback */ }
 
   // ─── Password Reset Tokens (Phase 16) ──────────────────────────────────────
   // Per-user reset tokens for consultant-side accounts. The raw token is
@@ -580,7 +580,7 @@ async function createTables(db: Client) {
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_email_verify_user    ON EmailVerificationToken(userId)`);
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_email_verify_expires ON EmailVerificationToken(expiresAt)`);
   // Additive column on User for existing pilot rows. Null = not yet verified.
-  try { await db.execute(`ALTER TABLE User ADD COLUMN emailVerifiedAt TEXT`); } catch {}
+  try { await db.execute(`ALTER TABLE User ADD COLUMN emailVerifiedAt TEXT`); } catch { /* swallow — idempotent migration / parse fallback */ }
 
   // ─── Phase 28 — PendingSubmission (§5 client-portal continuation foundation) ─
   //
@@ -650,7 +650,7 @@ async function createTables(db: Client) {
   // staging. Used by the dataFileAcceptor's idempotent re-accept guard:
   // if staged file is already gone but a DataFile with this submissionId
   // exists, the prior accept already succeeded; treat as no-op.
-  try { await db.execute(`ALTER TABLE DataFile ADD COLUMN sourceSubmissionId TEXT`); } catch {}
+  try { await db.execute(`ALTER TABLE DataFile ADD COLUMN sourceSubmissionId TEXT`); } catch { /* swallow — idempotent migration / parse fallback */ }
 
   // ─── Phase 31 — Two-way Q&A messaging (§5.1 asymmetry) ─────────────────────
   //
@@ -1943,7 +1943,6 @@ export async function upsertDataTemplateSchema(engagementId: string, schema: {
 }
 
 export async function deleteDataTemplateSchema(id: string) {
-  const db = getDb();
   await getDb().execute({ sql: `DELETE FROM DataTemplateSchema WHERE id = ?`, args: [id] });
 }
 
@@ -2028,7 +2027,7 @@ export async function listDataFiles(dataCollectionItemId: string) {
   return (r.rows as Row[]).map((row) => {
     const parsed = parseRow<Row>(row);
     if (typeof parsed.validationResult === 'string') {
-      try { parsed.validationResult = JSON.parse(parsed.validationResult as string); } catch {}
+      try { parsed.validationResult = JSON.parse(parsed.validationResult as string); } catch { /* swallow — idempotent migration / parse fallback */ }
     }
     return parsed;
   });
@@ -2045,7 +2044,7 @@ export async function listAllDataFilesForEngagement(engagementId: string) {
   return (r.rows as Row[]).map((row) => {
     const parsed = parseRow<Row>(row);
     if (typeof parsed.validationResult === 'string') {
-      try { parsed.validationResult = JSON.parse(parsed.validationResult as string); } catch {}
+      try { parsed.validationResult = JSON.parse(parsed.validationResult as string); } catch { /* swallow — idempotent migration / parse fallback */ }
     }
     return parsed;
   });
@@ -2098,7 +2097,7 @@ export async function updateDataFileValidation(id: string, data: {
   const r = await db.execute({ sql: `SELECT * FROM DataFile WHERE id = ?`, args: [id] });
   const parsed = r.rows[0] ? parseRow<Row>(r.rows[0] as Row) : null;
   if (parsed && typeof parsed.validationResult === 'string') {
-    try { parsed.validationResult = JSON.parse(parsed.validationResult as string); } catch {}
+    try { parsed.validationResult = JSON.parse(parsed.validationResult as string); } catch { /* swallow — idempotent migration / parse fallback */ }
   }
   return parsed;
 }

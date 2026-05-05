@@ -476,10 +476,12 @@ export async function engagementRoutes(fastify: FastifyInstance) {
     // Enqueue via BullMQ when available; fall back to setImmediate otherwise.
     // Use a 3-second timeout so the HTTP response is never blocked by Redis being down.
     let queued = false;
-    if ((fastify as any).generationQueue) {
+    type FastifyWithQueue = typeof fastify & { generationQueue?: { add: (...args: unknown[]) => Promise<unknown> } };
+    const fastifyWithQueue = fastify as FastifyWithQueue;
+    if (fastifyWithQueue.generationQueue) {
       try {
         await Promise.race([
-          (fastify as any).generationQueue.add(
+          fastifyWithQueue.generationQueue.add(
             'generate',
             { jobId } satisfies GenerationJobData,
             { jobId }
@@ -524,9 +526,9 @@ export async function engagementRoutes(fastify: FastifyInstance) {
     const { id, jobId } = request.params as { id: string; jobId: string };
     const check = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!check) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
-    const job = await db.findJobByIdAndEngagementId(jobId, id) as any;
+    const job = await db.findJobByIdAndEngagementId(jobId, id);
     if (!job) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
-    if (job.status !== 'COMPLETE') return reply.code(400).send({ error: { code: 'JOB_NOT_COMPLETE', message: 'Job is not yet complete' } });
+    if ((job as { status?: string }).status !== 'COMPLETE') return reply.code(400).send({ error: { code: 'JOB_NOT_COMPLETE', message: 'Job is not yet complete' } });
     const outputDir = path.join(__dirname, '..', '..', 'outputs', jobId);
     await streamJobZip(outputDir, jobId, reply);
   });
@@ -569,7 +571,7 @@ export async function engagementRoutes(fastify: FastifyInstance) {
     const { id, memberId } = request.params as { id: string; memberId: string };
     const check = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!check) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
-    const body = request.body as any;
+    const body = request.body as Parameters<typeof db.updateMember>[2];
     const member = await db.updateMember(memberId, id, body);
     if (!member) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
     return reply.send({ data: member });
@@ -625,7 +627,7 @@ export async function engagementRoutes(fastify: FastifyInstance) {
       return reply.code(400).send({ error: { code: 'NO_FILE', message: 'No file uploaded' } });
     }
 
-    const sectionKey = (data.fields?.sectionKey as any)?.value || 'unknown';
+    const sectionKey = (data.fields?.sectionKey as { value?: string } | undefined)?.value || 'unknown';
     const allowedTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
     if (!allowedTypes.includes(data.mimetype)) {
       return reply.code(400).send({ error: { code: 'INVALID_TYPE', message: 'Only PNG, JPG, WEBP, GIF allowed' } });
@@ -699,15 +701,13 @@ export async function engagementRoutes(fastify: FastifyInstance) {
     const comment = await db.getSectionComment(id, sectionKey);
     const conflicts = await db.getConflicts(id);
 
-    const sectionConflicts = conflicts
-      .filter((c: any) => {
-        const qIds = c.questionIds as string[];
-        return qIds?.some((q: string) => q.startsWith(`${sectionKey}.`));
-      })
-      .map((c: any) => ({
-        message: c.message as string,
-        severity: c.severity as string,
-        resolution: c.resolution as string,
+    type ConflictRow = { questionIds?: string[]; message: string; severity: string; resolution: string };
+    const sectionConflicts = (conflicts as ConflictRow[])
+      .filter((c) => c.questionIds?.some((q) => q.startsWith(`${sectionKey}.`)))
+      .map((c) => ({
+        message: c.message,
+        severity: c.severity,
+        resolution: c.resolution,
       }));
 
     // Platform context (Phase 7) — look up the engagement's adaptor so the

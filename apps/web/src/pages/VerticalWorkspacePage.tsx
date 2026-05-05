@@ -187,7 +187,6 @@ export function VerticalWorkspacePage() {
 
   const questions = (vertical.questions as Question[]) ?? [];
   const modules = (vertical.modules as Array<{ id: string; name: string; reason: string; required: boolean }>) ?? [];
-  const risks_ = (vertical.risks as Array<{ id: string; title: string; impact: string; status: string }>) ?? [];
   const timeline = (vertical.timeline as Array<{ stage: string; name: string; weekOffset: number; durationWeeks: number }>) ?? [];
 
   // Group questions by section

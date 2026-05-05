@@ -4,7 +4,7 @@ import cookie from '@fastify/cookie';
 import jwt from '@fastify/jwt';
 import bcrypt from 'bcryptjs';
 import { createId } from '@paralleldrive/cuid2';
-import { setupTestDb, seedEngagementWithToken } from '../_helpers/testDb.js';
+import { setupTestDb } from '../_helpers/testDb.js';
 import { portalRoutes } from '../../src/routes/portal.js';
 import { firmBrandingRoutes } from '../../src/routes/firmBranding.js';
 import { getDb, DEFAULT_BRANDING } from '../../src/db/index.js';

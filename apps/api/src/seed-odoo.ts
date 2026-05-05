@@ -10,7 +10,6 @@
  * engagement so you can script repeatable demos. Exits cleanly (non-zero)
  * if prerequisites aren't met.
  */
-import { createId } from '@paralleldrive/cuid2';
 import bcrypt from 'bcryptjs';
 import {
   initDb, getDb,

@@ -1,6 +1,6 @@
 import fp from 'fastify-plugin';
 import type { FastifyPluginAsync } from 'fastify';
-import { initDb, getDb } from '../db/index.js';
+import { initDb } from '../db/index.js';
 import type { Client } from '@libsql/client';
 
 declare module 'fastify' {

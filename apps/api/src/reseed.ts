@@ -4,7 +4,6 @@
  *
  * Run:  npx tsx src/reseed.ts   (from apps/api)
  */
-import { createId } from '@paralleldrive/cuid2';
 import {
   initDb, getDb,
   findFirmBySlug,
@@ -36,8 +35,6 @@ import { evaluate } from '../../../packages/rule-engine/src/evaluate.js';
 import type { LicenseProfile, Phase } from '../../../packages/shared/src/types/index.js';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
-
-function d(iso: string) { return iso; }   // date pass-through, explicit labelling
 
 async function wipeEngagementData(db: ReturnType<typeof getDb>, firmId: string) {
   // Get all engagement IDs for this firm
@@ -282,7 +279,7 @@ async function main() {
     { name: 'Phase 2 — Supply Chain',           order: 2, flows: ['P2P', 'RTN'], trigger: 'REQUIREMENT', status: 'PLANNED',     targetDate: '2025-05-31' },
     { name: 'Phase 3 — Sales & Fulfilment',     order: 3, flows: ['O2C'],        trigger: 'REQUIREMENT', status: 'PLANNED',     targetDate: '2025-07-31' },
     { name: 'Phase 4 — Manufacturing & WMS',    order: 4, flows: ['MFG'],        trigger: 'LICENSE',     status: 'PLANNED',     targetDate: '2025-09-30' },
-  ] as any);
+  ]);
 
   // ── Project Members ──────────────────────────────────────────────────────
   console.log('👥  Adding team members…');
@@ -611,7 +608,7 @@ async function main() {
     dueDate: dcOverdue.toISOString().split('T')[0],
   });
 
-  const dc3 = await createDataCollectionItem(engId, {
+  await createDataCollectionItem(engId, {
     templateId: 'customer_master',
     name: 'Customer Master List',
     category: 'Sales',
@@ -619,7 +616,7 @@ async function main() {
     dueDate: dc14.toISOString().split('T')[0],
   });
 
-  const dc4 = await createDataCollectionItem(engId, {
+  await createDataCollectionItem(engId, {
     templateId: 'item_master',
     name: 'Item Master (Finished Goods)',
     category: 'Inventory',
@@ -627,7 +624,7 @@ async function main() {
     dueDate: dc14.toISOString().split('T')[0],
   });
 
-  const dc5 = await createDataCollectionItem(engId, {
+  await createDataCollectionItem(engId, {
     templateId: 'open_purchase_orders',
     name: 'Open Purchase Orders (SAP export)',
     category: 'Procurement',
@@ -635,7 +632,7 @@ async function main() {
     dueDate: dc21.toISOString().split('T')[0],
   });
 
-  const dc6 = await createDataCollectionItem(engId, {
+  await createDataCollectionItem(engId, {
     templateId: 'open_ar',
     name: 'Open Accounts Receivable (aged)',
     category: 'Finance',
@@ -643,7 +640,7 @@ async function main() {
     dueDate: dc21.toISOString().split('T')[0],
   });
 
-  const dc7item = await createDataCollectionItem(engId, {
+  await createDataCollectionItem(engId, {
     templateId: 'bom',
     name: 'Bill of Materials (all finished products)',
     category: 'Manufacturing',

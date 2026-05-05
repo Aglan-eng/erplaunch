@@ -1,6 +1,5 @@
 import archiver from 'archiver';
 import * as fs from 'fs';
-import * as path from 'path';
 import type { FastifyReply } from 'fastify';
 
 export async function streamJobZip(jobOutputDir: string, jobId: string, reply: FastifyReply): Promise<void> {

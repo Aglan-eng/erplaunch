@@ -160,6 +160,6 @@ export function WizardTopBar({
 }
 
 // Helper for class merging if not already globally available
-function cn(...classes: any[]) {
+function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ');
 }

@@ -152,7 +152,6 @@ describe('inferStarterFields — Clinical / Trial family', () => {
   });
 
   it('study_lead links to Employee', () => {
-    const f = inferStarterFields('Clinical Trial Tracker').find((f) => f.id === 'study_lead');
     // "tracker" wins over "clinical" per priority — verify with non-tracker name
     const f2 = inferStarterFields('Clinical Trial Cost Center').find((f) => f.id === 'study_lead')!;
     expect(f2.selectrecordtype).toBe('-4');
@@ -169,10 +168,8 @@ describe('inferStarterFields — Medical / Affairs / Activity family', () => {
 
 describe('inferStarterFields — License / Renewal family', () => {
   it('matches "Product License Renewal Tracker"', () => {
-    // "tracker" wins again per priority order. Use the "license"
-    // keyword cleanly:
-    const fields = inferStarterFields('Product License Tracker');
-    // First match is approval/tracker; verify with non-tracker name:
+    // "tracker" wins again per priority order. First match is approval/tracker;
+    // verify with the non-tracker form to assert the license field set.
     const f2 = inferStarterFields('Product License Renewal');
     expect(f2.map((f) => f.id)).toContain('license_type');
     expect(f2.map((f) => f.id)).toContain('expiry_date');

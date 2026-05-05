@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { TriangleAlert, ArrowRight, CircleCheck, X, Zap } from 'lucide-react';
+import { TriangleAlert, ArrowRight, X, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useParams, useLocation } from 'react-router-dom';
 import { engagementsApi } from '@/lib/api';
@@ -124,7 +124,7 @@ function ActivityFeedView({ engagementId }: { engagementId: string }) {
         </div>
       ) : (
         <div className="space-y-3">
-          {(activities as Array<any>).map((activity: any, idx: number) => (
+          {(activities as Array<{ description?: string; timestamp?: string }>).map((activity, idx) => (
             <div key={idx} className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
               <div className="flex items-start gap-3">
                 <div className="h-2 w-2 rounded-full bg-brand-500 mt-2 flex-shrink-0" />

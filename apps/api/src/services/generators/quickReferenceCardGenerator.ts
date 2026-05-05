@@ -506,7 +506,7 @@ function parseCustomRecords(raw: string): string[] {
     const trimmed = line.trim();
     if (trimmed.length === 0) continue;
     // First word(s) before any "(" or "—" — same convention as Pack K.
-    const m = trimmed.match(/^([^(—\-]+)/);
+    const m = trimmed.match(/^([^(—-]+)/);
     const name = (m ? m[1] : trimmed).trim();
     if (name.length > 0) out.push(name);
   }

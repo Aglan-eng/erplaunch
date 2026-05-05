@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { authenticate } from '../middleware/auth.js';
 import * as db from '../db/index.js';
-import { DATA_TEMPLATES, getTemplate, getTemplatesForVertical } from '../config/dataTemplates.js';
+import { DATA_TEMPLATES, getTemplatesForVertical } from '../config/dataTemplates.js';
 import { getVertical } from '../config/verticals.js';
 import path from 'path';
 import fs from 'fs';
@@ -581,7 +581,7 @@ export async function dataCollectionRoutes(fastify: FastifyInstance) {
 
   // DELETE /engagements/:id/data-collection/:itemId/files/:fileId
   fastify.delete('/engagements/:id/data-collection/:itemId/files/:fileId', { onRequest: authenticate }, async (request, reply) => {
-    const { id, itemId, fileId } = request.params as { id: string; itemId: string; fileId: string };
+    const { id, fileId } = request.params as { id: string; itemId: string; fileId: string };
     const engagement = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
 

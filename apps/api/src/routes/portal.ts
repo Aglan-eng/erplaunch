@@ -78,7 +78,7 @@ export async function portalRoutes(fastify: FastifyInstance) {
     }
 
     const settings = await db.getPortalSettings(id);
-    const clientName = (engagement as any).clientName as string;
+    const clientName = (engagement as { clientName: string }).clientName;
 
     let sent = 0;
     const errors: string[] = [];
@@ -95,8 +95,9 @@ export async function portalRoutes(fastify: FastifyInstance) {
           customMessage: settings.customMessage || undefined,
         });
         sent++;
-      } catch (err: any) {
-        errors.push(`${member.email}: ${err.message}`);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        errors.push(`${member.email}: ${message}`);
         fastify.log.error({ err, email: member.email }, 'Failed to send portal invite');
       }
     }
@@ -126,7 +127,7 @@ export async function portalRoutes(fastify: FastifyInstance) {
     const { id } = request.params as { id: string };
     const check = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!check) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
-    const body = request.body as any;
+    const body = request.body as Parameters<typeof db.createPortalTodo>[1];
     const todo = await db.createPortalTodo(id, body);
     return reply.code(201).send({ data: todo });
   });
@@ -136,7 +137,7 @@ export async function portalRoutes(fastify: FastifyInstance) {
     const { id, todoId } = request.params as { id: string; todoId: string };
     const check = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!check) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
-    const todo = await db.updatePortalTodo(todoId, id, request.body as any);
+    const todo = await db.updatePortalTodo(todoId, id, request.body as Parameters<typeof db.updatePortalTodo>[2]);
     if (!todo) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
     return reply.send({ data: todo });
   });
@@ -188,7 +189,7 @@ export async function portalRoutes(fastify: FastifyInstance) {
     const engagement = await db.findEngagementByPortalToken(token);
     if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
 
-    const engagementId = (engagement as any).id as string;
+    const engagementId = (engagement as { id: string }).id;
     const settings = await db.getPortalSettings(engagementId);
     const branding = await db.getFirmBrandingByEngagementId(engagementId);
 
@@ -265,14 +266,17 @@ export async function portalRoutes(fastify: FastifyInstance) {
     ]);
 
     // Filter committee by settings
-    const allMembers = (engagement as any).members ?? [];
-    const members = allMembers.filter((m: any) => {
+    type PortalMemberLike = { team?: string };
+    type EngagementWithMembers = Record<string, unknown> & { members?: PortalMemberLike[] };
+    const eng = engagement as EngagementWithMembers;
+    const allMembers: PortalMemberLike[] = eng.members ?? [];
+    const members = allMembers.filter((m) => {
       if (m.team === 'CONSULTANT') return settings.showConsultantTeam;
       return settings.showClientTeam;
     });
 
     // Strip internal fields
-    const { members: _m, profile: _p, license: _l, conflicts: _c, ...engagementData } = engagement as any;
+    const { members: _m, profile: _p, license: _l, conflicts: _c, ...engagementData } = eng;
 
     return reply.send({
       data: {
@@ -289,11 +293,11 @@ export async function portalRoutes(fastify: FastifyInstance) {
         issues,
         decisions,
         todos,
-        meetings: (meetings as any[]).filter((m: any) => {
+        meetings: (meetings as Array<{ date?: string; scheduledAt?: string }>).filter((m) => {
           const d = m.date ?? m.scheduledAt;
           return !d || new Date(d) >= new Date(Date.now() - 7 * 86400000); // last 7d + future
         }),
-        dataCollection: (dataCollection as any[]).map((item: any) => ({
+        dataCollection: (dataCollection as Array<Record<string, unknown>>).map((item) => ({
           id: item.id,
           name: item.name,
           description: item.description,

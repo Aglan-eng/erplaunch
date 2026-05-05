@@ -6,7 +6,9 @@ export interface ImplementationPlanData {
    *  per platform. Same shape as BRDData.adaptor. */
   adaptor: AdaptorContext;
   license: { edition: string; modules: string[] };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- answers is JSON-blob with mixed types; see brdGenerator's BRDData for context.
   answers: Record<string, any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- conflicts is DB Row passthrough; §6.1 NetSuite extraction will retype.
   conflicts: any[];
 }
 
@@ -92,7 +94,7 @@ export function generateImplementationPlanHtml(data: ImplementationPlanData): st
     { role: 'End-User Trainer', show: true },
   ];
 
-  const visibleRoles = roles.filter(r => r.show);
+  const _visibleRoles = roles.filter(r => r.show);
 
   // Risk summary
   const blockingRisks = conflicts.filter(c => c.severity === 'BLOCK');
@@ -354,7 +356,7 @@ export function generateImplementationPlanHtml(data: ImplementationPlanData): st
     ` : `
     ${blockingRisks.length > 0 ? `
     <h3 style="color: #dc2626;">Critical Issues (${blockingRisks.length})</h3>
-    ${blockingRisks.map((r, i) => `
+    ${blockingRisks.map((r) => `
     <div class="risk-block">
       <p><span class="risk-severity-critical">CRITICAL</span> — ${r.message}</p>
       <p style="margin-top: 6px; font-size: 13px; color: #7f1d1d;"><strong>Mitigation:</strong> ${r.resolution}</p>
@@ -363,7 +365,7 @@ export function generateImplementationPlanHtml(data: ImplementationPlanData): st
     ` : ''}
     ${warningRisks.length > 0 ? `
     <h3 style="color: #f59e0b;">Warnings (${warningRisks.length})</h3>
-    ${warningRisks.map((r, i) => `
+    ${warningRisks.map((r) => `
     <div class="risk-warn">
       <p><span class="risk-severity-moderate">MODERATE</span> — ${r.message}</p>
       <p style="margin-top: 6px; font-size: 13px; color: #92400e;"><strong>Mitigation:</strong> ${r.resolution}</p>

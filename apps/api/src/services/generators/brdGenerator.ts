@@ -80,9 +80,13 @@ export interface BRDData {
     edition: string;
     modules: string[];
   };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- answers is a JSON blob with mixed value types (string|number|array|object); narrowing per-question lives in formatAnswer().
   answers: Record<string, any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- DB Row passthrough; sectionKey/text/etc accessed loosely. §6.1 will re-type after adaptor extraction.
   comments?: any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see comments cast above.
   images?: any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see comments cast above.
   aiAdvice?: any[];
 }
 

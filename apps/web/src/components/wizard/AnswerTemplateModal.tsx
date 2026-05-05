@@ -34,7 +34,8 @@ export function AnswerTemplateModal({ engagementId, onClose }: AnswerTemplateMod
   });
 
   // Exclude current engagement
-  const sources = (allEngagements as Array<any>).filter((e: any) => e.id !== engagementId);
+  type EngagementLite = { id: string; clientName: string; status?: string; updatedAt?: string; contractEndDate?: string };
+  const sources = (allEngagements as EngagementLite[]).filter((e) => e.id !== engagementId);
 
   const copyMutation = useMutation({
     mutationFn: (sourceId: string) => engagementsApi.copyAnswers(engagementId, sourceId),
@@ -86,7 +87,7 @@ export function AnswerTemplateModal({ engagementId, onClose }: AnswerTemplateMod
           ) : (
             <div className="space-y-2">
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Select source engagement</p>
-              {sources.map((eng: any) => (
+              {sources.map((eng) => (
                 <button
                   key={eng.id}
                   onClick={() => setSelected(eng.id)}
@@ -106,8 +107,8 @@ export function AnswerTemplateModal({ engagementId, onClose }: AnswerTemplateMod
                         </p>
                       )}
                     </div>
-                    <span className={cn('text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0', STATUS_COLORS[eng.status] ?? 'bg-gray-100 text-gray-600')}>
-                      {STATUS_LABELS[eng.status] ?? eng.status}
+                    <span className={cn('text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0', STATUS_COLORS[eng.status ?? ''] ?? 'bg-gray-100 text-gray-600')}>
+                      {STATUS_LABELS[eng.status ?? ''] ?? eng.status}
                     </span>
                   </div>
                 </button>

@@ -130,7 +130,7 @@
       if (!res.ok || !res.body) {
         removeTyping();
         let detail = 'unknown_error';
-        try { const j = await res.json(); detail = j.error || detail; } catch {}
+        try { const j = await res.json(); detail = j.error || detail; } catch { /* leave default detail */ }
         appendMessage('assistant', `Sorry — something went wrong (${detail}). Try again, or email hello@erplaunch.app.`);
         setSendingState(false);
         return;
@@ -145,7 +145,7 @@
       const decoder = new TextDecoder();
       let buffer = '';
 
-      while (true) {
+      for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });

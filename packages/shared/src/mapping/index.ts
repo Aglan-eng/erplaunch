@@ -3,7 +3,7 @@ export type NetSuiteObjectType = 'customrecord' | 'customfield' | 'customlist' |
 export interface SDFMapping {
   id: string; // Internal mapping ID
   questionId: string;
-  triggerValue: any;
+  triggerValue: string | number | boolean;
   output: {
     type: NetSuiteObjectType;
     scriptid: string;
@@ -263,6 +263,6 @@ export const SDF_MAPPING_REGISTRY: SDFMapping[] = [
 
 ];
 
-export function getMappingsForAnswers(answers: Record<string, any>): SDFMapping[] {
+export function getMappingsForAnswers(answers: Record<string, unknown>): SDFMapping[] {
   return SDF_MAPPING_REGISTRY.filter(m => answers[m.questionId] === m.triggerValue);
 }
