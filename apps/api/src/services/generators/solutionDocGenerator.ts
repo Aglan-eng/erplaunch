@@ -39,6 +39,44 @@ interface DocStructuredRole {
   restrictionOverride: string | null;
   customizationNotes: string;
 }
+/**
+ * Phase 26 — parse ns.design.templatesStructured for solution-doc display.
+ * Defensive — graceful on missing / null / malformed JSON.
+ */
+interface DocStructuredTemplate {
+  name: string;
+  kind: string;
+  preferred: boolean;
+  sections: string[];
+  notes: string;
+}
+function parseStructuredTemplatesForDoc(raw: unknown): DocStructuredTemplate[] {
+  if (raw === null || raw === undefined) return [];
+  let parsed: unknown = raw;
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (trimmed.length === 0) return [];
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(parsed)) return [];
+  return parsed
+    .filter((r): r is Record<string, unknown> => r !== null && typeof r === 'object')
+    .map((r) => ({
+      name: typeof r.name === 'string' ? r.name : '',
+      kind: typeof r.kind === 'string' ? r.kind : '',
+      preferred: r.preferred === true,
+      sections: Array.isArray(r.sections)
+        ? (r.sections as unknown[]).filter((s): s is string => typeof s === 'string')
+        : [],
+      notes: typeof r.notes === 'string' ? r.notes : '',
+    }))
+    .filter((t) => t.name.trim().length > 0 && t.kind.trim().length > 0);
+}
+
 function parseStructuredRolesForDoc(raw: unknown): DocStructuredRole[] {
   if (raw === null || raw === undefined) return [];
   let parsed: unknown = raw;
@@ -550,6 +588,21 @@ export function generateSolutionDoc(data: SolutionDocData): string {
                (answers['ns.design.standardRoleCustomization'] as string).trim().length > 0) {
       doc += `### 5.2 Captured Custom Roles (legacy textarea)\n\n`;
       doc += `Custom roles captured via the free-text TEXTAREA. Each line emits one \`customrole_nsix_*.xml\` on Generate Package. To migrate to the structured editor for richer per-role control, use the Customizations → Roles step in the wizard.\n\n`;
+    }
+
+    // Phase 26 — Custom Templates capture surfaces here too when populated.
+    const structuredTemplates = parseStructuredTemplatesForDoc(answers['ns.design.templatesStructured']);
+    if (structuredTemplates.length > 0) {
+      doc += `### 5.3 Custom Templates (Phase 26 structured editor)\n\n`;
+      doc += `These templates will be emitted as Oracle SDF \`advancedpdftemplate\` (PDF/HTML) or \`emailtemplate\` (DUNNING_EMAIL) objects on Generate Package. The XML body contains a stub with TODO markers per captured section; consultants edit the real FreeMarker / BFO content in NetSuite UI after deploy.\n\n`;
+      doc += `| Template Name | Kind | Preferred | Sections | Notes |\n| :--- | :--- | :--- | :--- | :--- |\n`;
+      for (const t of structuredTemplates) {
+        const sections = t.sections.length > 0 ? t.sections.join(', ') : '—';
+        const notes = t.notes.trim().length > 0 ? t.notes : '—';
+        doc += `| ${t.name} | ${t.kind} | ${t.preferred ? 'Yes' : 'No'} | ${sections} | ${notes} |\n`;
+      }
+      doc += `\n`;
+      doc += `**Deploy notes:** confirm \`<preferred>T</preferred>\` is set on only ONE template per recordtype before deploying. The XML comment header inside each emitted file lists the captured sections so consultants know which TODO markers to fill in.\n\n`;
     }
   }
   doc += `---\n\n`;

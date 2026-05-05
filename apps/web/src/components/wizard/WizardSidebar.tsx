@@ -4,7 +4,7 @@ import {
   CircleCheck, Circle, ChevronRight, ChevronDown,
   FolderKanban, TriangleAlert, CircleAlert, BookOpen,
   CalendarClock, Truck, Activity, Settings2, Database,
-  Zap, Sparkles, ShieldCheck,
+  Zap, Sparkles, ShieldCheck, FileText,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useWizardStore } from '@/stores/wizardStore';
@@ -41,14 +41,15 @@ const MGMT_ITEMS: SidebarItem[] = [
   { key: 'activity',        label: 'Activity Feed',     progress: 0, icon: Activity      },
 ];
 
-// Phase 23 — Customizations group. Now contains Custom Fields + Roles
-// (Phase 25). Future Phase 26 will add Templates here. NetSuite-only
-// feature surface today; the structured generators self-gate so opening
-// these sections on an Odoo engagement is harmless (the answer simply
-// won't be consumed by the SDF pipeline that's not running for Odoo).
+// Phase 23 — Customizations group. Now contains Custom Fields, Roles
+// (Phase 25), and Templates (Phase 26). NetSuite-only feature surface
+// today; the structured generators self-gate so opening these sections
+// on an Odoo engagement is harmless (the answer simply won't be consumed
+// by the SDF pipeline that's not running for Odoo).
 const CUSTOMIZATIONS_ITEMS: SidebarItem[] = [
   { key: 'customizations.customFields', label: 'Custom Fields', progress: 0, icon: Settings2 },
   { key: 'customizations.roles',        label: 'Roles',         progress: 0, icon: ShieldCheck },
+  { key: 'customizations.templates',    label: 'Templates',     progress: 0, icon: FileText },
 ];
 
 // NetSuite fallback — used when the adaptor query is still loading, fails,

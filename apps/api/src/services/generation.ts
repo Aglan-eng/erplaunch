@@ -36,6 +36,7 @@ import {
   generateSdfStructuredRoles,
   resolveLegacyStandardRoleCustomization,
 } from './generators/sdfStructuredRolesGenerator.js';
+import { generateSdfStructuredTemplates } from './generators/sdfStructuredTemplatesGenerator.js';
 import { generateAccountingPreferences } from './generators/sdfAccountingPreferencesGenerator.js';
 import { generateCompanyInformation } from './generators/sdfCompanyInformationGenerator.js';
 import { generateGeneralPreferences } from './generators/sdfGeneralPreferencesGenerator.js';
@@ -1423,6 +1424,19 @@ export async function processJob(jobId: string, db: DbModule) {
           | undefined,
       });
       Object.assign(sdfFiles, structuredRolesResult.files);
+
+      // Phase 26 — structured templates emit. Reads
+      // ns.design.templatesStructured and emits one advancedpdftemplate or
+      // emailtemplate XML per row (kind drives the SDF root element).
+      // No legacy bridge — templates were never captured before Phase 26.
+      const structuredTemplatesResult = generateSdfStructuredTemplates({
+        adaptorId: 'netsuite',
+        structuredAnswer: answers['ns.design.templatesStructured'] as
+          | string
+          | null
+          | undefined,
+      });
+      Object.assign(sdfFiles, structuredTemplatesResult.files);
 
       // Base currency for companyinformation derives from the FIRST
       // parsed subsidiary (the root tenant subsidiary). Fall back to

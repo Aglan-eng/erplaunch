@@ -18,6 +18,7 @@ import { MeetingNotesStep } from './steps/MeetingNotesStep';
 import { MigrationTrackerStep } from './steps/MigrationTrackerStep';
 import { CustomFieldsStep } from './steps/CustomFieldsStep';
 import { StandardRolesStep } from './steps/StandardRolesStep';
+import { TemplatesStep } from './steps/TemplatesStep';
 import { DataCollectionPage } from '@/pages/DataCollectionPage';
 import { AIProfileGenerator } from './AIProfileGenerator';
 import { HelpDrawer } from './HelpDrawer';
@@ -337,6 +338,10 @@ export function WizardShell() {
 
     if (currentSection === 'customizations.roles') {
       return <StandardRolesStep engagementId={engagementId} />;
+    }
+
+    if (currentSection === 'customizations.templates') {
+      return <TemplatesStep engagementId={engagementId} />;
     }
 
     if (currentSection === 'activity') {
