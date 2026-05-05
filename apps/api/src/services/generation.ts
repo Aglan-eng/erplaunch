@@ -107,7 +107,11 @@ import { generateIntegrationReconciliationProcedures } from './generators/integr
 import { generateIntegrationVendorEscalationMatrix } from './generators/integrationVendorEscalationMatrixGenerator.js';
 import { generateIntegrationTestPlan } from './generators/integrationTestPlanGenerator.js';
 import { generateIntegrationsIndex } from './generators/integrationsIndexGenerator.js';
-import { convertHtmlToPdf } from './pdfService.js';
+// Phase 39.2 — switched BRD.pdf to convertMarkdownToPdf so we never depend
+// on Chromium for the legitimate-looking PDF output. The HTML path
+// (convertHtmlToPdf) still exists for future generators that need true
+// CSS rendering and run in environments where Puppeteer is wired up.
+import { convertMarkdownToPdf } from './pdfService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -289,10 +293,15 @@ export async function processJob(jobId: string, db: DbModule) {
       aiAdvice,
     };
 
-    await fs.writeFile(path.join(docDir, 'BRD.md'), generateBRD(brdData));
+    const brdMarkdown = generateBRD(brdData);
+    await fs.writeFile(path.join(docDir, 'BRD.md'), brdMarkdown);
     const brdHtml = generateBRDHtml(brdData);
     await fs.writeFile(path.join(docDir, 'BRD.html'), brdHtml);
-    await convertHtmlToPdf(brdHtml, path.join(docDir, 'BRD.pdf'));
+    // Phase 39.2 — render the PDF directly from the markdown source so the
+    // pipeline doesn't depend on Chromium. Produces a real, paginated,
+    // typographically reasonable PDF instead of the previous 837-byte
+    // placeholder.
+    await convertMarkdownToPdf(brdMarkdown, path.join(docDir, 'BRD.pdf'), { title: `BRD — ${eng.clientName}` });
 
     // Project Kickoff — universal pack (runs for every adaptor). Pulls
     // engagement project members for stakeholder map + RACI auto-fill.
