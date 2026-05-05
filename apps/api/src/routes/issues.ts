@@ -32,7 +32,8 @@ export async function issueRoutes(fastify: FastifyInstance) {
     }
 
     const issue = await db.createIssue(id, body);
-    await db.logActivity(id, request.jwtUser.firmId, 'ISSUE_CREATED', `Created issue: ${body.title}`);
+    // Phase 38.1 — renamed from ISSUE_CREATED to ISSUE_OPENED.
+    await db.logActivity(id, request.jwtUser.firmId, 'ISSUE_OPENED', `Opened issue: ${body.title}`);
     return reply.code(201).send({ data: issue });
   });
 
@@ -48,7 +49,16 @@ export async function issueRoutes(fastify: FastifyInstance) {
 
     const body = request.body as Record<string, unknown>;
     const updated = await db.updateIssue(issueId, body);
-    await db.logActivity(id, request.jwtUser.firmId, 'ISSUE_UPDATED', `Updated issue: ${(issue as Record<string, unknown>).title}`);
+    // Phase 38.1 — split UPDATED vs RESOLVED based on the status transition.
+    // ISSUE_RESOLVED is a discrete event the PO wants surfaced separately so
+    // the activity feed reads like a timeline of issue lifecycle, not just
+    // generic edits.
+    const priorStatus = (issue as Record<string, unknown>).status as string | undefined;
+    const newStatus = body.status as string | undefined;
+    const justResolved = newStatus === 'RESOLVED' && priorStatus !== 'RESOLVED';
+    const action = justResolved ? 'ISSUE_RESOLVED' : 'ISSUE_UPDATED';
+    const verb = justResolved ? 'Resolved' : 'Updated';
+    await db.logActivity(id, request.jwtUser.firmId, action, `${verb} issue: ${(issue as Record<string, unknown>).title}`);
     return reply.send({ data: updated });
   });
 

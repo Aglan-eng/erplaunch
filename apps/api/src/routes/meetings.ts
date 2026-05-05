@@ -33,7 +33,8 @@ export async function meetingRoutes(fastify: FastifyInstance) {
     }
 
     const meeting = await db.createMeeting(id, body);
-    await db.logActivity(id, request.jwtUser.firmId, 'MEETING_CREATED', `Created meeting: ${body.title}`);
+    // Phase 38.1 — renamed from MEETING_CREATED to MEETING_SCHEDULED.
+    await db.logActivity(id, request.jwtUser.firmId, 'MEETING_SCHEDULED', `Scheduled meeting: ${body.title}`);
     return reply.code(201).send({ data: meeting });
   });
 

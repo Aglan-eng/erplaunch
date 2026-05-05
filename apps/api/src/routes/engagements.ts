@@ -299,6 +299,22 @@ export async function engagementRoutes(fastify: FastifyInstance) {
     const merged = { ...currentAnswers, ...result.data.answers };
     const profile = await db.upsertProfile(id, merged);
 
+    // Phase 38.1 — single de-noised PROFILE_ANSWERED entry per PATCH. The
+    // detail summarises which sections were touched (a) so the feed reads
+    // human-friendly and (b) so we don't write N entries for a bulk save
+    // (would drown out everything else).
+    const newKeys = Object.keys(result.data.answers ?? {});
+    if (newKeys.length > 0) {
+      const sections = Array.from(new Set(newKeys.map((k) => k.split('.').slice(0, 2).join('.'))));
+      const sectionList = sections.slice(0, 3).join(', ') + (sections.length > 3 ? `, +${sections.length - 3} more` : '');
+      await db.logActivity(
+        id,
+        request.jwtUser.firmId,
+        'PROFILE_ANSWERED',
+        `Answered ${newKeys.length} question${newKeys.length === 1 ? '' : 's'}${sectionList ? ` in ${sectionList}` : ''}`,
+      );
+    }
+
     // Rule evaluation now branches per-adaptor:
     //   - netsuite → legacy hand-written rule engine (full answer+phases context)
     //   - else     → generic adaptor-sdk evaluator against adaptor.rules if the
@@ -410,6 +426,15 @@ export async function engagementRoutes(fastify: FastifyInstance) {
     if (!license) {
       return reply.code(500).send({ error: { code: 'LICENSE_PERSIST_FAILED' } });
     }
+    // Phase 38.1 — emit LICENSE_UPDATED with a one-line summary of what
+    // shifted so the activity feed shows edition/module changes inline.
+    const moduleSummary = (result.data.modules ?? []).slice(0, 3).join(', ') + ((result.data.modules?.length ?? 0) > 3 ? `, +${(result.data.modules?.length ?? 0) - 3} more` : '');
+    await db.logActivity(
+      id,
+      request.jwtUser.firmId,
+      'LICENSE_UPDATED',
+      `Set license to ${result.data.edition}${moduleSummary ? ` with modules: ${moduleSummary}` : ''}`,
+    );
 
     // Re-evaluate rules with the updated license so conflict state stays in
     // sync (mirrors PATCH /profile). Dispatch on adaptor: NetSuite → legacy
@@ -609,6 +634,9 @@ export async function engagementRoutes(fastify: FastifyInstance) {
     const body = request.body as { name: string; role: string; team?: string; email?: string; phone?: string };
     if (!body.name) return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'name is required' } });
     const member = await db.addMember(id, body);
+    // Phase 38.1 — surface team membership changes in the activity feed.
+    const teamLabel = body.team === 'CONSULTANT' ? 'consultant team' : 'client team';
+    await db.logActivity(id, request.jwtUser.firmId, 'MEMBER_ADDED', `Added ${body.name} (${body.role}) to the ${teamLabel}`);
     return reply.code(201).send({ data: member });
   });
 
@@ -617,7 +645,15 @@ export async function engagementRoutes(fastify: FastifyInstance) {
     const { id, memberId } = request.params as { id: string; memberId: string };
     const check = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!check) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+    // Phase 38.1 — capture name BEFORE delete so the activity entry has
+    // something to display.
+    const members = await db.getMembers(id);
+    const target = members.find((m) => (m as Record<string, unknown>).id === memberId);
     await db.deleteMember(memberId, id);
+    if (target) {
+      const targetName = (target as Record<string, unknown>).name as string;
+      await db.logActivity(id, request.jwtUser.firmId, 'MEMBER_REMOVED', `Removed ${targetName} from the team`);
+    }
     return reply.send({ data: { ok: true } });
   });
 
@@ -629,6 +665,8 @@ export async function engagementRoutes(fastify: FastifyInstance) {
     const body = request.body as Parameters<typeof db.updateMember>[2];
     const member = await db.updateMember(memberId, id, body);
     if (!member) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+    const memberName = (member as Record<string, unknown>).name as string;
+    await db.logActivity(id, request.jwtUser.firmId, 'MEMBER_UPDATED', `Updated ${memberName}`);
     return reply.send({ data: member });
   });
 

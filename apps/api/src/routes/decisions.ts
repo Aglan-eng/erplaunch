@@ -33,7 +33,8 @@ export async function decisionRoutes(fastify: FastifyInstance) {
     }
 
     const decision = await db.createDecision(id, body);
-    await db.logActivity(id, request.jwtUser.firmId, 'DECISION_CREATED', `Created decision: ${body.title}`);
+    // Phase 38.1 — renamed from DECISION_CREATED to DECISION_LOGGED.
+    await db.logActivity(id, request.jwtUser.firmId, 'DECISION_LOGGED', `Logged decision: ${body.title}`);
     return reply.code(201).send({ data: decision });
   });
 

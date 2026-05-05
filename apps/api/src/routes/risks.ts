@@ -34,7 +34,9 @@ export async function riskRoutes(fastify: FastifyInstance) {
     }
 
     const risk = await db.createRisk(id, body);
-    await db.logActivity(id, request.jwtUser.firmId, 'RISK_CREATED', `Created risk: ${body.title}`);
+    // Phase 38.1 — renamed from RISK_CREATED to RISK_ADDED to match the
+    // PO-facing action vocabulary documented on the dashboard.
+    await db.logActivity(id, request.jwtUser.firmId, 'RISK_ADDED', `Added risk: ${body.title}`);
     return reply.code(201).send({ data: risk });
   });
 
