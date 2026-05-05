@@ -279,6 +279,20 @@ export const engagementsApi = {
       .post(`/engagements/${id}/pending-submissions/${submissionId}/reject`, { comment })
       .then((r) => r.data.data),
 
+  // Phase 31 — Conversation threads + messages (consultant side)
+  listThreads: (id: string) =>
+    api.get(`/engagements/${id}/threads`).then((r) => r.data.data),
+  createThread: (id: string, input: { subject: string; body: string }) =>
+    api.post(`/engagements/${id}/threads`, input).then((r) => r.data.data),
+  getThread: (id: string, threadId: string) =>
+    api.get(`/engagements/${id}/threads/${threadId}`).then((r) => r.data.data),
+  postThreadMessage: (id: string, threadId: string, body: string) =>
+    api
+      .post(`/engagements/${id}/threads/${threadId}/messages`, { body })
+      .then((r) => r.data.data),
+  patchThreadStatus: (id: string, threadId: string, status: 'OPEN' | 'RESOLVED') =>
+    api.patch(`/engagements/${id}/threads/${threadId}`, { status }).then((r) => r.data.data),
+
   // Answer templates (copy from another engagement)
   copyAnswers: (id: string, sourceEngagementId: string) =>
     api.post(`/engagements/${id}/copy-answers`, { sourceEngagementId }).then((r) => r.data.data),
@@ -423,6 +437,21 @@ export const portalApi = {
     api
       .post('/portal/submissions', {
         targetType: 'DATA_FILE',
+        payload: input,
+      })
+      .then((r) => r.data.data),
+
+  // Phase 31 — Q&A threads (read-only client side)
+  listThreads: (token: string) =>
+    api.get(`/engagements/portal/${token}/threads`).then((r) => r.data.data),
+  getThread: (token: string, threadId: string) =>
+    api.get(`/engagements/portal/${token}/threads/${threadId}`).then((r) => r.data.data),
+  /** Phase 31 — submit a Q&A message for review. threadId=null creates a
+   *  new thread; subject is then required. */
+  submitQaMessage: (input: { threadId: string | null; subject?: string; body: string }) =>
+    api
+      .post('/portal/submissions', {
+        targetType: 'QA_MESSAGE',
         payload: input,
       })
       .then((r) => r.data.data),

@@ -16,6 +16,7 @@ import {
 } from '@/components/portal/PortalBrandedHeader';
 import { PortalSupportFooter } from '@/components/portal/PortalSupportFooter';
 import { PortalClientQuestions } from '@/components/portal/PortalClientQuestions';
+import { PortalMessaging } from '@/components/portal/PortalMessaging';
 
 // Phase 27 — fallback when the API somehow doesn't return a branding block.
 // The DB layer always populates one (DEFAULT_BRANDING in firmBranding.ts),
@@ -549,6 +550,14 @@ export function ClientPortalPage() {
             PortalClientQuestions provides the visual frame. */}
         {!!authenticatedMember && (
           <PortalClientQuestions token={token!} authenticated={!!authenticatedMember} />
+        )}
+
+        {/* Phase 31 — Messaging (Q&A threads). Section renders only when
+            authenticated. PortalMessaging shows the empty-with-CTA state
+            if no threads exist yet, or the thread list / detail view
+            otherwise. */}
+        {!!authenticatedMember && (
+          <PortalMessaging token={token!} authenticated={!!authenticatedMember} />
         )}
 
         {/* Data Collection */}

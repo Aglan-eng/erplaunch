@@ -31,6 +31,9 @@ import './services/wizardAnswerAcceptor.js';
 // Phase 30 — DATA_FILE acceptor + payload schema.
 import './services/dataFileAcceptor.js';
 import { scheduleStagedFileGc } from './services/stagedFileGc.js';
+// Phase 31 — QA_MESSAGE acceptor + payload schema.
+import './services/qaMessageAcceptor.js';
+import { threadsRoutes } from './routes/threads.js';
 import { firmBrandingRoutes } from './routes/firmBranding.js';
 import { adaptorRoutes } from './routes/adaptors.js';
 import { customAdaptorRoutes } from './routes/customAdaptors.js';
@@ -156,6 +159,8 @@ export async function buildServer() {
   // portal and consultant auth at the route level rather than the plugin
   // level (same pattern as portal.ts).
   await fastify.register(pendingSubmissionsRoutes, { prefix: '/api/v1' });
+  // Phase 31 — consultant threads + messages (bypasses pending-review).
+  await fastify.register(threadsRoutes, { prefix: '/api/v1' });
   await fastify.register(firmBrandingRoutes, { prefix: '/api/v1' });
   await fastify.register(adaptorRoutes, { prefix: '/api/v1' });
   await fastify.register(customAdaptorRoutes, { prefix: '/api/v1' });

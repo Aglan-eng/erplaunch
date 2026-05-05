@@ -4,7 +4,7 @@ import {
   CircleCheck, Circle, ChevronRight, ChevronDown,
   FolderKanban, TriangleAlert, CircleAlert, BookOpen,
   CalendarClock, Truck, Activity, Settings2, Database,
-  Zap, Sparkles, ShieldCheck, FileText, Inbox,
+  Zap, Sparkles, ShieldCheck, FileText, Inbox, MessageCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useWizardStore } from '@/stores/wizardStore';
@@ -37,6 +37,10 @@ const MGMT_ITEMS: SidebarItem[] = [
   // data becomes source of truth per §5.1). Phase 28 ships the
   // empty-state UI; Phases 29-32 add per-targetType interactive review.
   { key: 'pending-review', label: 'Pending Review',    progress: 0, icon: Inbox         },
+  // Phase 31 — Threads (Q&A messaging). Sits below Pending Review since
+  // accepted client messages land here, and consultant→client sends bypass
+  // pending-review entirely (asymmetric flow per §5.1).
+  { key: 'threads',         label: 'Threads',           progress: 0, icon: MessageCircle },
   { key: 'risks',           label: 'Risk Register',     progress: 0, icon: TriangleAlert },
   { key: 'issues',          label: 'Issue Tracker',     progress: 0, icon: CircleAlert   },
   { key: 'decisions',       label: 'Decision Log',      progress: 0, icon: BookOpen      },

@@ -515,6 +515,55 @@ export async function portalRoutes(fastify: FastifyInstance) {
     },
   );
 
+  // ─── Phase 31 — Client-side conversation threads (read-only) ───────────────
+  //
+  // Client list/detail endpoints for messaging. Outbound messages go
+  // through POST /portal/submissions with targetType='QA_MESSAGE'
+  // (per §5.1 — pending review for client→consultant). Inbound
+  // (consultant→client) messages are visible immediately.
+  fastify.get(
+    '/engagements/portal/:token/threads',
+    { preHandler: authenticatePortalSession },
+    async (request, reply) => {
+      const { token } = request.params as { token: string };
+      const engagement = await db.findEngagementByPortalToken(token);
+      if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+      const engagementId = (engagement as { id: string }).id;
+      if (request.portalMember.engagementId !== engagementId) {
+        return reply.code(403).send({
+          error: { code: 'FORBIDDEN', message: 'Session does not belong to this engagement' },
+        });
+      }
+      const { listConversationThreadsByEngagement } = await import('../db/conversationThread.js');
+      const threads = await listConversationThreadsByEngagement(engagementId);
+      return reply.send({ data: threads });
+    },
+  );
+
+  fastify.get(
+    '/engagements/portal/:token/threads/:threadId',
+    { preHandler: authenticatePortalSession },
+    async (request, reply) => {
+      const { token, threadId } = request.params as { token: string; threadId: string };
+      const engagement = await db.findEngagementByPortalToken(token);
+      if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+      const engagementId = (engagement as { id: string }).id;
+      if (request.portalMember.engagementId !== engagementId) {
+        return reply.code(403).send({
+          error: { code: 'FORBIDDEN', message: 'Session does not belong to this engagement' },
+        });
+      }
+      const { findConversationThreadById } = await import('../db/conversationThread.js');
+      const { listMessagesByThread } = await import('../db/message.js');
+      const thread = await findConversationThreadById(threadId);
+      if (!thread || thread.engagementId !== engagementId) {
+        return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+      }
+      const messages = await listMessagesByThread(threadId);
+      return reply.send({ data: { thread, messages } });
+    },
+  );
+
   // PATCH /engagements/portal/:token/todos/:todoId/reopen — client reopens todo
   fastify.patch(
     '/engagements/portal/:token/todos/:todoId/reopen',

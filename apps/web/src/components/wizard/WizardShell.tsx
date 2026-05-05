@@ -20,6 +20,7 @@ import { CustomFieldsStep } from './steps/CustomFieldsStep';
 import { StandardRolesStep } from './steps/StandardRolesStep';
 import { TemplatesStep } from './steps/TemplatesStep';
 import { PendingReviewStep } from './steps/PendingReviewStep';
+import { ThreadsStep } from './steps/ThreadsStep';
 import { DataCollectionPage } from '@/pages/DataCollectionPage';
 import { AIProfileGenerator } from './AIProfileGenerator';
 import { HelpDrawer } from './HelpDrawer';
@@ -314,6 +315,11 @@ export function WizardShell() {
     // Empty-state UI ships now; Phases 29-32 add per-targetType cards.
     if (currentSection === 'pending-review') {
       return <PendingReviewStep engagementId={engagementId} />;
+    }
+
+    // Phase 31 — Q&A threads (consultant side).
+    if (currentSection === 'threads') {
+      return <ThreadsStep engagementId={engagementId} />;
     }
 
     if (currentSection === 'risks') {

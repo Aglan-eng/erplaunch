@@ -651,6 +651,48 @@ async function createTables(db: Client) {
   // if staged file is already gone but a DataFile with this submissionId
   // exists, the prior accept already succeeded; treat as no-op.
   try { await db.execute(`ALTER TABLE DataFile ADD COLUMN sourceSubmissionId TEXT`); } catch {}
+
+  // ─── Phase 31 — Two-way Q&A messaging (§5.1 asymmetry) ─────────────────────
+  //
+  // Per §5.1: client→consultant messages go through pending-review (the
+  // QA_MESSAGE acceptor inserts the Message row on accept); consultant→
+  // client messages bypass pending-review (consultant is already source
+  // of truth — the routes/threads.ts POST handler inserts directly with
+  // acknowledgedAt = createdAt).
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS ConversationThread (
+      id                  TEXT PRIMARY KEY,
+      engagementId        TEXT NOT NULL REFERENCES Engagement(id) ON DELETE CASCADE,
+      subject             TEXT NOT NULL,
+      status              TEXT NOT NULL DEFAULT 'OPEN',
+      createdByMemberId   TEXT,
+      createdByUserId     TEXT,
+      createdAt           TEXT NOT NULL DEFAULT (datetime('now')),
+      lastMessageAt       TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  await db.execute(`
+    CREATE INDEX IF NOT EXISTS idx_thread_engagement_lastmsg
+      ON ConversationThread(engagementId, lastMessageAt)
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS Message (
+      id                  TEXT PRIMARY KEY,
+      threadId            TEXT NOT NULL REFERENCES ConversationThread(id) ON DELETE CASCADE,
+      senderType          TEXT NOT NULL,
+      senderMemberId      TEXT,
+      senderUserId        TEXT,
+      body                TEXT NOT NULL,
+      acknowledgedAt      TEXT,
+      sourceSubmissionId  TEXT,
+      createdAt           TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  await db.execute(`
+    CREATE INDEX IF NOT EXISTS idx_message_thread_created
+      ON Message(threadId, createdAt)
+  `);
 }
 
 // ─── Helper types ─────────────────────────────────────────────────────────────
