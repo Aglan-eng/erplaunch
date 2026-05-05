@@ -97,6 +97,57 @@ function normalizeRulesFromDraft(raw: unknown, manifest: unknown): { id: string;
 
 // ─── Document text extraction ────────────────────────────────────────────────
 
+/**
+ * Per-document text extraction. Branches first on filename suffix, then
+ * falls back to mimeType. Phase 37.2 added the mimeType fallback so that
+ * uploads with stripped or unrecognized filenames still extract correctly
+ * — the prod failure mode was a `.md` upload coming through with a
+ * different originalName, which fell into the catch-all utf8 branch
+ * silently producing empty content for some browsers.
+ *
+ * Exported so the parser test suite can pin per-format behavior without
+ * spinning up the whole pipeline.
+ */
+export async function extractTextFromDocument(input: {
+  absPath: string;
+  originalName: string;
+  mimeType: string;
+}): Promise<string> {
+  const { absPath, originalName, mimeType } = input;
+  if (!fs.existsSync(absPath)) return '';
+
+  const lower = (originalName ?? '').toLowerCase();
+  const mime = (mimeType ?? '').toLowerCase();
+
+  try {
+    if (lower.endsWith('.pdf') || mime === 'application/pdf') {
+      return await extractPdfText(absPath);
+    }
+    if (lower.endsWith('.docx') ||
+        mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+      return await extractDocxText(absPath);
+    }
+    if (lower.endsWith('.md') || lower.endsWith('.markdown') || mime === 'text/markdown') {
+      // Markdown is plain text from Claude's perspective — no syntax stripping
+      // needed. Reading raw preserves headings/lists which actually help the
+      // LLM identify structure (phase headings, module bullet lists, etc.).
+      return fs.readFileSync(absPath, 'utf8');
+    }
+    if (lower.endsWith('.txt') || mime === 'text/plain') {
+      return fs.readFileSync(absPath, 'utf8');
+    }
+    // Unknown file type — try utf8 anyway, ignore if garbage. Most likely an
+    // older upload before stricter mime validation, or a vendor extension we
+    // haven't encountered yet.
+    return fs.readFileSync(absPath, 'utf8');
+  } catch {
+    // Swallow per-file extraction errors; the caller continues with whatever
+    // sibling docs succeeded. A failure to read one upload should never sink
+    // the whole parse.
+    return '';
+  }
+}
+
 async function extractFromSourceDocuments(
   docs: Array<{ filename: string; originalName: string; mimeType: string }>,
   uploadsDir: string,
@@ -104,31 +155,23 @@ async function extractFromSourceDocuments(
   const chunks: string[] = [];
   for (const doc of docs) {
     const abs = path.join(uploadsDir, doc.filename);
-    if (!fs.existsSync(abs)) continue;
-
-    const lower = doc.originalName.toLowerCase();
-    let text = '';
-    try {
-      if (lower.endsWith('.pdf')) {
-        text = await extractPdfText(abs);
-      } else if (lower.endsWith('.docx')) {
-        text = await extractDocxText(abs);
-      } else if (lower.endsWith('.txt') || lower.endsWith('.md')) {
-        text = fs.readFileSync(abs, 'utf8');
-      } else {
-        // Unknown file type — try utf8 anyway, ignore if garbage
-        text = fs.readFileSync(abs, 'utf8');
-      }
-    } catch {
-      // Swallow per-file extraction errors; continue with whatever succeeded
-      continue;
-    }
+    const text = await extractTextFromDocument({
+      absPath: abs,
+      originalName: doc.originalName,
+      mimeType: doc.mimeType,
+    });
     if (text.trim()) {
       chunks.push(`=== Source: ${doc.originalName} ===\n${text.trim()}\n`);
     }
   }
   return chunks.join('\n\n');
 }
+
+// Phase 37.2 — exported under a `_testOnly` name so the parser test suite
+// can drive the full extract-and-concatenate pipeline without standing up
+// the Anthropic SDK or the rest of parseCustomAdaptor. Underscore prefix
+// signals: not a public API, do not consume from production code.
+export const _testOnlyExtractAll = extractFromSourceDocuments;
 
 async function extractPdfText(filePath: string): Promise<string> {
   // Dynamic import so we don't pay PDFJS startup cost for non-PDF uploads
