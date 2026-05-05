@@ -128,16 +128,24 @@ jobs:
     environment:
       name: production
       url: ${{ steps.render-trigger.outputs.service_url }}
+    # Phase 34: hoisted secrets to job-level env so step-level `if:` can
+    # reference them via `env.*`. GitHub Actions disallows `secrets.*` in
+    # step-level `if:` expressions — the previous version produced a YAML
+    # parse error ("Unrecognized named-value: 'secrets'") that prevented
+    # the entire workflow from being scheduled, so workflow_run runs
+    # came back as "No jobs were run" / failure.
+    env:
+      RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.gate.outputs.sha }}
 
       - name: Fail fast if Render deploy hook is missing
-        env:
-          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
         run: |
-          if [ -z "$HOOK" ]; then
+          if [ -z "${RENDER_DEPLOY_HOOK_URL:-}" ]; then
             echo "::error::RENDER_DEPLOY_HOOK_URL is not set. Add it under Settings → Secrets → Actions."
             exit 1
           fi
@@ -145,23 +153,20 @@ jobs:
       - id: render-trigger
         name: Trigger Render deploy
         env:
-          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
           SHA: ${{ needs.gate.outputs.sha }}
         run: |
           set -euo pipefail
           # Render accepts an optional ?ref=<sha> query param — pin to the exact
           # commit so we always deploy the reviewed SHA.
-          response=$(curl -fsS -X POST "${HOOK}&ref=${SHA}" || curl -fsS -X POST "${HOOK}")
+          response=$(curl -fsS -X POST "${RENDER_DEPLOY_HOOK_URL}&ref=${SHA}" || curl -fsS -X POST "${RENDER_DEPLOY_HOOK_URL}")
           echo "Render response: $response"
           deploy_id=$(echo "$response" | jq -r '.deploy.id // empty')
           echo "deploy_id=$deploy_id" >> "$GITHUB_OUTPUT"
-          echo "service_url=https://dashboard.render.com/web/${{ secrets.RENDER_SERVICE_ID }}" >> "$GITHUB_OUTPUT"
+          echo "service_url=https://dashboard.render.com/web/${RENDER_SERVICE_ID}" >> "$GITHUB_OUTPUT"
 
       - name: Poll Render deploy status
-        if: ${{ secrets.RENDER_API_KEY != '' && secrets.RENDER_SERVICE_ID != '' }}
+        if: env.RENDER_API_KEY != '' && env.RENDER_SERVICE_ID != ''
         env:
-          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
           DEPLOY_ID: ${{ steps.render-trigger.outputs.deploy_id }}
         run: |
           set -euo pipefail
