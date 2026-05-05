@@ -1500,6 +1500,13 @@ export interface PortalSettings {
   showTodos: boolean;
   showMeetings: boolean;
   customMessage: string;
+  // Phase 29 — per-engagement allowlist of wizard question IDs the
+  // client may answer from the portal. Defaults to []; the consultant
+  // PATCHes the list via the existing /engagements/:id/portal-settings
+  // endpoint (Phase 28's body merge accepts unknown fields so no route
+  // changes needed). Per-engagement (option b from the design spec)
+  // because client-vs-consultant question splits vary per pilot.
+  clientAnsweredQuestionIds: string[];
 }
 
 const DEFAULT_PORTAL_SETTINGS: PortalSettings = {
@@ -1514,6 +1521,7 @@ const DEFAULT_PORTAL_SETTINGS: PortalSettings = {
   showTodos: true,
   showMeetings: false,
   customMessage: '',
+  clientAnsweredQuestionIds: [],
 };
 
 // ─── Portal Member Invite Tokens ─────────────────────────────────────────────

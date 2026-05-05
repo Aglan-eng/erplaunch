@@ -373,6 +373,29 @@ export const engagementsApi = {
     api.delete(`/engagements/${id}/data-templates/schemas/${schemaId}`).then((r) => r.data.data),
 };
 
+// ─── Portal API (Phase 29) ──────────────────────────────────────────────────
+//
+// Client-side calls authenticated via the portal_token HttpOnly cookie.
+// Same axios instance — the browser sends the cookie automatically with
+// same-origin fetches; no Authorization header needed.
+
+export const portalApi = {
+  /** Phase 29 — list allowlisted-and-not-yet-answered questions for the
+   *  authenticated client member of this engagement. */
+  listPendingQuestions: (token: string) =>
+    api.get(`/engagements/portal/${token}/questions`).then((r) => r.data.data),
+
+  /** Phase 29 — submit a wizard answer for review. Lands as PENDING in
+   *  PendingSubmission; consultant accepts to merge into BusinessProfile.answers. */
+  submitWizardAnswer: (questionId: string, answer: unknown) =>
+    api
+      .post('/portal/submissions', {
+        targetType: 'WIZARD_ANSWER',
+        payload: { questionId, answer },
+      })
+      .then((r) => r.data.data),
+};
+
 // ─── Adaptors (platform SPI, Phase 1B) ──────────────────────────────────────
 
 export interface AdaptorListing {

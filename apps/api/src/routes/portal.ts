@@ -3,6 +3,8 @@ import { authenticate } from '../middleware/auth.js';
 import { authenticatePortalSession } from '../middleware/portalAuth.js';
 import * as db from '../db/index.js';
 import { sendPortalInvite, APP_URL } from '../services/email.js';
+import { allQuestions, type Question } from '@ofoq/shared';
+import { findPendingSubmissionsByEngagement } from '../db/pendingSubmission.js';
 
 export async function portalRoutes(fastify: FastifyInstance) {
 
@@ -316,6 +318,80 @@ export async function portalRoutes(fastify: FastifyInstance) {
       });
       if (!todo) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
       return reply.send({ data: todo });
+    },
+  );
+
+  // Phase 29 — GET /engagements/portal/:token/questions
+  //
+  // Returns the wizard questions the client may answer from the portal:
+  //   - allowlisted by the consultant via portalSettings.clientAnsweredQuestionIds
+  //   - NOT already answered (i.e. not yet present as a key in
+  //     BusinessProfile.answers — anything in answers is already source of truth)
+  //   - NOT in flight as a PENDING WIZARD_ANSWER submission for this
+  //     engagement (so the client doesn't re-submit while their previous
+  //     submission awaits review)
+  //
+  // The server is the source of truth on what's answerable; the client just
+  // renders. Questions whose IDs are allowlisted but no longer exist in the
+  // bundled question banks (stale config after a question rename / removal)
+  // are dropped silently — surfacing them would just confuse the client.
+  fastify.get(
+    '/engagements/portal/:token/questions',
+    { preHandler: authenticatePortalSession },
+    async (request, reply) => {
+      const { token } = request.params as { token: string };
+
+      const engagement = await db.findEngagementByPortalToken(token);
+      if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+      const engagementId = (engagement as { id: string }).id;
+
+      if (request.portalMember.engagementId !== engagementId) {
+        return reply.code(403).send({
+          error: { code: 'FORBIDDEN', message: 'Session does not belong to this engagement' },
+        });
+      }
+
+      const settings = await db.getPortalSettings(engagementId);
+      const allowlist = new Set(settings.clientAnsweredQuestionIds ?? []);
+      if (allowlist.size === 0) {
+        return reply.send({ data: [] });
+      }
+
+      const profile = await db.getProfile(engagementId);
+      const answeredIds = new Set(
+        Object.keys((profile?.answers as Record<string, unknown> | undefined) ?? {}),
+      );
+
+      const pending = await findPendingSubmissionsByEngagement(engagementId, { status: 'PENDING' });
+      const inFlightQuestionIds = new Set(
+        pending
+          .filter((s) => s.targetType === 'WIZARD_ANSWER')
+          .map((s) => (s.payload as { questionId?: string }).questionId)
+          .filter((id): id is string => typeof id === 'string'),
+      );
+
+      // Hydrate from the bundled question bank. Defensive Map by id —
+      // duplicates within allQuestions would otherwise break the lookup.
+      const byId = new Map<string, Question>();
+      for (const q of allQuestions as Question[]) byId.set(q.id, q);
+
+      const visible: Question[] = [];
+      for (const id of allowlist) {
+        if (answeredIds.has(id)) continue;
+        if (inFlightQuestionIds.has(id)) continue;
+        const q = byId.get(id);
+        if (!q) continue; // stale allowlist entry — skip silently
+        visible.push(q);
+      }
+
+      // Stable order: by flow → section → order, mirroring the wizard.
+      visible.sort((a, b) => {
+        if (a.flow !== b.flow) return a.flow.localeCompare(b.flow);
+        if (a.section !== b.section) return a.section.localeCompare(b.section);
+        return a.order - b.order;
+      });
+
+      return reply.send({ data: visible });
     },
   );
 

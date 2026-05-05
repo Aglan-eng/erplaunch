@@ -1,43 +1,126 @@
 import React from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Inbox, Clock } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Inbox, Clock, CircleAlert } from 'lucide-react';
 import { engagementsApi } from '@/lib/api';
+import {
+  getCardRenderer,
+  type PendingSubmissionRow,
+} from '../pending-review/cardRenderers';
+// Side-effect import — registers the WIZARD_ANSWER card renderer at module
+// load. Phase 30+ will add their own imports the same way.
+import '../pending-review/WizardAnswerCard';
 
 /**
- * Pending Review (Phase 28).
+ * Pending Review (Phase 28 foundation, Phase 29 first interactive cards).
  *
- * §5.1 foundation surface. Phase 28 ships the empty-state placeholder ONLY
- * (per Option A trim approved with the design): no per-row card UI, no
- * accept / reject buttons. Phases 29-32 each add their target-type's
- * interactive review alongside the corresponding client-side capture
- * flow:
+ * §5.1 surface. Phase 28 shipped the empty state + count banner. Phase 29
+ * extends with:
+ *   - Accept/reject mutations wired to the consultant endpoints
+ *   - Per-targetType card renderer dispatch (WIZARD_ANSWER ships now;
+ *     Phase 30-32 register their own).
+ *   - Optimistic invalidation: a successful accept/reject removes the
+ *     row from the pending list immediately; refetch confirms.
  *
- *   Phase 29 — WIZARD_ANSWER     (client answers wizard from portal)
- *   Phase 30 — DATA_FILE         (client uploads files from portal)
- *   Phase 31 — QA_MESSAGE        (threaded Q&A messaging)
- *   Phase 32 — DECISION_SIGNOFF  (client signs off on decisions)
- *
- * Why ship the round-trip + count display now:
- *   - Verifies the consultant API endpoint is wired correctly end-to-end.
- *   - If a TEST submission exists in dev (the Phase 28 unit-test acceptor
- *     leaves no rows behind, but a manual API call could create one), the
- *     consultant sees the count rather than a stale empty state.
- *   - Phase 29 inherits the data-fetch hook + sidebar surface unchanged.
+ * Empty-state contract from Phase 28 preserved (still renders cleanly
+ * when no rows; the "Coming next" footnote rotates through phases as
+ * each ships).
  */
 
 interface PendingReviewStepProps {
   engagementId: string;
 }
 
+function GenericFallbackCard({
+  submission,
+  onAccept,
+  onReject,
+  isReviewing,
+}: {
+  submission: PendingSubmissionRow;
+  onAccept: (comment: string) => void;
+  onReject: (comment: string) => void;
+  isReviewing: boolean;
+}) {
+  const [comment, setComment] = React.useState('');
+  return (
+    <div
+      className="rounded-2xl border border-amber-200 bg-amber-50/30 p-5 shadow-sm"
+      data-testid={`generic-card-${submission.id}`}
+    >
+      <div className="flex items-center gap-2 mb-3">
+        <CircleAlert className="h-4 w-4 text-amber-600" />
+        <p className="text-sm font-bold text-amber-900">
+          Unknown targetType: {submission.targetType}
+        </p>
+      </div>
+      <p className="text-xs text-amber-700 mb-3">
+        No card renderer registered for this submission type. Showing raw payload — the
+        corresponding phase has not landed yet.
+      </p>
+      <pre className="text-xs font-mono bg-white border border-amber-200 rounded-lg p-2.5 overflow-x-auto mb-3">
+        {JSON.stringify(submission.payload, null, 2)}
+      </pre>
+      <textarea
+        value={comment}
+        onChange={(e) => setComment(e.target.value)}
+        placeholder="Comment (optional)"
+        rows={2}
+        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/50 mb-3"
+      />
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          disabled={isReviewing}
+          onClick={() => onAccept(comment)}
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+        >
+          Accept
+        </button>
+        <button
+          type="button"
+          disabled={isReviewing}
+          onClick={() => onReject(comment)}
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:text-rose-600 hover:border-rose-200 disabled:opacity-50"
+        >
+          Reject
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function PendingReviewStep({ engagementId }: PendingReviewStepProps) {
+  const qc = useQueryClient();
   const { data: submissions, isLoading } = useQuery({
     queryKey: ['pending-submissions', engagementId],
-    queryFn: () => engagementsApi.listPendingSubmissions(engagementId),
+    queryFn: () =>
+      engagementsApi.listPendingSubmissions(engagementId) as Promise<PendingSubmissionRow[]>,
     enabled: !!engagementId,
     staleTime: 30_000,
   });
 
-  const pendingCount = Array.isArray(submissions) ? submissions.length : 0;
+  const acceptMut = useMutation({
+    mutationFn: ({ id, comment }: { id: string; comment: string }) =>
+      engagementsApi.acceptPendingSubmission(engagementId, id, comment.trim() || undefined),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pending-submissions', engagementId] });
+      // Phase 29 — accepting a WIZARD_ANSWER mutates BusinessProfile,
+      // so refresh the wizard's profile/conflicts query too.
+      qc.invalidateQueries({ queryKey: ['profile', engagementId] });
+      qc.invalidateQueries({ queryKey: ['conflicts', engagementId] });
+    },
+  });
+
+  const rejectMut = useMutation({
+    mutationFn: ({ id, comment }: { id: string; comment: string }) =>
+      engagementsApi.rejectPendingSubmission(engagementId, id, comment.trim() || undefined),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pending-submissions', engagementId] });
+    },
+  });
+
+  const isReviewing = acceptMut.isPending || rejectMut.isPending;
+  const list: PendingSubmissionRow[] = Array.isArray(submissions) ? submissions : [];
 
   return (
     <div className="max-w-3xl mx-auto">
@@ -45,6 +128,11 @@ export function PendingReviewStep({ engagementId }: PendingReviewStepProps) {
         <h1 className="text-2xl font-bold text-slate-900 mb-2 flex items-center gap-2">
           <Inbox className="h-6 w-6 text-brand-600" />
           Pending Review
+          {list.length > 0 && (
+            <span className="ml-2 text-xs font-bold px-2 py-0.5 rounded-full bg-brand-100 text-brand-700 tabular-nums">
+              {list.length}
+            </span>
+          )}
         </h1>
         <p className="text-sm text-slate-500">
           Items submitted by clients via the portal land here for your review. Per §5.1 of the
@@ -53,15 +141,12 @@ export function PendingReviewStep({ engagementId }: PendingReviewStepProps) {
         </p>
       </div>
 
-      {/* Phase 28 ships only the empty state. Phases 29-32 add the
-          interactive accept/reject UI alongside the corresponding client
-          capture flow. */}
       {isLoading ? (
         <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center">
           <div className="animate-spin h-8 w-8 border-2 border-brand-600 border-t-transparent rounded-full mx-auto" />
           <p className="mt-3 text-sm text-slate-500">Loading review queue&hellip;</p>
         </div>
-      ) : pendingCount === 0 ? (
+      ) : list.length === 0 ? (
         <div
           className="rounded-2xl border border-dashed border-slate-200 bg-white p-12 text-center"
           data-testid="pending-review-empty-state"
@@ -69,33 +154,31 @@ export function PendingReviewStep({ engagementId }: PendingReviewStepProps) {
           <div className="mx-auto w-14 h-14 rounded-full bg-slate-50 flex items-center justify-center mb-4">
             <Inbox className="h-7 w-7 text-slate-400" />
           </div>
-          <p className="text-base font-semibold text-slate-700 mb-2">No pending submissions yet</p>
+          <p className="text-base font-semibold text-slate-700 mb-2">No pending submissions</p>
           <p className="text-sm text-slate-500 max-w-md mx-auto leading-relaxed">
-            Clients can submit items via the portal once additional phases land. Phase 28 shipped
-            the infrastructure; Phases 29&ndash;32 will wire up wizard answers, data-file uploads,
-            Q&amp;A threads, and decision sign-offs.
+            Clients can submit wizard answers from the portal once the consultant allowlists
+            questions in portal settings. Phase 30 will add data-file uploads.
           </p>
           <div className="mt-6 inline-flex items-center gap-2 text-[11px] text-slate-400">
             <Clock className="h-3.5 w-3.5" />
-            Coming next: Phase 29 &mdash; client wizard answering
+            Coming next: Phase 30 &mdash; client data-collection upload
           </div>
         </div>
       ) : (
-        <div
-          className="rounded-2xl border border-amber-200 bg-amber-50/40 p-8 text-center"
-          data-testid="pending-review-count-state"
-        >
-          <p className="text-base font-semibold text-amber-900 mb-1">
-            {pendingCount} submission{pendingCount === 1 ? '' : 's'} awaiting review
-          </p>
-          <p className="text-sm text-amber-700">
-            The interactive accept/reject UI lands in Phase 29. For now, use the API directly to
-            review (
-            <code className="text-[11px] bg-amber-100 px-1 py-0.5 rounded">
-              POST /api/v1/engagements/{engagementId}/pending-submissions/:id/accept
-            </code>
-            ).
-          </p>
+        <div className="space-y-4">
+          {list.map((sub) => {
+            const Card = getCardRenderer(sub.targetType);
+            const RenderComp = Card ?? GenericFallbackCard;
+            return (
+              <RenderComp
+                key={sub.id}
+                submission={sub}
+                isReviewing={isReviewing}
+                onAccept={(comment) => acceptMut.mutate({ id: sub.id, comment })}
+                onReject={(comment) => rejectMut.mutate({ id: sub.id, comment })}
+              />
+            );
+          })}
         </div>
       )}
     </div>

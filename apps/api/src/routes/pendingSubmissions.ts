@@ -41,6 +41,7 @@ import {
   type PendingSubmissionStatus,
   type PendingSubmissionTargetType,
 } from '../db/pendingSubmission.js';
+import { withTransaction } from '../db/transaction.js';
 import {
   getAcceptor,
 } from '../services/pendingSubmissionAcceptors.js';
@@ -257,11 +258,23 @@ export async function pendingSubmissionsRoutes(fastify: FastifyInstance) {
           },
         });
       }
+      // Phase 29 — sprint rule §5: acceptor side-effect + status flip MUST
+      // run in the same DB transaction. ActivityLog stays OUTSIDE so a
+      // log-write hiccup never undoes a successful accept. The transaction
+      // wrapper rolls back on throw, leaving status PENDING for retry.
+      let updated;
       try {
-        await acceptor.accept(submission, {
-          engagementId: id,
-          reviewerId: request.jwtUser.userId,
-          firmId: request.jwtUser.firmId,
+        updated = await withTransaction(async () => {
+          await acceptor.accept(submission, {
+            engagementId: id,
+            reviewerId: request.jwtUser.userId,
+            firmId: request.jwtUser.firmId,
+          });
+          return await acceptPendingSubmission(
+            submissionId,
+            request.jwtUser.userId,
+            body.comment ?? null,
+          );
         });
       } catch (err) {
         request.log.error({ err, submissionId }, 'pending-submission acceptor threw');
@@ -272,14 +285,11 @@ export async function pendingSubmissionsRoutes(fastify: FastifyInstance) {
           },
         });
       }
-
-      // Guarded status flip. If another reviewer beat us to it, return 409.
-      const updated = await acceptPendingSubmission(
-        submissionId,
-        request.jwtUser.userId,
-        body.comment ?? null,
-      );
       if (!updated) {
+        // Race: another reviewer beat us to it inside the transaction.
+        // The flip already returned null; nothing to roll back since the
+        // transaction succeeded and the caller-side effect (acceptor) was
+        // re-running idempotently anyway. Surface 409.
         return reply.code(409).send({
           error: { code: 'ALREADY_REVIEWED', message: 'Submission was already reviewed' },
         });

@@ -24,6 +24,10 @@ import { activityRoutes } from './routes/activity.js';
 import { portalRoutes } from './routes/portal.js';
 import { portalAuthRoutes } from './routes/portalAuth.js';
 import { pendingSubmissionsRoutes } from './routes/pendingSubmissions.js';
+// Phase 29 — WIZARD_ANSWER acceptor + payload schema. Side-effect import
+// registers the acceptor with the registry at module-load time. Phases
+// 30-32 import their own acceptor modules the same way.
+import './services/wizardAnswerAcceptor.js';
 import { firmBrandingRoutes } from './routes/firmBranding.js';
 import { adaptorRoutes } from './routes/adaptors.js';
 import { customAdaptorRoutes } from './routes/customAdaptors.js';

@@ -15,6 +15,7 @@ import {
   type FirmBranding,
 } from '@/components/portal/PortalBrandedHeader';
 import { PortalSupportFooter } from '@/components/portal/PortalSupportFooter';
+import { PortalClientQuestions } from '@/components/portal/PortalClientQuestions';
 
 // Phase 27 — fallback when the API somehow doesn't return a branding block.
 // The DB layer always populates one (DEFAULT_BRANDING in firmBranding.ts),
@@ -529,6 +530,14 @@ export function ClientPortalPage() {
               )}
             </div>
           </Section>
+        )}
+
+        {/* Phase 29 — Questions for you (client wizard answering).
+            PortalClientQuestions returns null when no questions to show
+            so this slot collapses cleanly. The Section wrapper inside
+            PortalClientQuestions provides the visual frame. */}
+        {!!authenticatedMember && (
+          <PortalClientQuestions token={token!} authenticated={!!authenticatedMember} />
         )}
 
         {/* Data Collection */}
