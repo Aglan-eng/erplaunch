@@ -7,7 +7,10 @@ interface User {
   name: string;
   role: string;
   firmId: string;
-  firm: { id: string; name: string; slug: string; plan: string };
+  // Phase 39.1 — `displayName` is the brand-name field added in Phase 6.8
+  // white-label. Surfaced here so the dashboard can render it via
+  // firmDisplayName() with a fallback to `name` for legacy firms.
+  firm: { id: string; name: string; slug: string; plan: string; displayName?: string | null };
   /** Phase 19: when the user clicked the email verification link, or null
    *  if still pending. SPA surfaces a "verify your email" banner when null. */
   emailVerifiedAt?: string | null;

@@ -12,6 +12,7 @@ import { EngagementCard } from '@/components/dashboard/EngagementCard';
 import { NewEngagementModal } from '@/components/dashboard/NewEngagementModal';
 import { Button } from '@/components/ui/Button';
 import { ErplaunchLogo } from '@/components/ui/ErplaunchLogo';
+import { firmDisplayName } from '@/lib/firmDisplayName';
 import { PipelinePage } from './PipelinePage';
 import { cn } from '@/lib/utils';
 
@@ -304,12 +305,20 @@ export function DashboardPage() {
           {/* Phase 38.5 — proper ERPLaunch lockup + firm name inline. */}
           <div className="flex items-center gap-3">
             <ErplaunchLogo size="md" />
-            {user?.firm?.name && (
-              <>
-                <span className="text-gray-300 text-base leading-none" aria-hidden>·</span>
-                <span className="text-sm font-semibold text-gray-700">{user.firm.name}</span>
-              </>
-            )}
+            {(() => {
+              // Phase 39.1 — prefer the white-label displayName ("Xelerate")
+              // over the registration `name` slug ("xelerate-llc"). Helper
+              // falls back to `name` for firms that haven't set a brand
+              // name in Settings yet.
+              const display = firmDisplayName(user?.firm ?? null);
+              if (!display) return null;
+              return (
+                <>
+                  <span className="text-gray-300 text-base leading-none" aria-hidden>·</span>
+                  <span className="text-sm font-semibold text-gray-700">{display}</span>
+                </>
+              );
+            })()}
           </div>
 
           <div className="flex items-center gap-2.5">
