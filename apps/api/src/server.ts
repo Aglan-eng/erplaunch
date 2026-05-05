@@ -23,6 +23,7 @@ import { migrationRoutes } from './routes/migration.js';
 import { activityRoutes } from './routes/activity.js';
 import { portalRoutes } from './routes/portal.js';
 import { portalAuthRoutes } from './routes/portalAuth.js';
+import { pendingSubmissionsRoutes } from './routes/pendingSubmissions.js';
 import { firmBrandingRoutes } from './routes/firmBranding.js';
 import { adaptorRoutes } from './routes/adaptors.js';
 import { customAdaptorRoutes } from './routes/customAdaptors.js';
@@ -142,6 +143,12 @@ export async function buildServer() {
   await fastify.register(activityRoutes, { prefix: '/api/v1' });
   await fastify.register(portalAuthRoutes, { prefix: '/api/v1' });
   await fastify.register(portalRoutes, { prefix: '/api/v1' });
+  // Phase 28 — pending-submission infrastructure (§5.1 foundation). Hosts
+  // both the client portal-side POST /portal/submissions and the consultant-
+  // side review CRUD; routes share the same prefix because they intermix
+  // portal and consultant auth at the route level rather than the plugin
+  // level (same pattern as portal.ts).
+  await fastify.register(pendingSubmissionsRoutes, { prefix: '/api/v1' });
   await fastify.register(firmBrandingRoutes, { prefix: '/api/v1' });
   await fastify.register(adaptorRoutes, { prefix: '/api/v1' });
   await fastify.register(customAdaptorRoutes, { prefix: '/api/v1' });

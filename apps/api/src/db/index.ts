@@ -581,6 +581,42 @@ async function createTables(db: Client) {
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_email_verify_expires ON EmailVerificationToken(expiresAt)`);
   // Additive column on User for existing pilot rows. Null = not yet verified.
   try { await db.execute(`ALTER TABLE User ADD COLUMN emailVerifiedAt TEXT`); } catch {}
+
+  // ─── Phase 28 — PendingSubmission (§5 client-portal continuation foundation) ─
+  //
+  // Polymorphic single table for client-submitted artifacts that require
+  // consultant accept/reject before they become source of truth. Supports
+  // four target types: WIZARD_ANSWER (Phase 29), DATA_FILE (Phase 30),
+  // QA_MESSAGE (Phase 31), DECISION_SIGNOFF (Phase 32). Plus 'TEST' used
+  // exclusively by Phase 28 unit tests for the no-op acceptor coverage.
+  //
+  // payload is JSON TEXT — schema is per-targetType, validated at the API
+  // layer via the Zod registry in services/pendingSubmissionPayloadSchemas.ts.
+  // Phases 29-32 each register their schema + acceptor at module load.
+  //
+  // The ENGAGEMENT FK is ON DELETE CASCADE so portal cleanup removes
+  // submissions automatically. The MEMBER FK is RESTRICT (default) so a
+  // member with audit-historical submissions can't be deleted silently —
+  // the route layer surfaces this if it ever happens.
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS PendingSubmission (
+      id             TEXT PRIMARY KEY,
+      engagementId   TEXT NOT NULL REFERENCES Engagement(id) ON DELETE CASCADE,
+      memberId       TEXT NOT NULL REFERENCES ProjectMember(id),
+      targetType     TEXT NOT NULL,
+      targetId       TEXT,
+      payload        TEXT NOT NULL,
+      status         TEXT NOT NULL DEFAULT 'PENDING',
+      reviewerId     TEXT,
+      reviewedAt     TEXT,
+      reviewComment  TEXT,
+      createdAt      TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  await db.execute(`
+    CREATE INDEX IF NOT EXISTS idx_pendingsubmission_engagement_status
+      ON PendingSubmission(engagementId, status, createdAt)
+  `);
 }
 
 // ─── Helper types ─────────────────────────────────────────────────────────────

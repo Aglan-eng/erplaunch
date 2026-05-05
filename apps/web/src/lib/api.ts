@@ -260,6 +260,25 @@ export const engagementsApi = {
   listActivity: (id: string) =>
     api.get(`/engagements/${id}/activity`).then((r) => r.data.data),
 
+  // Phase 28 — Pending Submissions (consultant side). The client-side
+  // POST /portal/submissions hangs off the portal session, not this API
+  // surface, and is added in Phase 29 when the first interactive client
+  // capture flow ships.
+  listPendingSubmissions: (id: string, status?: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'ALL') => {
+    const qs = status ? `?status=${status}` : '';
+    return api.get(`/engagements/${id}/pending-submissions${qs}`).then((r) => r.data.data);
+  },
+
+  acceptPendingSubmission: (id: string, submissionId: string, comment?: string) =>
+    api
+      .post(`/engagements/${id}/pending-submissions/${submissionId}/accept`, { comment })
+      .then((r) => r.data.data),
+
+  rejectPendingSubmission: (id: string, submissionId: string, comment?: string) =>
+    api
+      .post(`/engagements/${id}/pending-submissions/${submissionId}/reject`, { comment })
+      .then((r) => r.data.data),
+
   // Answer templates (copy from another engagement)
   copyAnswers: (id: string, sourceEngagementId: string) =>
     api.post(`/engagements/${id}/copy-answers`, { sourceEngagementId }).then((r) => r.data.data),

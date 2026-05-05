@@ -4,7 +4,7 @@ import {
   CircleCheck, Circle, ChevronRight, ChevronDown,
   FolderKanban, TriangleAlert, CircleAlert, BookOpen,
   CalendarClock, Truck, Activity, Settings2, Database,
-  Zap, Sparkles, ShieldCheck, FileText,
+  Zap, Sparkles, ShieldCheck, FileText, Inbox,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useWizardStore } from '@/stores/wizardStore';
@@ -32,6 +32,11 @@ interface FlowGroup {
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
 const MGMT_ITEMS: SidebarItem[] = [
+  // Phase 28 — Pending Review sits at the top of Project Mgmt because
+  // submissions are time-sensitive (consultant must review before client
+  // data becomes source of truth per §5.1). Phase 28 ships the
+  // empty-state UI; Phases 29-32 add per-targetType interactive review.
+  { key: 'pending-review', label: 'Pending Review',    progress: 0, icon: Inbox         },
   { key: 'risks',           label: 'Risk Register',     progress: 0, icon: TriangleAlert },
   { key: 'issues',          label: 'Issue Tracker',     progress: 0, icon: CircleAlert   },
   { key: 'decisions',       label: 'Decision Log',      progress: 0, icon: BookOpen      },
