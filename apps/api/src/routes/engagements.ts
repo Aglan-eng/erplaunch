@@ -696,6 +696,69 @@ export async function engagementRoutes(fastify: FastifyInstance) {
     return reply.send({ data: comment });
   });
 
+  // Phase 38.2 — POST /engagements/:id/comments
+  // Multi-comment-per-section (thread) creator. The legacy PUT path stays
+  // for the wizard's auto-saved single-note-per-section UI.
+  fastify.post('/engagements/:id/comments', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const check = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
+    if (!check) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+    const body = (request.body ?? {}) as { sectionKey?: unknown; body?: unknown; mentionMemberIds?: unknown };
+    if (typeof body.sectionKey !== 'string' || !body.sectionKey.trim()) {
+      return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'sectionKey is required' } });
+    }
+    if (typeof body.body !== 'string' || !body.body.trim()) {
+      return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'body is required' } });
+    }
+    const mentions = Array.isArray(body.mentionMemberIds)
+      ? body.mentionMemberIds.filter((m): m is string => typeof m === 'string')
+      : undefined;
+    const comment = await db.createSectionComment({
+      engagementId: id,
+      sectionKey: body.sectionKey,
+      body: body.body,
+      authorUserId: request.jwtUser.userId,
+      mentionMemberIds: mentions,
+    });
+    await db.logActivity(
+      id,
+      request.jwtUser.firmId,
+      'SECTION_COMMENTED',
+      `Commented on ${body.sectionKey}: ${body.body.length > 80 ? `${body.body.slice(0, 80)}…` : body.body}`,
+    );
+    return reply.code(201).send({ data: comment });
+  });
+
+  // Phase 38.2 — PATCH /engagements/:id/comments/:commentId
+  fastify.patch('/engagements/:id/comments/:commentId', async (request, reply) => {
+    const { id, commentId } = request.params as { id: string; commentId: string };
+    const check = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
+    if (!check) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+    const existing = await db.findSectionCommentById(commentId);
+    if (!existing || (existing as Record<string, unknown>).engagementId !== id) {
+      return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+    }
+    const body = (request.body ?? {}) as { body?: unknown };
+    if (typeof body.body !== 'string' || !body.body.trim()) {
+      return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'body is required' } });
+    }
+    const updated = await db.updateSectionCommentBody(commentId, body.body);
+    return reply.send({ data: updated });
+  });
+
+  // Phase 38.2 — DELETE /engagements/:id/comments/:commentId
+  fastify.delete('/engagements/:id/comments/:commentId', async (request, reply) => {
+    const { id, commentId } = request.params as { id: string; commentId: string };
+    const check = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
+    if (!check) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+    const existing = await db.findSectionCommentById(commentId);
+    if (!existing || (existing as Record<string, unknown>).engagementId !== id) {
+      return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+    }
+    await db.deleteSectionCommentById(commentId);
+    return reply.code(204).send();
+  });
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Section Images
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -710,10 +773,16 @@ export async function engagementRoutes(fastify: FastifyInstance) {
   });
 
   // POST /engagements/:id/images (multipart file upload)
+  // Phase 38.2 — MIME re-validation, 10MB explicit cap, SECTION_IMAGE_ADDED
+  // activity hook. Server-level multipart cap is 11MB (one over the route
+  // cap) so this route's check returns 413 cleanly instead of letting the
+  // multipart layer throw mid-stream.
   fastify.post('/engagements/:id/images', async (request, reply) => {
     const { id } = request.params as { id: string };
     const check = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!check) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+
+    const SECTION_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 
     const data = await request.file();
     if (!data) {
@@ -726,20 +795,38 @@ export async function engagementRoutes(fastify: FastifyInstance) {
       return reply.code(400).send({ error: { code: 'INVALID_TYPE', message: 'Only PNG, JPG, WEBP, GIF allowed' } });
     }
 
+    // Stream-buffer with byte counting so a 12MB upload is rejected with a
+    // clean 413 instead of a generic multipart throw.
+    const chunks: Buffer[] = [];
+    let totalBytes = 0;
+    for await (const chunk of data.file) {
+      totalBytes += chunk.length;
+      if (totalBytes > SECTION_IMAGE_MAX_BYTES) {
+        return reply.code(413).send({
+          error: {
+            code: 'FILE_TOO_LARGE',
+            message: `Section images must be under ${SECTION_IMAGE_MAX_BYTES / (1024 * 1024)} MB.`,
+          },
+        });
+      }
+      chunks.push(chunk);
+    }
+
     // Save file to disk
     const engDir = path.join(__dirname, '..', 'uploads', id);
     await fs.mkdir(engDir, { recursive: true });
     const ext = path.extname(data.filename) || '.png';
     const storedName = `${createId()}${ext}`;
     const filePath = path.join(engDir, storedName);
-
-    const chunks: Buffer[] = [];
-    for await (const chunk of data.file) {
-      chunks.push(chunk);
-    }
     await fs.writeFile(filePath, Buffer.concat(chunks));
 
     const image = await db.addSectionImage(id, sectionKey, storedName, data.filename, data.mimetype);
+    await db.logActivity(
+      id,
+      request.jwtUser.firmId,
+      'SECTION_IMAGE_ADDED',
+      `Added image to ${sectionKey}: ${data.filename}`,
+    );
     return reply.code(201).send({ data: image });
   });
 

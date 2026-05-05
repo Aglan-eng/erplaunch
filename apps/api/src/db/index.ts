@@ -107,6 +107,7 @@ async function createTables(db: Client) {
   // Nullable / TEXT — engagements that have never been archived have NULL.
   try { await db.execute(`ALTER TABLE Engagement ADD COLUMN previousStatus TEXT`); } catch { /* swallow — idempotent migration / parse fallback */ }
 
+
   await db.execute(`
     CREATE TABLE IF NOT EXISTS ProjectMember (
       id           TEXT PRIMARY KEY,
@@ -310,6 +311,50 @@ async function createTables(db: Client) {
       UNIQUE(engagementId, sectionKey)
     )
   `);
+  // Phase 38.2 — section comments expand from single-per-section legacy notes
+  // to a thread-style log with author + mentions. Idempotent column adds
+  // happen first; then the UNIQUE(engagementId, sectionKey) constraint is
+  // dropped (table-recreate pattern) so multiple comments per section can
+  // coexist. Re-running the migration is a no-op.
+  try { await db.execute(`ALTER TABLE SectionComment ADD COLUMN body TEXT`); } catch { /* swallow — idempotent */ }
+  try { await db.execute(`ALTER TABLE SectionComment ADD COLUMN mentionMemberIds TEXT`); } catch { /* swallow — idempotent */ }
+  try { await db.execute(`ALTER TABLE SectionComment ADD COLUMN authorUserId TEXT`); } catch { /* swallow — idempotent */ }
+  try { await db.execute(`ALTER TABLE SectionComment ADD COLUMN createdAt TEXT`); } catch { /* swallow — idempotent */ }
+  await db.execute(`UPDATE SectionComment SET body = text WHERE body IS NULL AND text IS NOT NULL`);
+  await db.execute(`UPDATE SectionComment SET createdAt = updatedAt WHERE createdAt IS NULL AND updatedAt IS NOT NULL`);
+  const sectionCommentIndexes = await db.execute(`PRAGMA index_list(SectionComment)`);
+  const hasUnique = (sectionCommentIndexes.rows as Array<Record<string, unknown>>).some((row) =>
+    typeof row.name === 'string' && row.name.startsWith('sqlite_autoindex_SectionComment'),
+  );
+  if (hasUnique) {
+    await db.execute('BEGIN');
+    try {
+      await db.execute(`
+        CREATE TABLE SectionComment_new (
+          id                TEXT PRIMARY KEY,
+          engagementId      TEXT NOT NULL REFERENCES Engagement(id),
+          sectionKey        TEXT NOT NULL,
+          text              TEXT NOT NULL DEFAULT '',
+          body              TEXT,
+          mentionMemberIds  TEXT,
+          authorUserId      TEXT,
+          createdAt         TEXT,
+          updatedAt         TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+      `);
+      await db.execute(`
+        INSERT INTO SectionComment_new (id, engagementId, sectionKey, text, body, mentionMemberIds, authorUserId, createdAt, updatedAt)
+        SELECT id, engagementId, sectionKey, text, body, mentionMemberIds, authorUserId, createdAt, updatedAt FROM SectionComment
+      `);
+      await db.execute(`DROP TABLE SectionComment`);
+      await db.execute(`ALTER TABLE SectionComment_new RENAME TO SectionComment`);
+      await db.execute(`CREATE INDEX IF NOT EXISTS idx_section_comment_engagement_section ON SectionComment(engagementId, sectionKey)`);
+      await db.execute('COMMIT');
+    } catch (err) {
+      try { await db.execute('ROLLBACK'); } catch { /* swallow */ }
+      throw err;
+    }
+  }
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS SectionImage (
@@ -1328,8 +1373,79 @@ export async function updateJob(id: string, data: Partial<{ status: string; outp
 
 export async function getSectionComments(engagementId: string) {
   const db = getDb();
-  const r = await db.execute({ sql: `SELECT * FROM SectionComment WHERE engagementId = ? ORDER BY sectionKey`, args: [engagementId] });
-  return (r.rows as Row[]).map((row) => parseRow<Row>(row));
+  // Phase 38.2 — order by createdAt DESC so the most-recent comments per
+  // section appear first. Falls back to updatedAt for legacy rows that
+  // pre-date the createdAt column.
+  const r = await db.execute({
+    sql: `SELECT * FROM SectionComment WHERE engagementId = ? ORDER BY COALESCE(createdAt, updatedAt) DESC`,
+    args: [engagementId],
+  });
+  return (r.rows as Row[]).map((row) => {
+    const parsed = parseRow<Row>(row);
+    if (typeof parsed.mentionMemberIds === 'string' && parsed.mentionMemberIds) {
+      try { parsed.mentionMemberIds = JSON.parse(parsed.mentionMemberIds as string); }
+      catch { /* leave as raw string if parse fails */ }
+    } else if (parsed.mentionMemberIds == null) {
+      parsed.mentionMemberIds = [];
+    }
+    return parsed;
+  });
+}
+
+// Phase 38.2 — multi-comment-per-section creator. Returns the new row with
+// mentionMemberIds parsed back to an array.
+export async function createSectionComment(input: {
+  engagementId: string;
+  sectionKey: string;
+  body: string;
+  authorUserId: string;
+  mentionMemberIds?: string[];
+}) {
+  const db = getDb();
+  const id = createId();
+  const now = new Date().toISOString();
+  const mentions = JSON.stringify(input.mentionMemberIds ?? []);
+  await db.execute({
+    sql: `INSERT INTO SectionComment (id, engagementId, sectionKey, text, body, mentionMemberIds, authorUserId, createdAt, updatedAt)
+          VALUES (?,?,?,?,?,?,?,?,?)`,
+    args: [id, input.engagementId, input.sectionKey, input.body, input.body, mentions, input.authorUserId, now, now],
+  });
+  return findSectionCommentById(id);
+}
+
+export async function findSectionCommentById(id: string) {
+  const db = getDb();
+  const r = await db.execute({ sql: `SELECT * FROM SectionComment WHERE id = ?`, args: [id] });
+  if (!r.rows[0]) return null;
+  const parsed = parseRow<Row>(r.rows[0] as Row);
+  if (typeof parsed.mentionMemberIds === 'string' && parsed.mentionMemberIds) {
+    try { parsed.mentionMemberIds = JSON.parse(parsed.mentionMemberIds as string); }
+    catch { /* leave as raw */ }
+  } else if (parsed.mentionMemberIds == null) {
+    parsed.mentionMemberIds = [];
+  }
+  return parsed;
+}
+
+export async function updateSectionCommentBody(id: string, body: string) {
+  const db = getDb();
+  const now = new Date().toISOString();
+  // Update both body (new) and text (legacy) so the wizard's PUT-driven
+  // single-comment view doesn't go stale when a comment is edited via
+  // the new PATCH endpoint.
+  await db.execute({
+    sql: `UPDATE SectionComment SET body = ?, text = ?, updatedAt = ? WHERE id = ?`,
+    args: [body, body, now, id],
+  });
+  return findSectionCommentById(id);
+}
+
+export async function deleteSectionCommentById(id: string): Promise<boolean> {
+  const db = getDb();
+  const exists = await db.execute({ sql: `SELECT 1 FROM SectionComment WHERE id = ?`, args: [id] });
+  if (!exists.rows[0]) return false;
+  await db.execute({ sql: `DELETE FROM SectionComment WHERE id = ?`, args: [id] });
+  return true;
 }
 
 export async function getSectionComment(engagementId: string, sectionKey: string) {

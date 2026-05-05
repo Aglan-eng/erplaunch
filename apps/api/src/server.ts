@@ -105,7 +105,11 @@ export async function buildServer() {
     cookie: { cookieName: 'portal_token', signed: false },
   });
 
-  await fastify.register(multipart, { limits: { fileSize: 5 * 1024 * 1024 } });
+  // Phase 38.2 — bumped multipart server-level cap from 5MB → 11MB so
+  // section images can carry up to 10MB of content. Per-route caps still
+  // enforce smaller limits where appropriate (custom-adaptor docs are 5MB
+  // soft-checked after read, section images are 10MB soft-checked).
+  await fastify.register(multipart, { limits: { fileSize: 11 * 1024 * 1024 } });
 
   // Request-ID plugin (Phase 20). Registered before routes so every
   // route handler + log line sees the id.
