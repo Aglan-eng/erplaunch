@@ -693,6 +693,21 @@ async function createTables(db: Client) {
     CREATE INDEX IF NOT EXISTS idx_message_thread_created
       ON Message(threadId, createdAt)
   `);
+
+  // ─── Phase 32 — DecisionItem client-signoff columns (additive) ─────────────
+  //
+  // Extends the existing DecisionItem table with the §5 client sign-off
+  // state machine. Default 'NONE' means no client interaction; PENDING
+  // is set when a client submits a DECISION_SIGNOFF; SIGNED/DECLINED/
+  // REJECTED are terminal.
+  // The catch blocks below are intentionally empty — these ALTERs are
+  // idempotent (column may already exist on a re-run); SQLite throws and
+  // we swallow. Same pattern as the other ALTERs in this file.
+  try { await db.execute(`ALTER TABLE DecisionItem ADD COLUMN clientSignoffStatus TEXT DEFAULT 'NONE'`); } catch { /* idempotent */ }
+  try { await db.execute(`ALTER TABLE DecisionItem ADD COLUMN clientSignoffAt TEXT`); } catch { /* idempotent */ }
+  try { await db.execute(`ALTER TABLE DecisionItem ADD COLUMN clientSignoffComment TEXT`); } catch { /* idempotent */ }
+  try { await db.execute(`ALTER TABLE DecisionItem ADD COLUMN clientSignoffMemberId TEXT`); } catch { /* idempotent */ }
+  try { await db.execute(`ALTER TABLE DecisionItem ADD COLUMN clientSignoffSourceSubmissionId TEXT`); } catch { /* idempotent */ }
 }
 
 // ─── Helper types ─────────────────────────────────────────────────────────────
@@ -1413,6 +1428,48 @@ export async function updateDecision(id: string, data: Partial<{ title: string; 
 export async function deleteDecision(id: string) {
   const db = getDb();
   await db.execute({ sql: `DELETE FROM DecisionItem WHERE id = ?`, args: [id] });
+}
+
+// Phase 32 — fetch a single decision (by id) for the sign-off acceptor.
+export async function findDecisionById(id: string) {
+  const db = getDb();
+  const r = await db.execute({ sql: `SELECT * FROM DecisionItem WHERE id = ?`, args: [id] });
+  return r.rows[0] ? parseRow<Row>(r.rows[0] as Row) : null;
+}
+
+// Phase 32 — apply the client sign-off state to an existing DecisionItem.
+// Used by the DECISION_SIGNOFF acceptor on accept (status = SIGNED|DECLINED)
+// and by the reject route handler (status = REJECTED).
+export async function updateDecisionSignoff(
+  id: string,
+  data: {
+    clientSignoffStatus: 'NONE' | 'PENDING' | 'SIGNED' | 'DECLINED' | 'REJECTED';
+    clientSignoffAt?: string | null;
+    clientSignoffComment?: string | null;
+    clientSignoffMemberId?: string | null;
+    clientSignoffSourceSubmissionId?: string | null;
+  },
+) {
+  const db = getDb();
+  await db.execute({
+    sql: `UPDATE DecisionItem SET
+            clientSignoffStatus = ?,
+            clientSignoffAt = ?,
+            clientSignoffComment = ?,
+            clientSignoffMemberId = ?,
+            clientSignoffSourceSubmissionId = ?
+          WHERE id = ?`,
+    args: [
+      data.clientSignoffStatus,
+      data.clientSignoffAt ?? null,
+      data.clientSignoffComment ?? null,
+      data.clientSignoffMemberId ?? null,
+      data.clientSignoffSourceSubmissionId ?? null,
+      id,
+    ],
+  });
+  const r = await db.execute({ sql: `SELECT * FROM DecisionItem WHERE id = ?`, args: [id] });
+  return r.rows[0] ? parseRow<Row>(r.rows[0] as Row) : null;
 }
 
 // ─── Meeting Notes ────────────────────────────────────────────────────────────

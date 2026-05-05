@@ -17,6 +17,7 @@ import {
 import { PortalSupportFooter } from '@/components/portal/PortalSupportFooter';
 import { PortalClientQuestions } from '@/components/portal/PortalClientQuestions';
 import { PortalMessaging } from '@/components/portal/PortalMessaging';
+import { PortalDecisionSignoffs } from '@/components/portal/PortalDecisionSignoffs';
 
 // Phase 27 — fallback when the API somehow doesn't return a branding block.
 // The DB layer always populates one (DEFAULT_BRANDING in firmBranding.ts),
@@ -558,6 +559,13 @@ export function ClientPortalPage() {
             otherwise. */}
         {!!authenticatedMember && (
           <PortalMessaging token={token!} authenticated={!!authenticatedMember} />
+        )}
+
+        {/* Phase 32 — Decisions for sign-off. Renders only when there's
+            at least one decision in non-terminal sign-off state for this
+            engagement. Returns null otherwise (no empty section frame). */}
+        {!!authenticatedMember && (
+          <PortalDecisionSignoffs token={token!} authenticated={!!authenticatedMember} />
         )}
 
         {/* Data Collection */}

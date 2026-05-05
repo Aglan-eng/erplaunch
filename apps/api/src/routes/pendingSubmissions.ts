@@ -300,11 +300,23 @@ export async function pendingSubmissionsRoutes(fastify: FastifyInstance) {
       // on the rare write-failure case. Documented tradeoff in design §3.
       const memberName = (await lookupMemberName(submission.memberId)) ?? 'Client';
       const commentSuffix = body.comment ? `: ${body.comment}` : '';
+
+      // Phase 32 — DECISION_SIGNOFF gets dedicated audit actions per spec.
+      // signed=true → DECISION_SIGNED_OFF; signed=false → DECISION_DECLINED.
+      // All other targetTypes use the generic SUBMISSION_ACCEPTED action.
+      let action = 'SUBMISSION_ACCEPTED';
+      let detailPrefix = `Accepted ${submission.targetType}`;
+      if (submission.targetType === 'DECISION_SIGNOFF') {
+        const signed = (submission.payload as { signed?: unknown }).signed === true;
+        action = signed ? 'DECISION_SIGNED_OFF' : 'DECISION_DECLINED';
+        detailPrefix = signed ? 'Client signed off on decision' : 'Client declined to sign decision';
+      }
+
       await db.logActivity(
         id,
         request.jwtUser.firmId,
-        'SUBMISSION_ACCEPTED',
-        `Accepted ${submission.targetType} from ${memberName}${commentSuffix}`,
+        action,
+        `${detailPrefix} from ${memberName}${commentSuffix}`,
       );
 
       return reply.send({ data: updated });
@@ -373,13 +385,46 @@ export async function pendingSubmissionsRoutes(fastify: FastifyInstance) {
         }
       }
 
+      // Phase 32 — DECISION_SIGNOFF reject: flip the decision's
+      // clientSignoffStatus to REJECTED so the client doesn't see it
+      // as perpetually PENDING. Failure here is logged + tolerated; the
+      // submission itself is already in REJECTED terminal state via
+      // db.rejectPendingSubmission above.
+      if (submission.targetType === 'DECISION_SIGNOFF') {
+        const decisionItemId = (submission.payload as { decisionItemId?: unknown }).decisionItemId;
+        if (typeof decisionItemId === 'string' && decisionItemId.length > 0) {
+          try {
+            await db.updateDecisionSignoff(decisionItemId, {
+              clientSignoffStatus: 'REJECTED',
+              clientSignoffAt: new Date().toISOString(),
+              clientSignoffComment: body.comment ?? null,
+              clientSignoffMemberId: submission.memberId,
+              clientSignoffSourceSubmissionId: submission.id,
+            });
+          } catch (err) {
+            request.log.warn(
+              { err, submissionId, decisionItemId },
+              'failed to update DecisionItem.clientSignoffStatus on reject',
+            );
+          }
+        }
+      }
+
       const memberName = (await lookupMemberName(submission.memberId)) ?? 'Client';
       const commentSuffix = body.comment ? `: ${body.comment}` : '';
+
+      // Phase 32 — DECISION_SIGNOFF gets a dedicated audit action.
+      const rejectAction =
+        submission.targetType === 'DECISION_SIGNOFF' ? 'DECISION_REJECTED' : 'SUBMISSION_REJECTED';
+      const rejectDetailPrefix =
+        submission.targetType === 'DECISION_SIGNOFF'
+          ? 'Rejected client decision signoff'
+          : `Rejected ${submission.targetType}`;
       await db.logActivity(
         id,
         request.jwtUser.firmId,
-        'SUBMISSION_REJECTED',
-        `Rejected ${submission.targetType} from ${memberName}${commentSuffix}`,
+        rejectAction,
+        `${rejectDetailPrefix} from ${memberName}${commentSuffix}`,
       );
 
       return reply.send({ data: updated });

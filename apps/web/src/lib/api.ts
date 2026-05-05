@@ -455,6 +455,19 @@ export const portalApi = {
         payload: input,
       })
       .then((r) => r.data.data),
+
+  /** Phase 32 — list decisions awaiting client sign-off (NONE | PENDING). */
+  listDecisions: (token: string) =>
+    api.get(`/engagements/portal/${token}/decisions`).then((r) => r.data.data),
+
+  /** Phase 32 — submit a sign-off (signed=true) or decline (signed=false). */
+  submitDecisionSignoff: (input: { decisionItemId: string; signed: boolean; comment: string }) =>
+    api
+      .post('/portal/submissions', {
+        targetType: 'DECISION_SIGNOFF',
+        payload: input,
+      })
+      .then((r) => r.data.data),
 };
 
 // ─── Adaptors (platform SPI, Phase 1B) ──────────────────────────────────────

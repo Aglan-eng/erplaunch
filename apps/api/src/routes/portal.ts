@@ -515,6 +515,51 @@ export async function portalRoutes(fastify: FastifyInstance) {
     },
   );
 
+  // ─── Phase 32 — Client-side decision sign-off list ─────────────────────────
+  //
+  // Returns DecisionItems the client should consider signing off on.
+  // Filters to non-terminal sign-off states (NONE | PENDING) so once a
+  // decision is signed/declined/rejected the client doesn't see it as
+  // actionable again. Also enriches with the in-flight pending
+  // submission ID for THIS member so the UI can show "submitted —
+  // awaiting consultant" for the client's own outstanding submission.
+  fastify.get(
+    '/engagements/portal/:token/decisions',
+    { preHandler: authenticatePortalSession },
+    async (request, reply) => {
+      const { token } = request.params as { token: string };
+      const engagement = await db.findEngagementByPortalToken(token);
+      if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+      const engagementId = (engagement as { id: string }).id;
+      if (request.portalMember.engagementId !== engagementId) {
+        return reply.code(403).send({
+          error: { code: 'FORBIDDEN', message: 'Session does not belong to this engagement' },
+        });
+      }
+
+      const decisions = await db.listDecisions(engagementId);
+      const pending = await findPendingSubmissionsByEngagement(engagementId, { status: 'PENDING' });
+      const inFlightByDecisionId = new Map<string, string>(); // decisionItemId → submissionId
+      for (const sub of pending) {
+        if (sub.targetType !== 'DECISION_SIGNOFF') continue;
+        const decisionItemId = (sub.payload as { decisionItemId?: string }).decisionItemId;
+        if (typeof decisionItemId === 'string' && sub.memberId === request.portalMember.memberId) {
+          inFlightByDecisionId.set(decisionItemId, sub.id);
+        }
+      }
+
+      const visible = (decisions as Array<Record<string, unknown>>).filter((d) => {
+        const status = (d.clientSignoffStatus as string | null) ?? 'NONE';
+        return status === 'NONE' || status === 'PENDING';
+      }).map((d) => ({
+        ...d,
+        pendingSubmissionId: inFlightByDecisionId.get(d.id as string) ?? null,
+      }));
+
+      return reply.send({ data: visible });
+    },
+  );
+
   // ─── Phase 31 — Client-side conversation threads (read-only) ───────────────
   //
   // Client list/detail endpoints for messaging. Outbound messages go

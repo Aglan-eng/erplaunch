@@ -11,10 +11,11 @@ import {
 //   Phase 29 — WizardAnswerCard
 //   Phase 30 — DataFileCard
 //   Phase 31 — QaMessageCard
-//   Phase 32 — DecisionSignoffCard (TODO)
+//   Phase 32 — DecisionSignoffCard
 import '../pending-review/WizardAnswerCard';
 import '../pending-review/DataFileCard';
 import '../pending-review/QaMessageCard';
+import '../pending-review/DecisionSignoffCard';
 
 /**
  * Pending Review (Phase 28 foundation, Phase 29 first interactive cards).
@@ -162,12 +163,12 @@ export function PendingReviewStep({ engagementId }: PendingReviewStepProps) {
           </div>
           <p className="text-base font-semibold text-slate-700 mb-2">No pending submissions</p>
           <p className="text-sm text-slate-500 max-w-md mx-auto leading-relaxed">
-            Clients can submit wizard answers, upload data files, and send Q&amp;A messages from
-            the portal. Phase 32 will add decision sign-off.
+            Clients can submit wizard answers, upload data files, send Q&amp;A messages, and sign
+            off on decisions from the portal. The full §5 client capture surface is now wired up.
           </p>
           <div className="mt-6 inline-flex items-center gap-2 text-[11px] text-slate-400">
             <Clock className="h-3.5 w-3.5" />
-            Coming next: Phase 32 &mdash; client decision sign-off
+            §5 client portal continuation complete (Phases 28&ndash;32)
           </div>
         </div>
       ) : (

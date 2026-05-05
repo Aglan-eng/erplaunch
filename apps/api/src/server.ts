@@ -34,6 +34,8 @@ import { scheduleStagedFileGc } from './services/stagedFileGc.js';
 // Phase 31 — QA_MESSAGE acceptor + payload schema.
 import './services/qaMessageAcceptor.js';
 import { threadsRoutes } from './routes/threads.js';
+// Phase 32 — DECISION_SIGNOFF acceptor + payload schema.
+import './services/decisionSignoffAcceptor.js';
 import { firmBrandingRoutes } from './routes/firmBranding.js';
 import { adaptorRoutes } from './routes/adaptors.js';
 import { customAdaptorRoutes } from './routes/customAdaptors.js';
