@@ -80,7 +80,13 @@ async function main() {
   if (!firm) throw new Error('Firm not found — run the original seed first');
   const firmId = firm.id as string;
 
-  const user = await findUserByEmail('consultant@test.ofoq.app');
+  // Phase 27.5 — accept either the new (erplaunch.app) or legacy (ofoq.app)
+  // seed email so this script keeps working on dev DBs that were seeded
+  // before the rename. Fresh installs will use the erplaunch.app form per
+  // seed.ts.
+  const user =
+    (await findUserByEmail('consultant@test.erplaunch.app')) ??
+    (await findUserByEmail('consultant@test.ofoq.app'));
   if (!user) throw new Error('User not found — run the original seed first');
 
   console.log('\n🗑  Wiping existing data…');
@@ -741,7 +747,7 @@ async function main() {
   console.log('    Data Collection: 7 items (2 with statuses: Uploaded, In Review)');
   console.log('    Portal todos: 6 action items (1 overdue for realism)');
   console.log(`    Conflicts: ${conflicts.length} BLOCK, ${warnings.length} WARN, ${infos.length} INFO`);
-  console.log('\n    Login: consultant@test.ofoq.app / password123');
+  console.log('\n    Login: consultant@test.erplaunch.app / password123');
   console.log(`\n🌐  CLIENT PORTAL DEMO URL:`);
   console.log(`    ${portalUrl}`);
   console.log('    (Open this URL in any browser — no login required)');

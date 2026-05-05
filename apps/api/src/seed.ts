@@ -35,11 +35,11 @@ async function main() {
 
   // ── User ─────────────────────────────────────────────────────────────────
   const passwordHash = await bcrypt.hash('password123', 10);
-  const existing = await findUserByEmail('consultant@test.ofoq.app');
+  const existing = await findUserByEmail('consultant@test.erplaunch.app');
   if (!existing) {
     const user = await createUser({
       firmId: firm.id,
-      email: 'consultant@test.ofoq.app',
+      email: 'consultant@test.erplaunch.app',
       name: 'Test Consultant',
       passwordHash,
       role: 'CONSULTANT',
@@ -47,7 +47,7 @@ async function main() {
     console.log('User created:', (user as unknown as { email: string }).email);
   } else {
     // Always reset the password so FIX LOGIN.bat reliably fixes auth issues
-    await resetUserPassword('consultant@test.ofoq.app', passwordHash);
+    await resetUserPassword('consultant@test.erplaunch.app', passwordHash);
     console.log('User password reset:', (existing as unknown as { email: string }).email);
   }
 
@@ -73,7 +73,7 @@ async function main() {
   }
 
   console.log('\nSeed complete!');
-  console.log('Login: consultant@test.ofoq.app / password123');
+  console.log('Login: consultant@test.erplaunch.app / password123');
 }
 
 main().catch((e) => {

@@ -8,7 +8,7 @@ import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
 export function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail] = useState('consultant@test.ofoq.app');
+  const [email, setEmail] = useState('consultant@test.erplaunch.app');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [emailError, setEmailError] = useState('');
@@ -103,7 +103,7 @@ export function LoginPage() {
 
           {import.meta.env.DEV && (
             <p className="mt-2 text-center text-xs text-gray-400">
-              Demo: consultant@test.ofoq.app / password123
+              Demo: consultant@test.erplaunch.app / password123
             </p>
           )}
         </div>
