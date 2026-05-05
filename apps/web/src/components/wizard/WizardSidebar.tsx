@@ -183,6 +183,19 @@ export function WizardSidebar({ engagementId, sectionProgress, licenseComplete, 
     staleTime: 60_000,
   });
 
+  // Phase 36 — count of PENDING submissions, surfaced as a pill on the
+  // "Pending Review" sidebar item so the consultant sees the queue depth
+  // without having to open the tab. Uses the same queryKey as
+  // PendingReviewStep.tsx so accept/reject mutations there invalidate
+  // this query too — count updates immediately on review actions.
+  const pendingSubmissionsQuery = useQuery<Array<unknown>>({
+    queryKey: ['pending-submissions', engagementId],
+    queryFn: () => engagementsApi.listPendingSubmissions(engagementId),
+    enabled: !!engagementId,
+    staleTime: 30_000,
+  });
+  const pendingCount = (pendingSubmissionsQuery.data ?? []).length;
+
   // Derive the flow groups for the sidebar from the adaptor's schema. If the
   // adaptor exposes at least one flow with sections we use it; otherwise we
   // fall back to the hard-coded NetSuite layout so pilot engagements that
@@ -285,6 +298,17 @@ export function WizardSidebar({ engagementId, sectionProgress, licenseComplete, 
         {/* Progress % badge */}
         {inProg && !isActive && (
           <span className="text-[9px] font-bold text-gray-400 tabular-nums flex-shrink-0">{item.progress}%</span>
+        )}
+
+        {/* Phase 36 — Pending Review count pill. Only renders when the item
+            is the pending-review entry AND the count is non-zero. */}
+        {item.key === 'pending-review' && pendingCount > 0 && (
+          <span className={cn(
+            'text-[9px] font-bold tabular-nums flex-shrink-0 rounded-full px-1.5 py-0.5 min-w-[16px] text-center',
+            isActive ? 'bg-brand-600 text-white' : 'bg-amber-100 text-amber-700',
+          )}>
+            {pendingCount}
+          </span>
         )}
 
         {isActive && <ChevronRight className="h-3 w-3 text-brand-400 flex-shrink-0" />}

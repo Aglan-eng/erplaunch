@@ -1,10 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   CalendarDays, Users, UserPlus, Trash2, Mail, Phone,
   Pencil, CircleCheck, Loader, ArrowRight, Save, Link, Copy as CopyIcon,
-  Send, ListTodo, Plus, X, CheckSquare,
+  Send, ListTodo, Plus, X, CheckSquare, ChevronDown, ChevronRight,
 } from 'lucide-react';
+import {
+  r2rQuestions, p2pQuestions, o2cQuestions, mfgQuestions, rtnQuestions,
+  type Question,
+} from '@ofoq/shared';
 import { engagementsApi } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { HelpTip } from '@/components/ui/HelpTip';
@@ -598,6 +602,176 @@ export function ProjectSetupStep({ engagementId }: { engagementId: string }) {
   );
 }
 
+// ─── Client question allowlist editor (Phase 36) ─────────────────────────────
+//
+// Multi-select over the wizard question banks, grouped by flow. Selected IDs
+// land in portalSettings.clientAnsweredQuestionIds. The portal endpoint
+// filters its question feed against this list (see routes/portal.ts).
+//
+// Design choices:
+//   - Per-flow collapsible sections — the full set is ~150 questions, too
+//     dense to render flat.
+//   - "Select all in flow" / "Clear" affordances per group so the consultant
+//     can delegate an entire workstream in one click (common case).
+//   - Optimistic local state + per-edit save callback — same pattern as the
+//     Toggle row above. The `saving` flag mirrors the parent mutation's
+//     pending state so the user gets feedback during a network round-trip.
+
+interface ClientQuestionAllowlistEditorProps {
+  selected: string[];
+  saving: boolean;
+  onChange: (ids: string[]) => void;
+}
+
+const ALLOWLIST_FLOWS: Array<{ flowKey: string; label: string; badge: string; badgeClass: string; questions: Question[] }> = [
+  { flowKey: 'r2r', label: 'Record to Report', badge: 'R2R', badgeClass: 'bg-blue-100 text-blue-700',     questions: r2rQuestions },
+  { flowKey: 'p2p', label: 'Procure to Pay',   badge: 'P2P', badgeClass: 'bg-purple-100 text-purple-700', questions: p2pQuestions },
+  { flowKey: 'o2c', label: 'Order to Cash',    badge: 'O2C', badgeClass: 'bg-green-100 text-green-700',   questions: o2cQuestions },
+  { flowKey: 'mfg', label: 'Manufacturing',    badge: 'MFG', badgeClass: 'bg-orange-100 text-orange-700', questions: mfgQuestions },
+  { flowKey: 'rtn', label: 'Returns',          badge: 'RTN', badgeClass: 'bg-red-100 text-red-700',       questions: rtnQuestions },
+];
+
+function ClientQuestionAllowlistEditor({ selected, saving, onChange }: ClientQuestionAllowlistEditorProps) {
+  const [open, setOpen] = useState(false);
+  const [openFlow, setOpenFlow] = useState<string | null>(null);
+
+  const selectedSet = useMemo(() => new Set(selected), [selected]);
+
+  const flowsWithQuestions = useMemo(() => {
+    return ALLOWLIST_FLOWS.map((flow) => {
+      // Group by section within the flow for hierarchy.
+      const bySection = new Map<string, Question[]>();
+      for (const q of flow.questions) {
+        if (!bySection.has(q.section)) bySection.set(q.section, []);
+        bySection.get(q.section)!.push(q);
+      }
+      const totalSelected = flow.questions.filter((q) => selectedSet.has(q.id)).length;
+      return { ...flow, bySection, totalSelected };
+    });
+  }, [selectedSet]);
+
+  const toggleQuestion = (id: string) => {
+    const next = new Set(selectedSet);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    onChange([...next]);
+  };
+
+  const selectAllInFlow = (flowKey: string) => {
+    const flow = ALLOWLIST_FLOWS.find((f) => f.flowKey === flowKey);
+    if (!flow) return;
+    const next = new Set(selectedSet);
+    for (const q of flow.questions) next.add(q.id);
+    onChange([...next]);
+  };
+
+  const clearFlow = (flowKey: string) => {
+    const flow = ALLOWLIST_FLOWS.find((f) => f.flowKey === flowKey);
+    if (!flow) return;
+    const next = new Set(selectedSet);
+    for (const q of flow.questions) next.delete(q.id);
+    onChange([...next]);
+  };
+
+  const totalSelected = selectedSet.size;
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between text-left"
+      >
+        <div>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Questions assignable to client</p>
+          <p className="text-xs text-gray-500 mt-1">
+            {totalSelected === 0
+              ? 'No questions selected — the client portal won\'t show any wizard questions.'
+              : `${totalSelected} question${totalSelected === 1 ? '' : 's'} selected across ${flowsWithQuestions.filter((f) => f.totalSelected > 0).length} flow${flowsWithQuestions.filter((f) => f.totalSelected > 0).length === 1 ? '' : 's'}.`}
+          </p>
+        </div>
+        {open
+          ? <ChevronDown className="h-4 w-4 text-gray-400 flex-shrink-0" />
+          : <ChevronRight className="h-4 w-4 text-gray-400 flex-shrink-0" />}
+      </button>
+
+      {open && (
+        <div className="mt-3 space-y-2">
+          {flowsWithQuestions.map((flow) => {
+            const isFlowOpen = openFlow === flow.flowKey;
+            return (
+              <div key={flow.flowKey} className="rounded-xl border border-gray-200 bg-gray-50/50">
+                <div className="flex items-center justify-between px-3 py-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setOpenFlow(isFlowOpen ? null : flow.flowKey)}
+                    className="flex items-center gap-2 flex-1 text-left"
+                  >
+                    {isFlowOpen
+                      ? <ChevronDown className="h-3.5 w-3.5 text-gray-400" />
+                      : <ChevronRight className="h-3.5 w-3.5 text-gray-400" />}
+                    <span className={cn('text-[10px] font-black px-1.5 py-0.5 rounded tracking-wide', flow.badgeClass)}>
+                      {flow.badge}
+                    </span>
+                    <span className="text-xs font-semibold text-gray-700">{flow.label}</span>
+                    <span className="text-[10px] text-gray-400 tabular-nums">
+                      {flow.totalSelected} / {flow.questions.length}
+                    </span>
+                  </button>
+                  <div className="flex gap-1 flex-shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => selectAllInFlow(flow.flowKey)}
+                      disabled={saving}
+                      className="text-[10px] font-semibold text-brand-600 hover:text-brand-800 px-2 py-1 disabled:opacity-50"
+                    >
+                      Select all
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => clearFlow(flow.flowKey)}
+                      disabled={saving || flow.totalSelected === 0}
+                      className="text-[10px] font-semibold text-gray-500 hover:text-gray-700 px-2 py-1 disabled:opacity-50"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+                {isFlowOpen && (
+                  <div className="px-3 pb-3 space-y-3 border-t border-gray-200/60 pt-2">
+                    {Array.from(flow.bySection.entries()).map(([section, qs]) => (
+                      <div key={section}>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">{section}</p>
+                        <div className="space-y-1">
+                          {qs.map((q) => (
+                            <label
+                              key={q.id}
+                              className="flex items-start gap-2 text-xs text-gray-700 cursor-pointer hover:bg-white rounded px-1.5 py-1 transition-colors"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedSet.has(q.id)}
+                                onChange={() => toggleQuestion(q.id)}
+                                disabled={saving}
+                                className="mt-0.5 h-3.5 w-3.5 rounded border-gray-300 text-brand-600 focus:ring-brand-400 cursor-pointer disabled:opacity-50"
+                              />
+                              <span className="flex-1 leading-snug">{q.label}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Toggle component ─────────────────────────────────────────────────────────
 
 function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
@@ -634,6 +808,9 @@ interface PortalSettings {
   showTodos: boolean;
   showMeetings: boolean;
   customMessage: string;
+  // Phase 29 / Phase 36 — IDs of wizard questions the consultant has
+  // delegated to the client. Filtered into the portal's question feed.
+  clientAnsweredQuestionIds: string[];
 }
 
 const DEFAULT_SETTINGS: PortalSettings = {
@@ -642,6 +819,7 @@ const DEFAULT_SETTINGS: PortalSettings = {
   showRisks: true, showIssues: true, showDecisions: false,
   showDataCollection: true, showTodos: true, showMeetings: false,
   customMessage: '',
+  clientAnsweredQuestionIds: [],
 };
 
 interface PortalToggle {
@@ -1105,6 +1283,19 @@ function ClientPortalCard({ engagementId }: { engagementId: string }) {
                   defaultValue={settings.customMessage} onBlur={(e) => handleMessageChange(e.target.value)}
                   className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-400 resize-none" />
               </div>
+
+              {/* Phase 36 — Allowlist editor for client-answerable wizard
+                  questions. Selected IDs land in
+                  portalSettings.clientAnsweredQuestionIds and are filtered
+                  by the portal endpoint when serving PortalClientQuestions. */}
+              <div className="pt-3 border-t border-gray-200">
+                <ClientQuestionAllowlistEditor
+                  selected={settings.clientAnsweredQuestionIds ?? []}
+                  saving={saveMutation.isPending}
+                  onChange={(ids) => saveMutation.mutate({ clientAnsweredQuestionIds: ids })}
+                />
+              </div>
+
               {saveMutation.isPending && (
                 <p className="text-xs text-brand-500 font-medium flex items-center gap-1.5"><Loader className="h-3 w-3 animate-spin" />Saving…</p>
               )}

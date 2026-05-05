@@ -67,4 +67,58 @@ export async function decisionRoutes(fastify: FastifyInstance) {
     await db.logActivity(id, request.jwtUser.firmId, 'DECISION_DELETED', `Deleted decision: ${(decision as Record<string, unknown>).title}`);
     return reply.send({ data: { success: true } });
   });
+
+  // Phase 36 — POST /engagements/:id/decisions/:decisionId/request-signoff
+  //
+  // Flip clientSignoffStatus from NONE → PENDING so the decision surfaces in
+  // the client portal under PortalDecisionSignoffs. The actual sign / decline
+  // path runs through pendingSubmissions (Phase 32 acceptor); this endpoint
+  // is just the consultant-side trigger that opens the request.
+  //
+  // Strict state machine: only NONE → PENDING is allowed. Re-requesting a
+  // PENDING (or any other state) returns 409 to keep the audit trail clean
+  // and make the consultant aware they're operating on an in-flight or
+  // completed sign-off.
+  fastify.post('/engagements/:id/decisions/:decisionId/request-signoff', async (request, reply) => {
+    const { id, decisionId } = request.params as { id: string; decisionId: string };
+    const engagement = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
+    if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+
+    const decision = await db.findDecisionById(decisionId);
+    if (!decision) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+
+    // Defense-in-depth: even if the decisionId is real, refuse if it
+    // doesn't belong to this engagement.
+    if ((decision as Record<string, unknown>).engagementId !== id) {
+      return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+    }
+
+    const currentStatus = ((decision as Record<string, unknown>).clientSignoffStatus as string | undefined) ?? 'NONE';
+    if (currentStatus !== 'NONE') {
+      return reply.code(409).send({
+        error: {
+          code: 'INVALID_TRANSITION',
+          message: `Cannot request sign-off — decision is already ${currentStatus.toLowerCase()}`,
+        },
+      });
+    }
+
+    const updated = await db.updateDecisionSignoff(decisionId, {
+      clientSignoffStatus: 'PENDING',
+      clientSignoffAt: null,
+      clientSignoffComment: null,
+      clientSignoffMemberId: null,
+      clientSignoffSourceSubmissionId: null,
+    });
+
+    const title = (decision as Record<string, unknown>).title as string;
+    await db.logActivity(
+      id,
+      request.jwtUser.firmId,
+      'DECISION_SIGNOFF_REQUESTED',
+      `Requested client sign-off on decision: ${title}`,
+    );
+
+    return reply.send({ data: updated });
+  });
 }

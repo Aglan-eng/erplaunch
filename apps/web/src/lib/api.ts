@@ -230,6 +230,11 @@ export const engagementsApi = {
   deleteDecision: (id: string, decId: string) =>
     api.delete(`/engagements/${id}/decisions/${decId}`).then((r) => r.data.data),
 
+  // Phase 36 — flip clientSignoffStatus from NONE → PENDING so the decision
+  // surfaces on the client portal. 409 on any other transition.
+  requestDecisionSignoff: (id: string, decId: string) =>
+    api.post(`/engagements/${id}/decisions/${decId}/request-signoff`).then((r) => r.data.data),
+
   // Meetings
   listMeetings: (id: string) =>
     api.get(`/engagements/${id}/meetings`).then((r) => r.data.data),

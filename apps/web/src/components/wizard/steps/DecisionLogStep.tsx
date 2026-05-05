@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Plus, Trash2, Pencil, Loader, Save,
+  Plus, Trash2, Pencil, Loader, Save, Send, CircleCheck, CircleX, Clock,
 } from 'lucide-react';
 import { engagementsApi } from '@/lib/api';
 import { ExportButton } from '@/components/ExportButton';
+
+type ClientSignoffStatus = 'NONE' | 'PENDING' | 'SIGNED' | 'DECLINED' | 'REJECTED';
 
 interface Decision {
   id: string;
@@ -14,7 +16,18 @@ interface Decision {
   decidedAt?: string;
   rationale?: string;
   createdAt: string;
+  // Phase 32 — client sign-off state surfaced from the decision row.
+  clientSignoffStatus?: ClientSignoffStatus;
+  clientSignoffAt?: string | null;
+  clientSignoffComment?: string | null;
 }
+
+const SIGNOFF_PILL_STYLES: Record<Exclude<ClientSignoffStatus, 'NONE'>, { label: string; classes: string; icon: React.ElementType }> = {
+  PENDING:  { label: 'Awaiting client sign-off', classes: 'bg-amber-50 text-amber-700 border-amber-200',  icon: Clock      },
+  SIGNED:   { label: 'Client signed',            classes: 'bg-green-50 text-green-700 border-green-200',  icon: CircleCheck },
+  DECLINED: { label: 'Client declined',          classes: 'bg-red-50 text-red-700 border-red-200',        icon: CircleX    },
+  REJECTED: { label: 'Sign-off rejected',        classes: 'bg-gray-100 text-gray-600 border-gray-200',    icon: CircleX    },
+};
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -161,6 +174,19 @@ function DecisionRow({
     },
   });
 
+  // Phase 36 — Request client sign-off (NONE → PENDING). The acceptor side
+  // (PENDING → SIGNED|DECLINED|REJECTED) lives in the portal pendingSubmissions
+  // flow; this just opens the request.
+  const requestSignoffMutation = useMutation({
+    mutationFn: () => engagementsApi.requestDecisionSignoff(engagementId, decision.id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['decisions', engagementId] });
+      onRefresh();
+    },
+  });
+
+  const signoffStatus: ClientSignoffStatus = decision.clientSignoffStatus ?? 'NONE';
+
   return (
     <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition-shadow">
       {editing ? (
@@ -247,6 +273,40 @@ function DecisionRow({
             )}
             {form.rationale && (
               <p><span className="font-semibold text-gray-700">Rationale:</span> {form.rationale}</p>
+            )}
+          </div>
+
+          {/* Phase 36 — Client sign-off control. NONE shows the action button;
+              other states show a status pill so the consultant sees current
+              state without having to flip to the portal. */}
+          <div className="border-t border-gray-100 pt-3 mt-3">
+            {signoffStatus === 'NONE' ? (
+              <button
+                onClick={() => requestSignoffMutation.mutate()}
+                disabled={requestSignoffMutation.isPending}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 text-white text-xs font-semibold hover:bg-brand-700 disabled:opacity-50 transition-colors"
+              >
+                {requestSignoffMutation.isPending
+                  ? <Loader className="h-3.5 w-3.5 animate-spin" />
+                  : <Send className="h-3.5 w-3.5" />}
+                Request client sign-off
+              </button>
+            ) : (
+              (() => {
+                const pill = SIGNOFF_PILL_STYLES[signoffStatus];
+                const Icon = pill.icon;
+                return (
+                  <div className="space-y-1">
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-bold ${pill.classes}`}>
+                      <Icon className="h-3 w-3" />
+                      {pill.label}
+                    </span>
+                    {decision.clientSignoffComment && (
+                      <p className="text-xs text-gray-500 italic">"{decision.clientSignoffComment}"</p>
+                    )}
+                  </div>
+                );
+              })()
             )}
           </div>
         </div>
