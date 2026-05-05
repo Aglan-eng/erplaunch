@@ -150,6 +150,23 @@ export const dataFileAcceptor: PendingSubmissionAcceptor = {
     // transaction rolls back and the rename has to be re-done on retry —
     // acceptable since promotion is idempotent.
     await deleteStagedFileById(staged.id);
+
+    // Phase 38.3 — emit DATA_REQUEST_FULFILLED so the activity feed
+    // reflects the lifecycle event ("client uploaded the file we asked
+    // for"). Out-of-transaction is intentional: the audit log is
+    // best-effort and shouldn't block the acceptor's atomic state flip.
+    try {
+      const item = await db.findDataCollectionItemById(payload.dataCollectionItemId);
+      const itemName = item ? ((item as Record<string, unknown>).name as string | undefined) ?? 'data request' : 'data request';
+      await db.logActivity(
+        ctx.engagementId,
+        ctx.firmId,
+        'DATA_REQUEST_FULFILLED',
+        `Client uploaded file for: ${itemName}`,
+      );
+    } catch {
+      // Activity write failure shouldn't undo a successful acceptor.
+    }
   },
 };
 

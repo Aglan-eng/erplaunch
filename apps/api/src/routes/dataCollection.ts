@@ -415,6 +415,44 @@ export async function dataCollectionRoutes(fastify: FastifyInstance) {
     return reply.send({ data: items });
   });
 
+  // Phase 38.3 — POST /engagements/:id/data-collection
+  // Top-level "data request" creation. Maps the consultant-friendly
+  // shape (title/area/description/assignedTo) onto the existing
+  // DataCollectionItem columns (name/category/description/assignedTo)
+  // so the existing list/upload/validate pipelines pick up the new
+  // rows transparently. status defaults to PENDING.
+  fastify.post('/engagements/:id/data-collection', { onRequest: authenticate }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const engagement = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
+    if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+    const body = (request.body ?? {}) as {
+      title?: unknown; description?: unknown; area?: unknown;
+      assignedTo?: unknown; dueDate?: unknown; status?: unknown;
+    };
+    if (typeof body.title !== 'string' || !body.title.trim()) {
+      return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'title is required' } });
+    }
+    if (typeof body.area !== 'string' || !body.area.trim()) {
+      return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'area is required' } });
+    }
+    const item = await db.createDataCollectionItem(id, {
+      name: body.title,
+      category: body.area,
+      description: typeof body.description === 'string' ? body.description : undefined,
+      assignedTo: typeof body.assignedTo === 'string' ? body.assignedTo : undefined,
+      dueDate: typeof body.dueDate === 'string' ? body.dueDate : undefined,
+      status: typeof body.status === 'string' ? body.status : 'PENDING',
+      createdBy: request.jwtUser.userId,
+    });
+    await db.logActivity(
+      id,
+      request.jwtUser.firmId,
+      'DATA_REQUEST_CREATED',
+      `Created data request: ${body.title} (${body.area})`,
+    );
+    return reply.code(201).send({ data: item });
+  });
+
   // PATCH /engagements/:id/data-collection/:itemId
   fastify.patch('/engagements/:id/data-collection/:itemId', { onRequest: authenticate }, async (request, reply) => {
     const { id, itemId } = request.params as { id: string; itemId: string };

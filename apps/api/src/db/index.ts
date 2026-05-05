@@ -421,6 +421,32 @@ async function createTables(db: Client) {
       updatedAt       TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
+  // Phase 38.3 — top-level "data request" shape adds free-form description
+  // and createdBy. Idempotent ALTERs.
+  try { await db.execute(`ALTER TABLE DataCollectionItem ADD COLUMN description TEXT`); } catch { /* swallow — idempotent */ }
+  try { await db.execute(`ALTER TABLE DataCollectionItem ADD COLUMN createdBy TEXT`); } catch { /* swallow — idempotent */ }
+
+  // Phase 38.3 — Action Items table. Lightweight project-scoped to-do
+  // surface that complements PortalTodo (which is portal-only). Status
+  // uses OPEN/IN_PROGRESS/DONE/CANCELLED to align with the consultant's
+  // mental model.
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS ActionItem (
+      id              TEXT PRIMARY KEY,
+      engagementId    TEXT NOT NULL REFERENCES Engagement(id) ON DELETE CASCADE,
+      title           TEXT NOT NULL,
+      description     TEXT,
+      owner           TEXT,
+      priority        TEXT NOT NULL DEFAULT 'MEDIUM',
+      dueDate         TEXT,
+      status          TEXT NOT NULL DEFAULT 'OPEN',
+      createdBy       TEXT,
+      completedAt     TEXT,
+      createdAt       TEXT NOT NULL DEFAULT (datetime('now')),
+      updatedAt       TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_action_item_engagement ON ActionItem(engagementId)`);
 
   // Files uploaded against a data collection item
   await db.execute(`
@@ -1772,6 +1798,81 @@ export async function listMigrationItems(engagementId: string) {
   return (r.rows as Row[]).map((row) => parseRow<Row>(row));
 }
 
+// ─── Action Items (Phase 38.3) ────────────────────────────────────────────────
+
+export async function listActionItems(engagementId: string) {
+  const db = getDb();
+  const r = await db.execute({
+    sql: `SELECT * FROM ActionItem WHERE engagementId = ? ORDER BY createdAt DESC`,
+    args: [engagementId],
+  });
+  return (r.rows as Row[]).map((row) => parseRow<Row>(row));
+}
+
+export async function findActionItemById(id: string) {
+  const db = getDb();
+  const r = await db.execute({ sql: `SELECT * FROM ActionItem WHERE id = ?`, args: [id] });
+  return r.rows[0] ? parseRow<Row>(r.rows[0] as Row) : null;
+}
+
+export async function createActionItem(engagementId: string, data: {
+  title: string;
+  description?: string;
+  owner?: string;
+  priority?: string;
+  dueDate?: string;
+  status?: string;
+  createdBy?: string;
+}) {
+  const db = getDb();
+  const id = createId();
+  const now = new Date().toISOString();
+  await db.execute({
+    sql: `INSERT INTO ActionItem (id, engagementId, title, description, owner, priority, dueDate, status, createdBy, createdAt, updatedAt)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+    args: [
+      id, engagementId, data.title, data.description ?? null,
+      data.owner ?? null, data.priority ?? 'MEDIUM', data.dueDate ?? null,
+      data.status ?? 'OPEN', data.createdBy ?? null, now, now,
+    ],
+  });
+  return findActionItemById(id);
+}
+
+export async function updateActionItem(id: string, data: Partial<{
+  title: string; description: string; owner: string;
+  priority: string; dueDate: string; status: string;
+  completedAt: string;
+}>) {
+  const db = getDb();
+  const sets: string[] = [];
+  const args: unknown[] = [];
+  const fields: [string, unknown][] = [
+    ['title', data.title], ['description', data.description], ['owner', data.owner],
+    ['priority', data.priority], ['dueDate', data.dueDate], ['status', data.status],
+    ['completedAt', data.completedAt],
+  ];
+  for (const [k, v] of fields) {
+    if (v !== undefined) { sets.push(`${k} = ?`); args.push(v); }
+  }
+  if (sets.length === 0) return findActionItemById(id);
+  sets.push(`updatedAt = ?`); args.push(new Date().toISOString());
+  args.push(id);
+  await db.execute({
+    sql: `UPDATE ActionItem SET ${sets.join(', ')} WHERE id = ?`,
+    args: args as (string | number | boolean | null)[],
+  });
+  return findActionItemById(id);
+}
+
+export async function deleteActionItem(id: string): Promise<boolean> {
+  const db = getDb();
+  const exists = await db.execute({ sql: `SELECT 1 FROM ActionItem WHERE id = ?`, args: [id] });
+  if (!exists.rows[0]) return false;
+  await db.execute({ sql: `DELETE FROM ActionItem WHERE id = ?`, args: [id] });
+  return true;
+}
+
 export async function createMigrationItem(engagementId: string, data: { objectName: string; source?: string; recordCount?: number; owner?: string; notes?: string }) {
   const db = getDb();
   const id = createId();
@@ -2207,22 +2308,34 @@ export async function listDataCollectionItems(engagementId: string) {
 }
 
 export async function createDataCollectionItem(engagementId: string, data: {
-  templateId: string;
+  templateId?: string;
   templateSchemaId?: string;
   name: string;
   category: string;
+  description?: string;
   assignedTo?: string;
   dueDate?: string;
+  status?: string;
+  createdBy?: string;
 }) {
   const db = getDb();
   const id = createId();
   const now = new Date().toISOString();
+  // Phase 38.3 — templateId is now optional. Top-level "data request"
+  // creates from POST /data-collection don't bind to a template; the
+  // existing template-driven creates (verticals.ts, reseed.ts) still
+  // pass an explicit templateId. Default to '__custom__' for the
+  // request-shape rows so the legacy NOT NULL stays satisfied without
+  // forcing every caller to invent a sentinel.
+  const templateId = data.templateId ?? '__custom__';
+  const status = data.status ?? 'PENDING';
   await db.execute({
-    sql: `INSERT INTO DataCollectionItem (id, engagementId, templateId, templateSchemaId, name, category, assignedTo, dueDate, createdAt, updatedAt)
-          VALUES (?,?,?,?,?,?,?,?,?,?)`,
+    sql: `INSERT INTO DataCollectionItem (id, engagementId, templateId, templateSchemaId, name, category, description, status, assignedTo, dueDate, createdBy, createdAt, updatedAt)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     args: [
-      id, engagementId, data.templateId, data.templateSchemaId ?? null,
-      data.name, data.category, data.assignedTo ?? null, data.dueDate ?? null, now, now,
+      id, engagementId, templateId, data.templateSchemaId ?? null,
+      data.name, data.category, data.description ?? null, status,
+      data.assignedTo ?? null, data.dueDate ?? null, data.createdBy ?? null, now, now,
     ],
   });
   const r = await db.execute({ sql: `SELECT * FROM DataCollectionItem WHERE id = ?`, args: [id] });
@@ -2248,6 +2361,14 @@ export async function updateDataCollectionItem(id: string, data: Partial<{
   args.push(new Date().toISOString());
   args.push(id);
   await db.execute({ sql: `UPDATE DataCollectionItem SET ${sets.join(', ')} WHERE id = ?`, args: args as (string | number | boolean | null)[] });
+  const r = await db.execute({ sql: `SELECT * FROM DataCollectionItem WHERE id = ?`, args: [id] });
+  return r.rows[0] ? parseRow<Row>(r.rows[0] as Row) : null;
+}
+
+// Phase 38.3 — used by dataFileAcceptor to emit DATA_REQUEST_FULFILLED
+// activity entries with the item's name in the detail string.
+export async function findDataCollectionItemById(id: string) {
+  const db = getDb();
   const r = await db.execute({ sql: `SELECT * FROM DataCollectionItem WHERE id = ?`, args: [id] });
   return r.rows[0] ? parseRow<Row>(r.rows[0] as Row) : null;
 }
