@@ -111,7 +111,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Run Trivy vulnerability + misconfig scan
-        uses: aquasecurity/trivy-action@0.24.0
+        # Phase 34: pinned to v0.36.0 — current stable (was @0.24.0 which
+        # was never released; the unprefixed-tag scheme stopped at older
+        # releases, modern releases use v-prefixed tags only).
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .

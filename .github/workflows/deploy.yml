@@ -40,15 +40,48 @@ permissions:
 
 jobs:
   # ----------------------------------------------------------------------------
+  # Guard — always runs; decides whether the rest of the workflow proceeds.
+  # Phase 34: introduced this guard step to fix GitHub's "No jobs were run"
+  # failure mode. Previously the `gate` job carried the if-filter directly,
+  # which meant every workflow_run trigger where the upstream conclusion was
+  # anything other than 'success' produced an empty job graph — and GitHub
+  # records empty job graphs as workflow failures. Now `guard` always runs
+  # and emits `proceed`; `gate`/`render` are skipped (not failed) when
+  # there's nothing to deploy.
+  # ----------------------------------------------------------------------------
+  guard:
+    name: Should deploy?
+    runs-on: ubuntu-latest
+    outputs:
+      proceed: ${{ steps.check.outputs.proceed }}
+    steps:
+      - id: check
+        name: Decide whether to proceed
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          UPSTREAM_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          UPSTREAM_BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "Manual dispatch — proceeding"
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+          elif [ "$UPSTREAM_CONCLUSION" = "success" ] && [ "$UPSTREAM_BRANCH" = "main" ]; then
+            echo "Upstream succeeded on main — proceeding"
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Upstream conclusion='$UPSTREAM_CONCLUSION' branch='$UPSTREAM_BRANCH' — skipping cleanly"
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ----------------------------------------------------------------------------
   # Gate — only deploy if every upstream workflow on the same commit succeeded.
   # ----------------------------------------------------------------------------
   gate:
     name: Verify upstream workflows
     runs-on: ubuntu-latest
-    if: >
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.head_branch == 'main')
+    needs: guard
+    if: needs.guard.outputs.proceed == 'true'
     outputs:
       sha: ${{ steps.resolve.outputs.sha }}
     steps:
