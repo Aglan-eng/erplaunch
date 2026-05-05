@@ -5,9 +5,9 @@
  * a complete set of business profile answers using Claude.
  * Also provides suggested answers per-section for one-click accept.
  */
-import Anthropic from '@anthropic-ai/sdk';
 import { allQuestions } from '@ofoq/shared';
 import type { Question } from '@ofoq/shared';
+import { getAnthropicClient, getAiModel } from './aiClient.js';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -75,14 +75,12 @@ function buildQuestionList(questions: Question[]): string {
 // ── Full Profile Generation ─────────────────────────────────────────────────
 
 export async function generateFullProfile(input: ProfileGeneratorInput): Promise<GeneratedProfile> {
-  const apiKey = process.env.AI_API_KEY;
-  const model = process.env.AI_MODEL || 'claude-sonnet-4-20250514';
+  const client = getAnthropicClient();
+  const model = getAiModel();
 
-  if (!apiKey) {
+  if (!client) {
     return generateHeuristicProfile(input);
   }
-
-  const client = new Anthropic({ apiKey });
   const platformName = input.platform?.name ?? 'NetSuite';
   const platformVendor = input.platform?.vendor;
   const isNetSuite = (input.platform?.id ?? 'netsuite') === 'netsuite';
@@ -177,10 +175,10 @@ export async function generateSectionSuggestions(
   license: { edition: string; modules: string[] },
   options: { platform?: { id: string; name: string; vendor?: string }; adaptorQuestions?: Question[] } = {},
 ): Promise<SectionSuggestions> {
-  const apiKey = process.env.AI_API_KEY;
-  const model = process.env.AI_MODEL || 'claude-sonnet-4-20250514';
+  const client = getAnthropicClient();
+  const model = getAiModel();
 
-  if (!apiKey) {
+  if (!client) {
     return { suggestedAnswers: {}, reasoning: {} };
   }
 
@@ -197,8 +195,6 @@ export async function generateSectionSuggestions(
   if (unanswered.length === 0) {
     return { suggestedAnswers: {}, reasoning: {} };
   }
-
-  const client = new Anthropic({ apiKey });
 
   const questionListStr = unanswered.map(q => {
     const type = q.inputType;

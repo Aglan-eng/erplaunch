@@ -14,13 +14,20 @@
  * for status updates. No queue dependency because this is a firm-level,
  * one-shot operation; failures mark the row FAILED and the user can retry.
  */
-import Anthropic from '@anthropic-ai/sdk';
 import { validateAdaptor } from '@ofoq/adaptor-sdk';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as db from '../db/index.js';
+import { getAnthropicClient } from './aiClient.js';
 
-const MODEL_ID = process.env.ANTHROPIC_PARSE_MODEL || 'claude-sonnet-4-6';
+// Phase 37.4 — `ANTHROPIC_PARSE_MODEL` was an undocumented escape hatch
+// (never set on Render); fall through to the platform-wide AI_MODEL or the
+// Sonnet 4.6 default. Keeps a single knob for "which Claude model do we
+// use across the API".
+const MODEL_ID =
+  process.env.ANTHROPIC_PARSE_MODEL ||
+  process.env.AI_MODEL ||
+  'claude-sonnet-4-6';
 const MAX_DOC_CHARS = 180_000; // well under 200k-token context with headroom
 
 export interface ParseOptions {
@@ -32,6 +39,19 @@ export async function parseCustomAdaptor(opts: ParseOptions): Promise<void> {
   const { customAdaptorId, uploadsDir } = opts;
   const adaptor = await db.findCustomAdaptorById(customAdaptorId);
   if (!adaptor) throw new Error(`custom adaptor ${customAdaptorId} not found`);
+
+  // Phase 37.4 — fail fast and CLEARLY when AI_API_KEY isn't configured.
+  // Before this, the parser would burn through extraction, prompt-building,
+  // and an Anthropic SDK call before throwing an opaque "API key required"
+  // error that the consultant saw as "Parse failed" with no actionable hint.
+  if (!process.env.AI_API_KEY) {
+    await db.updateCustomAdaptorStatus(
+      customAdaptorId,
+      'FAILED',
+      'AI not configured: AI_API_KEY environment variable is missing on the server.',
+    );
+    return;
+  }
 
   // Mark PARSING so the UI can show a spinner
   await db.updateCustomAdaptorStatus(customAdaptorId, 'PARSING');
@@ -319,7 +339,13 @@ interface PlatformAdaptorDraft {
 }
 
 async function askClaudeForAdaptor(args: { name: string; slug: string; docText: string }): Promise<PlatformAdaptorDraft> {
-  const anthropic = new Anthropic();
+  // Phase 37.4 — explicit AI_API_KEY wiring. Surfaces a clear error when
+  // the env var is missing instead of letting the SDK throw a less helpful
+  // "API key required" deep in `messages.create`.
+  const anthropic = getAnthropicClient();
+  if (!anthropic) {
+    throw new Error('AI not configured: AI_API_KEY environment variable is missing.');
+  }
   const userPrompt = `Target system name: ${args.name}
 Target slug: ${args.slug}
 

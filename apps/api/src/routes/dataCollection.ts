@@ -6,16 +6,14 @@ import { getVertical } from '../config/verticals.js';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import Anthropic from '@anthropic-ai/sdk';
 import * as xlsx from 'xlsx';
+import { getAnthropicClient, getAiModel } from '../services/aiClient.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UPLOADS_DIR = path.join(__dirname, '../../uploads');
 
 // Ensure uploads directory exists
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-
-const anthropic = new Anthropic();
 
 // ─── AI: Generate / customise template schemas for an engagement ───────────────
 
@@ -82,8 +80,12 @@ Return a JSON array. Each element must have:
 }`;
 
   try {
+    const anthropic = getAnthropicClient();
+    if (!anthropic) {
+      throw new Error('AI not configured: AI_API_KEY environment variable is missing.');
+    }
     const response = await anthropic.messages.create({
-      model: 'claude-opus-4-6',
+      model: getAiModel(),
       max_tokens: 8000,
       messages: [{ role: 'user', content: userPrompt }],
       system: systemPrompt,
@@ -190,8 +192,12 @@ Return JSON:
 Limit issues to the most important 50. Group similar issues (e.g. '23 rows missing required field Email') rather than listing each row.`;
 
   try {
+    const anthropic = getAnthropicClient();
+    if (!anthropic) {
+      throw new Error('AI not configured: AI_API_KEY environment variable is missing.');
+    }
     const response = await anthropic.messages.create({
-      model: 'claude-opus-4-6',
+      model: getAiModel(),
       max_tokens: 4000,
       messages: [{ role: 'user', content: userPrompt }],
       system: systemPrompt,
@@ -264,8 +270,12 @@ If you need more information before designing the template, return:
   ]
 }`;
 
+  const anthropic = getAnthropicClient();
+  if (!anthropic) {
+    throw new Error('AI not configured: AI_API_KEY environment variable is missing.');
+  }
   const response = await anthropic.messages.create({
-    model: 'claude-opus-4-6',
+    model: getAiModel(),
     max_tokens: 4000,
     messages: [{ role: 'user', content: userPrompt }],
     system: systemPrompt,

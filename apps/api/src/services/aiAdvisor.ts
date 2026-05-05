@@ -4,10 +4,10 @@
  * Uses Anthropic Claude to analyze section answers, consultant comments,
  * license profile, and conflicts to produce structured implementation advice.
  */
-import Anthropic from '@anthropic-ai/sdk';
 import { createHash } from 'crypto';
 import { allQuestions } from '@ofoq/shared';
 import type { Question } from '@ofoq/shared';
+import { getAnthropicClient, getAiModel } from './aiClient.js';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -128,15 +128,13 @@ function formatAnswersForPrompt(sectionKey: string, answers: Record<string, unkn
 // ── Core AI generation ───────────────────────────────────────────────────────
 
 export async function generateAIAdvice(input: AdvisorInput): Promise<AIAdviceResult> {
-  const apiKey = process.env.AI_API_KEY;
-  const model = process.env.AI_MODEL || 'claude-sonnet-4-20250514';
+  const client = getAnthropicClient();
+  const model = getAiModel();
 
-  if (!apiKey) {
+  if (!client) {
     // Fallback to heuristic engine
     return generateHeuristicAdvice(input);
   }
-
-  const client = new Anthropic({ apiKey });
   const sectionContext = input.platform?.sectionLabel || SECTION_CONTEXT[input.sectionKey] || input.sectionKey;
   const formattedAnswers = formatAnswersForPrompt(input.sectionKey, input.answers);
 

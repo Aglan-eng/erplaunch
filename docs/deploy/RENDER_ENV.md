@@ -19,7 +19,8 @@ Every production environment variable the `erplaunch-api` Render service reads, 
 | Variable | Purpose | Default | Notes |
 |---|---|---|---|
 | `REDIS_URL` | Rate-limiter backing store. | none | If unset or unreachable the portal + login rate-limiters fail open (log-only). Set it. |
-| `AI_API_KEY` | Anthropic key used by the AI advisor + AI profile generator + landing chatbot Edge Function. | none | Shared between api and landing (same variable name). |
+| `AI_API_KEY` | Provider key (Anthropic today). Used by every AI surface in the API: AI advisor, AI profile generator, Custom Adaptor parser, AI data-template designer, landing chatbot Edge Function. Generic name on purpose — Phase 37.4 standardised the API on this single env var so a future swap to OpenAI / Bedrock / Azure doesn't require renaming. | none | Shared between api and landing (same variable name). When unset every AI feature degrades gracefully (heuristic fallbacks, "AI not configured" errors) — the service still boots. |
+| `ANTHROPIC_API_KEY` | **DO NOT SET.** Phase 37.4 removed every reliance on the SDK's default key lookup; setting this var no longer has any effect. Was previously needed as a workaround when `new Anthropic()` calls didn't pass `apiKey` explicitly. | — | Safe to delete from the Render env if it was set as a workaround pre-Phase 37.4. |
 | `PORTAL_SESSION_TTL_DAYS` | Portal session lifetime. | `7` | |
 | `PORTAL_AUTH_RATELIMIT_REQUEST_PER_MIN` | Max `/portal/request-access` attempts per IP and per email per minute. | `3` | |
 | `PORTAL_AUTH_RATELIMIT_VERIFY_PER_MIN` | Max `/portal/verify` attempts per engagement-token per minute. | `5` | |
