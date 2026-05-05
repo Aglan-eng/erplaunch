@@ -262,7 +262,7 @@ export function DashboardPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['engagements'],
-    queryFn: engagementsApi.list,
+    queryFn: () => engagementsApi.list(),
   });
 
   const engagements = useMemo(() => (data ?? []) as DashboardEngagement[], [data]);

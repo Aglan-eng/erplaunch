@@ -10,7 +10,8 @@ export type EngagementStatus =
   | 'SCOPING'
   | 'BUILD'
   | 'UAT'
-  | 'GO_LIVE';
+  | 'GO_LIVE'
+  | 'ARCHIVED';
 export type ConflictType =
   | 'LICENSE_GAP'
   | 'PHASE_DEPENDENCY'

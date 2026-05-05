@@ -95,8 +95,14 @@ export async function engagementRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', authenticate);
 
   // GET /engagements
+  // Phase 37.1 — by default ARCHIVED engagements are filtered out so the
+  // dashboard isn't cluttered with old test data. Pass ?includeArchived=true
+  // (e.g., from an admin "Archived Engagements" view) to opt in.
   fastify.get('/engagements', async (request, reply) => {
-    const engagements = await db.listEngagements(request.jwtUser.firmId);
+    const { includeArchived } = request.query as { includeArchived?: string };
+    const engagements = await db.listEngagements(request.jwtUser.firmId, {
+      includeArchived: includeArchived === 'true',
+    });
     return reply.send({ data: engagements });
   });
 
@@ -200,12 +206,61 @@ export async function engagementRoutes(fastify: FastifyInstance) {
   });
 
   // DELETE /engagements/:id
+  // Phase 37.1 — switch to cascade-delete inside a transaction. The previous
+  // implementation hit SQLITE_CONSTRAINT (FOREIGN KEY) → 500 for any engagement
+  // with related rows in tables that lack ON DELETE CASCADE. Now returns 404
+  // (instead of 500) when the engagement was already deleted — making the
+  // endpoint idempotent for clean-up scripts.
   fastify.delete('/engagements/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
     const check = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!check) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
-    await db.deleteEngagement(id);
+    const deleted = await db.deleteEngagementCascade(id);
+    if (!deleted) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+    await db.logActivity(id, request.jwtUser.firmId, 'ENGAGEMENT_DELETED', `Deleted engagement: ${(check as Record<string, unknown>).clientName}`).catch(() => {
+      // Activity log will fail because the engagement row no longer exists
+      // (FK constraint). That's expected — the audit trail of a deletion
+      // can't reference a row that was just deleted. Swallow.
+    });
     return reply.code(204).send();
+  });
+
+  // Phase 37.1 — POST /engagements/:id/archive
+  // Soft-archive: flips status to ARCHIVED and stashes previousStatus.
+  // Idempotent (re-archiving an already-ARCHIVED engagement is a 200 no-op).
+  fastify.post('/engagements/:id/archive', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const check = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
+    if (!check) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+    const wasAlreadyArchived = (check as Record<string, unknown>).status === 'ARCHIVED';
+    const updated = await db.archiveEngagement(id);
+    if (!wasAlreadyArchived) {
+      await db.logActivity(
+        id,
+        request.jwtUser.firmId,
+        'ENGAGEMENT_ARCHIVED',
+        `Archived engagement: ${(check as Record<string, unknown>).clientName}`,
+      );
+    }
+    return reply.send({ data: updated });
+  });
+
+  // Phase 37.1 — POST /engagements/:id/unarchive
+  // Restores the engagement's previousStatus, falling back to DISCOVERY when
+  // no prior status was recorded.
+  fastify.post('/engagements/:id/unarchive', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const check = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
+    if (!check) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+    const updated = await db.unarchiveEngagement(id);
+    if (!updated) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+    await db.logActivity(
+      id,
+      request.jwtUser.firmId,
+      'ENGAGEMENT_UNARCHIVED',
+      `Restored engagement: ${(check as Record<string, unknown>).clientName}`,
+    );
+    return reply.send({ data: updated });
   });
 
   // PATCH /engagements/:id

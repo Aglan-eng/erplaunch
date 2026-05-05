@@ -1029,7 +1029,7 @@ export function PipelinePage() {
 
   const { data, isLoading } = useQuery<Engagement[]>({
     queryKey: ['engagements'],
-    queryFn: engagementsApi.list,
+    queryFn: () => engagementsApi.list(),
   });
 
   const engagements: Engagement[] = data ?? [];

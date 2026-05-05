@@ -66,10 +66,23 @@ export const authApi = {
 // ─── Engagements ─────────────────────────────────────────────────────────────
 
 export const engagementsApi = {
-  list: () => api.get('/engagements').then((r) => r.data.data),
+  // Phase 37.1 — opt in to ARCHIVED via includeArchived: true. Default
+  // (false) keeps the dashboard tidy.
+  list: (opts?: { includeArchived?: boolean }) =>
+    api
+      .get('/engagements', { params: opts?.includeArchived ? { includeArchived: 'true' } : undefined })
+      .then((r) => r.data.data),
 
   create: (input: { clientName: string; adaptorId?: string }) =>
     api.post('/engagements', input).then((r) => r.data.data),
+
+  // Phase 37.1 — soft-archive endpoints. Pair with the kebab menu in
+  // WizardTopBar.
+  archive: (id: string) =>
+    api.post(`/engagements/${id}/archive`).then((r) => r.data.data),
+
+  unarchive: (id: string) =>
+    api.post(`/engagements/${id}/unarchive`).then((r) => r.data.data),
 
   get: (id: string) =>
     api.get(`/engagements/${id}`).then((r) => r.data.data),

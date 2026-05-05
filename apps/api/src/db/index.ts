@@ -102,6 +102,10 @@ async function createTables(db: Client) {
   // Platform adaptor (Phase 1A). Every existing engagement defaults to NetSuite
   // since that's what the pilot was — zero behavior change from this column.
   try { await db.execute(`ALTER TABLE Engagement ADD COLUMN adaptorId TEXT NOT NULL DEFAULT 'netsuite'`); } catch { /* swallow — idempotent migration / parse fallback */ }
+  // Phase 37.1 — soft-archive support. previousStatus stashes the status the
+  // engagement was in just before being archived so unarchive can restore it.
+  // Nullable / TEXT — engagements that have never been archived have NULL.
+  try { await db.execute(`ALTER TABLE Engagement ADD COLUMN previousStatus TEXT`); } catch { /* swallow — idempotent migration / parse fallback */ }
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS ProjectMember (
@@ -913,9 +917,16 @@ export async function createEngagement(data: { firmId: string; clientName: strin
   return findEngagementById(id);
 }
 
-export async function listEngagements(firmId: string) {
+export async function listEngagements(firmId: string, opts?: { includeArchived?: boolean }) {
   const db = getDb();
-  const r = await db.execute({ sql: `SELECT * FROM Engagement WHERE firmId = ? ORDER BY updatedAt DESC`, args: [firmId] });
+  // Phase 37.1 — by default the dashboard hides archived engagements. Call
+  // sites that need the full list (an admin "Archived Engagements" panel,
+  // for instance) opt in via includeArchived: true.
+  const includeArchived = opts?.includeArchived === true;
+  const sql = includeArchived
+    ? `SELECT * FROM Engagement WHERE firmId = ? ORDER BY updatedAt DESC`
+    : `SELECT * FROM Engagement WHERE firmId = ? AND (status IS NULL OR status != 'ARCHIVED') ORDER BY updatedAt DESC`;
+  const r = await db.execute({ sql, args: [firmId] });
   return Promise.all((r.rows as Row[]).map(async (row) => {
     const eng = parseRow<Row>(row);
     return enrichEngagement(eng, { includeProfile: true, includeLicense: true, includeConflicts: true, includeJobs: true, includeMembers: true });
@@ -940,6 +951,119 @@ export async function findEngagementByIdAndFirmId(id: string, firmId: string) {
 export async function deleteEngagement(id: string) {
   const db = getDb();
   await db.execute({ sql: `DELETE FROM Engagement WHERE id = ?`, args: [id] });
+}
+
+// Phase 37.1 — soft-archive. Idempotent: re-archiving an ARCHIVED row leaves
+// previousStatus untouched (we don't want repeated archive calls to overwrite
+// the original previousStatus with 'ARCHIVED'). Returns the row after the
+// transition, or null if the engagement doesn't exist.
+export async function archiveEngagement(id: string) {
+  const db = getDb();
+  const now = new Date().toISOString();
+  // Atomic guarded UPDATE: only fires when the row exists AND is not already
+  // ARCHIVED. If the row is already archived, this is a no-op and we return
+  // the current row unchanged.
+  await db.execute({
+    sql: `UPDATE Engagement
+            SET previousStatus = status,
+                status = 'ARCHIVED',
+                updatedAt = ?
+          WHERE id = ? AND status != 'ARCHIVED'`,
+    args: [now, id],
+  });
+  return findEngagementById(id);
+}
+
+// Phase 37.1 — reverse of archiveEngagement. Restores the stashed previousStatus
+// or falls back to DISCOVERY when no prior state was recorded (e.g., an old row
+// that was archived directly via SQL). Returns the row after the transition,
+// or null if the engagement doesn't exist.
+export async function unarchiveEngagement(id: string) {
+  const db = getDb();
+  const r = await db.execute({
+    sql: `SELECT previousStatus FROM Engagement WHERE id = ?`,
+    args: [id],
+  });
+  if (!r.rows[0]) return null;
+  const prev = ((r.rows[0] as Record<string, unknown>).previousStatus as string | null) ?? 'DISCOVERY';
+  const now = new Date().toISOString();
+  await db.execute({
+    sql: `UPDATE Engagement
+            SET status = ?,
+                previousStatus = NULL,
+                updatedAt = ?
+          WHERE id = ?`,
+    args: [prev, now, id],
+  });
+  return findEngagementById(id);
+}
+
+// Phase 37.1 — cascade-delete an engagement and every child row that
+// references it. Wraps the deletes in a transaction so a partial failure
+// rolls the whole operation back. Returns true when the engagement existed
+// (and was deleted), false when it did not — letting the route layer
+// translate "false" into a 404 instead of the previous 500.
+//
+// Why this is needed: most child tables have ON DELETE CASCADE, but several
+// older tables (BusinessProfile, LicenseProfile, Phase, ConflictLog,
+// GenerationJob, SectionComment, SectionImage, AIAdvice, ProjectMember)
+// do not — those tables predate the cascade convention. Without explicit
+// cleanup the FK pragma blocks the parent delete with SQLITE_CONSTRAINT.
+export async function deleteEngagementCascade(id: string): Promise<boolean> {
+  const db = getDb();
+  // Existence check outside the transaction — cheaper than starting a TX
+  // for a no-op, and lets us return false cleanly.
+  const exists = await db.execute({
+    sql: `SELECT 1 FROM Engagement WHERE id = ?`,
+    args: [id],
+  });
+  if (!exists.rows[0]) return false;
+
+  await db.execute('BEGIN');
+  try {
+    // Tables with engagementId but no ON DELETE CASCADE — must be deleted
+    // explicitly before the parent row.
+    const tablesNoCascade = [
+      'BusinessProfile', 'LicenseProfile', 'Phase', 'ConflictLog',
+      'GenerationJob', 'SectionComment', 'SectionImage', 'AIAdvice',
+    ];
+    for (const t of tablesNoCascade) {
+      await db.execute({
+        sql: `DELETE FROM ${t} WHERE engagementId = ?`,
+        args: [id],
+      });
+    }
+    // ProjectMember: also no cascade. Delete it AFTER any tables that FK
+    // into it (PortalSession, PortalMagicLink, PendingSubmission, StagedFile)
+    // have been cleaned. Those tables have ON DELETE CASCADE on engagementId
+    // but their memberId FK on ProjectMember is also CASCADE / NO ACTION, so
+    // wiping engagement-level rows first is safest.
+    await db.execute({
+      sql: `DELETE FROM ProjectMember WHERE engagementId = ?`,
+      args: [id],
+    });
+    // Vertical-workspace children: orphan them rather than cascade-deleting
+    // (preserves child engagements that may have independent value).
+    await db.execute({
+      sql: `UPDATE Engagement SET parentEngagementId = NULL WHERE parentEngagementId = ?`,
+      args: [id],
+    });
+    // The remaining tables (PortalTodo, RiskItem, IssueItem, DecisionItem,
+    // MeetingNote, MigrationItem, ActivityLog, ClientPortalToken,
+    // DataCollectionItem, DataFile, PortalSession, PortalMagicLink,
+    // PendingSubmission, StagedFile, ConversationThread, Message) have
+    // ON DELETE CASCADE on engagementId or threadId — they vanish
+    // automatically when the parent row goes.
+    await db.execute({
+      sql: `DELETE FROM Engagement WHERE id = ?`,
+      args: [id],
+    });
+    await db.execute('COMMIT');
+    return true;
+  } catch (err) {
+    try { await db.execute('ROLLBACK'); } catch { /* swallow secondary error */ }
+    throw err;
+  }
 }
 
 export async function updateEngagement(id: string, data: Partial<{ clientName: string; status: string; startDate: string | null; contractEndDate: string | null }>) {

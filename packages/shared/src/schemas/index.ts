@@ -86,7 +86,7 @@ export const CreateJobSchema = z.object({
 export const UpdateEngagementSchema = z.object({
   clientName: z.string().min(1).max(200).optional(),
   status: z
-    .enum(['DISCOVERY', 'SCOPING', 'BUILD', 'UAT', 'GO_LIVE'])
+    .enum(['DISCOVERY', 'SCOPING', 'BUILD', 'UAT', 'GO_LIVE', 'ARCHIVED'])
     .optional(),
   startDate: z.string().optional().nullable(),
   contractEndDate: z.string().optional().nullable(),
