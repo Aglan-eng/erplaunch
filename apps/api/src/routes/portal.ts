@@ -5,6 +5,21 @@ import * as db from '../db/index.js';
 import { sendPortalInvite, APP_URL } from '../services/email.js';
 import { allQuestions, type Question } from '@ofoq/shared';
 import { findPendingSubmissionsByEngagement } from '../db/pendingSubmission.js';
+import { createStagedFile } from '../db/stagedFile.js';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+import { createId } from '@paralleldrive/cuid2';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// Mirror the constant in routes/dataCollection.ts. Inlined here to
+// avoid a cross-route dependency. Phase 30 — staging subdirectory is
+// created on demand at module load.
+const PORTAL_UPLOADS_DIR = path.join(__dirname, '../../uploads');
+const PORTAL_STAGING_DIR = path.join(PORTAL_UPLOADS_DIR, 'staged');
+if (!fs.existsSync(PORTAL_STAGING_DIR)) {
+  fs.mkdirSync(PORTAL_STAGING_DIR, { recursive: true });
+}
 
 export async function portalRoutes(fastify: FastifyInstance) {
 
@@ -392,6 +407,111 @@ export async function portalRoutes(fastify: FastifyInstance) {
       });
 
       return reply.send({ data: visible });
+    },
+  );
+
+  // Phase 30 — POST /api/v1/portal/data-files/staged
+  //
+  // Client multipart upload that lands in UPLOADS_DIR/staged/<id>_<ext>
+  // and creates a StagedFile row. Returns { stagedFileId, ... } so the
+  // client can then POST /portal/submissions with targetType='DATA_FILE'
+  // referencing that ID. The 5MB cap from server.ts multipart config
+  // applies (413 on overflow).
+  fastify.post(
+    '/portal/data-files/staged',
+    { preHandler: authenticatePortalSession },
+    async (request, reply) => {
+      const data = await request.file();
+      if (!data) {
+        return reply.code(400).send({
+          error: { code: 'NO_FILE', message: 'multipart file required' },
+        });
+      }
+      const { engagementId, memberId } = request.portalMember;
+
+      // Ext from original name; fallback to .bin if unknown.
+      const ext = path.extname(data.filename || '') || '.bin';
+      const stagedFilename = `${createId()}${ext}`;
+      const stagedPath = path.join(PORTAL_STAGING_DIR, stagedFilename);
+
+      let buffer: Buffer;
+      try {
+        buffer = await data.toBuffer();
+      } catch (err) {
+        request.log.error({ err }, 'failed to read multipart buffer');
+        return reply.code(400).send({
+          error: { code: 'UPLOAD_READ_FAILED', message: 'failed to read uploaded file' },
+        });
+      }
+      try {
+        fs.writeFileSync(stagedPath, buffer);
+      } catch (err) {
+        request.log.error({ err, stagedPath }, 'failed to write staged file');
+        return reply.code(500).send({
+          error: { code: 'UPLOAD_WRITE_FAILED', message: 'failed to write staged file' },
+        });
+      }
+
+      const staged = await createStagedFile({
+        engagementId,
+        memberId,
+        dataCollectionItemId: null,
+        filename: stagedFilename,
+        originalName: data.filename || stagedFilename,
+        mimeType: data.mimetype ?? 'application/octet-stream',
+        sizeBytes: buffer.length,
+        storagePath: stagedPath,
+      });
+
+      return reply.code(201).send({
+        data: {
+          stagedFileId: staged.id,
+          filename: staged.filename,
+          originalName: staged.originalName,
+          mimeType: staged.mimeType,
+          sizeBytes: staged.sizeBytes,
+        },
+      });
+    },
+  );
+
+  // Phase 30 — GET /api/v1/engagements/:id/staged-files/:stagedFileId/download
+  //
+  // Consultant-side preview of a staged file before accepting/rejecting
+  // the submission. Auth + ownership checks; streams the file with the
+  // original filename. 404 if the staged file is gone (e.g. another
+  // reviewer already accepted/rejected, or 24h GC ran).
+  fastify.get(
+    '/engagements/:id/staged-files/:stagedFileId/download',
+    { onRequest: authenticate },
+    async (request, reply) => {
+      const { id, stagedFileId } = request.params as {
+        id: string;
+        stagedFileId: string;
+      };
+
+      const engagement = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
+      if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+
+      const { findStagedFileById } = await import('../db/stagedFile.js');
+      const staged = await findStagedFileById(stagedFileId);
+      if (!staged || staged.engagementId !== id) {
+        return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+      }
+
+      const filePath = path.join(PORTAL_STAGING_DIR, staged.filename);
+      if (!fs.existsSync(filePath)) {
+        return reply.code(404).send({
+          error: { code: 'FILE_NOT_FOUND', message: 'staged file no longer on disk' },
+        });
+      }
+
+      reply.header('Content-Type', staged.mimeType ?? 'application/octet-stream');
+      reply.header(
+        'Content-Disposition',
+        `attachment; filename="${encodeURIComponent(staged.originalName)}"`,
+      );
+      return reply.send(fs.createReadStream(filePath));
     },
   );
 

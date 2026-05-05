@@ -394,6 +394,38 @@ export const portalApi = {
         payload: { questionId, answer },
       })
       .then((r) => r.data.data),
+
+  /** Phase 30 — upload a file to portal staging. Returns
+   *  { stagedFileId, filename, originalName, mimeType, sizeBytes }. */
+  uploadStagedFile: (file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return api
+      .post('/portal/data-files/staged', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      .then((r) => r.data.data as {
+        stagedFileId: string;
+        filename: string;
+        originalName: string;
+        mimeType: string;
+        sizeBytes: number;
+      });
+  },
+
+  /** Phase 30 — submit a staged file against a DataCollectionItem for review. */
+  submitDataFile: (input: {
+    stagedFileId: string;
+    dataCollectionItemId: string;
+    originalFilename: string;
+    sizeBytes: number;
+  }) =>
+    api
+      .post('/portal/submissions', {
+        targetType: 'DATA_FILE',
+        payload: input,
+      })
+      .then((r) => r.data.data),
 };
 
 // ─── Adaptors (platform SPI, Phase 1B) ──────────────────────────────────────

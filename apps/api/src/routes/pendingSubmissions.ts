@@ -352,6 +352,27 @@ export async function pendingSubmissionsRoutes(fastify: FastifyInstance) {
         });
       }
 
+      // Phase 30 — DATA_FILE-specific reject side-effect: delete the
+      // staged file from disk + DB. NOT an acceptor (per §5.1 invariant
+      // — reject never invokes the registered acceptor). Failures here
+      // are logged + tolerated; orphan GC sweeps any leftovers.
+      if (submission.targetType === 'DATA_FILE') {
+        const stagedFileId = (submission.payload as { stagedFileId?: unknown }).stagedFileId;
+        if (typeof stagedFileId === 'string' && stagedFileId.length > 0) {
+          try {
+            const { deleteStagedFileForRejectedSubmission } = await import(
+              '../services/dataFileAcceptor.js'
+            );
+            await deleteStagedFileForRejectedSubmission(stagedFileId);
+          } catch (err) {
+            request.log.warn(
+              { err, submissionId, stagedFileId },
+              'failed to clean up staged file on reject — orphan GC will catch it',
+            );
+          }
+        }
+      }
+
       const memberName = (await lookupMemberName(submission.memberId)) ?? 'Client';
       const commentSuffix = body.comment ? `: ${body.comment}` : '';
       await db.logActivity(

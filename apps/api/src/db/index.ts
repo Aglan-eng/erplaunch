@@ -617,6 +617,40 @@ async function createTables(db: Client) {
     CREATE INDEX IF NOT EXISTS idx_pendingsubmission_engagement_status
       ON PendingSubmission(engagementId, status, createdAt)
   `);
+
+  // ─── Phase 30 — StagedFile (client uploads awaiting consultant review) ─────
+  //
+  // Holds files the client uploaded via /portal/data-files/staged. The
+  // file lives on disk under UPLOADS_DIR/staged/<filename>; this row
+  // tracks the metadata + the engagement/member it belongs to. On
+  // submission accept the DATA_FILE acceptor moves the file to permanent
+  // storage and creates a real DataFile row, then deletes this row. On
+  // reject the route handler unlinks the file + deletes the row.
+  // Orphans (24h+ old, never submitted) are GC'd by stagedFileGc.
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS StagedFile (
+      id                   TEXT PRIMARY KEY,
+      engagementId         TEXT NOT NULL REFERENCES Engagement(id) ON DELETE CASCADE,
+      memberId             TEXT NOT NULL REFERENCES ProjectMember(id),
+      dataCollectionItemId TEXT,
+      filename             TEXT NOT NULL,
+      originalName         TEXT NOT NULL,
+      mimeType             TEXT,
+      sizeBytes            INTEGER NOT NULL DEFAULT 0,
+      storagePath          TEXT NOT NULL,
+      createdAt            TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  await db.execute(`
+    CREATE INDEX IF NOT EXISTS idx_stagedfile_engagement_created
+      ON StagedFile(engagementId, createdAt)
+  `);
+
+  // Phase 30 — track which submission (if any) promoted a DataFile from
+  // staging. Used by the dataFileAcceptor's idempotent re-accept guard:
+  // if staged file is already gone but a DataFile with this submissionId
+  // exists, the prior accept already succeeded; treat as no-op.
+  try { await db.execute(`ALTER TABLE DataFile ADD COLUMN sourceSubmissionId TEXT`); } catch {}
 }
 
 // ─── Helper types ─────────────────────────────────────────────────────────────
@@ -1926,14 +1960,18 @@ export async function createDataFile(data: {
   mimeType: string;
   sizeBytes: number;
   uploadedBy?: string;
+  /** Phase 30 — optional submission ID that promoted this DataFile from
+   *  staging via the §5.1 pending-review flow. Used by the dataFileAcceptor's
+   *  idempotency guard. NULL for direct (legacy) uploads. */
+  sourceSubmissionId?: string;
 }) {
   const db = getDb();
   const id = createId();
   const now = new Date().toISOString();
   await db.execute({
-    sql: `INSERT INTO DataFile (id, engagementId, dataCollectionItemId, filename, originalName, mimeType, sizeBytes, uploadedBy, createdAt)
-          VALUES (?,?,?,?,?,?,?,?,?)`,
-    args: [id, data.engagementId, data.dataCollectionItemId, data.filename, data.originalName, data.mimeType, data.sizeBytes, data.uploadedBy ?? null, now],
+    sql: `INSERT INTO DataFile (id, engagementId, dataCollectionItemId, filename, originalName, mimeType, sizeBytes, uploadedBy, sourceSubmissionId, createdAt)
+          VALUES (?,?,?,?,?,?,?,?,?,?)`,
+    args: [id, data.engagementId, data.dataCollectionItemId, data.filename, data.originalName, data.mimeType, data.sizeBytes, data.uploadedBy ?? null, data.sourceSubmissionId ?? null, now],
   });
   const r = await db.execute({ sql: `SELECT * FROM DataFile WHERE id = ?`, args: [id] });
   return r.rows[0] ? parseRow<Row>(r.rows[0] as Row) : null;

@@ -28,6 +28,9 @@ import { pendingSubmissionsRoutes } from './routes/pendingSubmissions.js';
 // registers the acceptor with the registry at module-load time. Phases
 // 30-32 import their own acceptor modules the same way.
 import './services/wizardAnswerAcceptor.js';
+// Phase 30 — DATA_FILE acceptor + payload schema.
+import './services/dataFileAcceptor.js';
+import { scheduleStagedFileGc } from './services/stagedFileGc.js';
 import { firmBrandingRoutes } from './routes/firmBranding.js';
 import { adaptorRoutes } from './routes/adaptors.js';
 import { customAdaptorRoutes } from './routes/customAdaptors.js';
@@ -172,6 +175,16 @@ export async function buildServer() {
       error: { code: 'INTERNAL_ERROR', message: statusCode === 500 ? 'Internal server error' : error.message },
     });
   });
+
+  // Phase 30 — schedule the staged-file orphan GC. No-op under
+  // NODE_ENV=test so vitest doesn't accumulate background timers.
+  // Hourly sweep; default 24h max age. Logs + tolerates FS errors.
+  const gcInterval = scheduleStagedFileGc();
+  if (gcInterval) {
+    fastify.addHook('onClose', async () => {
+      clearInterval(gcInterval);
+    });
+  }
 
   return fastify;
 }

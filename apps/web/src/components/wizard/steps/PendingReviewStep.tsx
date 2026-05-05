@@ -6,9 +6,14 @@ import {
   getCardRenderer,
   type PendingSubmissionRow,
 } from '../pending-review/cardRenderers';
-// Side-effect import — registers the WIZARD_ANSWER card renderer at module
-// load. Phase 30+ will add their own imports the same way.
+// Side-effect imports — register card renderers at module load. Each
+// phase 29-32 owns one card renderer:
+//   Phase 29 — WizardAnswerCard
+//   Phase 30 — DataFileCard
+//   Phase 31 — QaMessageCard (TODO)
+//   Phase 32 — DecisionSignoffCard (TODO)
 import '../pending-review/WizardAnswerCard';
+import '../pending-review/DataFileCard';
 
 /**
  * Pending Review (Phase 28 foundation, Phase 29 first interactive cards).
@@ -156,12 +161,13 @@ export function PendingReviewStep({ engagementId }: PendingReviewStepProps) {
           </div>
           <p className="text-base font-semibold text-slate-700 mb-2">No pending submissions</p>
           <p className="text-sm text-slate-500 max-w-md mx-auto leading-relaxed">
-            Clients can submit wizard answers from the portal once the consultant allowlists
-            questions in portal settings. Phase 30 will add data-file uploads.
+            Clients can submit wizard answers and upload data files from the portal once the
+            consultant allowlists questions / sends data templates. Phase 31 will add Q&amp;A
+            messaging.
           </p>
           <div className="mt-6 inline-flex items-center gap-2 text-[11px] text-slate-400">
             <Clock className="h-3.5 w-3.5" />
-            Coming next: Phase 30 &mdash; client data-collection upload
+            Coming next: Phase 31 &mdash; two-way Q&amp;A messaging
           </div>
         </div>
       ) : (

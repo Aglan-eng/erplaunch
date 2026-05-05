@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, portalApi } from '@/lib/api';
 import {
   TriangleAlert, CircleCheck, Clock, Users, CalendarDays,
   BarChart2, BookOpen, AlertCircle, Upload, FolderOpen,
@@ -138,13 +138,24 @@ function DataCollectionItem({ item, token, memberToken }: { item: any; token: st
     setUploading(true);
     setUploadError(null);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      if (memberToken) formData.append('memberToken', memberToken);
-      await api.post(`/portal/${token}/data-collection/${item.id}/upload`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      // Phase 30 — staging flow:
+      //   1. Upload to /portal/data-files/staged → stagedFileId
+      //   2. Submit /portal/submissions DATA_FILE → goes to consultant
+      //      pending review.
+      // The legacy /portal/:token/data-collection/:itemId/upload endpoint
+      // still exists for backwards compat but the SPA no longer calls it.
+      const staged = await portalApi.uploadStagedFile(file);
+      await portalApi.submitDataFile({
+        stagedFileId: staged.stagedFileId,
+        dataCollectionItemId: item.id,
+        originalFilename: staged.originalName,
+        sizeBytes: staged.sizeBytes,
       });
       setUploaded(true);
+      // Refresh the portal payload — item status will be unchanged until
+      // consultant accepts (Phase 30 keeps DataCollectionItem.status
+      // PENDING until accept), but a refresh keeps the rest of the UI
+      // consistent.
       qc.invalidateQueries({ queryKey: ['portal', token] });
     } catch {
       setUploadError('Upload failed. Please try again.');
