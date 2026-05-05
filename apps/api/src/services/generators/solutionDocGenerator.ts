@@ -27,6 +27,42 @@ function fmt(question: AdaptorQuestion, raw: unknown): string {
 
 const md = new MarkdownIt({ html: true, typographer: true });
 
+/**
+ * Phase 25 — parse ns.design.standardRolesStructured for solution-doc display.
+ * Defensive: handles string, null, undefined, and malformed JSON gracefully.
+ * Mirrors the parsing logic in sdfStructuredRolesGenerator but trims to only
+ * the fields the solution doc renders (name + 3 overrides + notes).
+ */
+interface DocStructuredRole {
+  name: string;
+  centerOverride: string | null;
+  restrictionOverride: string | null;
+  customizationNotes: string;
+}
+function parseStructuredRolesForDoc(raw: unknown): DocStructuredRole[] {
+  if (raw === null || raw === undefined) return [];
+  let parsed: unknown = raw;
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (trimmed.length === 0) return [];
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(parsed)) return [];
+  return parsed
+    .filter((r): r is Record<string, unknown> => r !== null && typeof r === 'object')
+    .map((r) => ({
+      name: typeof r.name === 'string' ? r.name : '',
+      centerOverride: typeof r.centerOverride === 'string' ? r.centerOverride : null,
+      restrictionOverride: typeof r.restrictionOverride === 'string' ? r.restrictionOverride : null,
+      customizationNotes: typeof r.customizationNotes === 'string' ? r.customizationNotes : '',
+    }))
+    .filter((r) => r.name.trim().length > 0);
+}
+
 export interface SolutionDocData {
   clientName: string;
   /** Adaptor context — required so prose flexes per platform. Same shape
@@ -481,7 +517,13 @@ export function generateSolutionDoc(data: SolutionDocData): string {
   doc += `---\n\n`;
 
   // ── SECTION 6: Roles & Permissions ──────────────────────────────────────────
+  // Phase 25 — when ns.design.standardRolesStructured is populated, render the
+  // structured roles in addition to the canonical role table. The structured
+  // payload drives the SDF customrole_*.xml emit; this surfaces the same
+  // captured intent in the design document so consultants and clients see
+  // exactly what's about to be deployed.
   doc += `## 5. User Roles & Access\n\n`;
+  doc += `### 5.1 Canonical Roles\n\n`;
   doc += `| Role | Functional Area | Key Permissions |\n| :--- | :--- | :--- |\n`;
   doc += `| Finance Manager | R2R, P2P | Period close, journal entries, AP payments |\n`;
   doc += `| Procurement Manager | P2P | PO approval, vendor management |\n`;
@@ -489,6 +531,27 @@ export function generateSolutionDoc(data: SolutionDocData): string {
   if (hasFlow('mfg.')) doc += `| Production Manager | MFG | Work orders, BOM management, demand planning |\n`;
   if (hasFlow('rtn.')) doc += `| Warehouse Manager | RTN | RMA processing, returns inspection |\n`;
   doc += `| System Administrator | All | Full access for configuration and support |\n\n`;
+
+  if (isNetSuite) {
+    const structuredRoles = parseStructuredRolesForDoc(answers['ns.design.standardRolesStructured']);
+    if (structuredRoles.length > 0) {
+      doc += `### 5.2 Captured Custom Roles (Phase 25 structured editor)\n\n`;
+      doc += `These roles will be emitted as Oracle SDF \`customrole_nsix_*.xml\` objects on Generate Package. The classifier auto-selects a starter permission set per role family; explicit overrides are noted in the Center / Restriction columns.\n\n`;
+      doc += `| Role Name | Center Override | Restriction Override | Customization Notes |\n| :--- | :--- | :--- | :--- |\n`;
+      for (const r of structuredRoles) {
+        const center = r.centerOverride ?? '— (classifier)';
+        const restriction = r.restrictionOverride ?? '— (classifier)';
+        const notes = r.customizationNotes.trim().length > 0 ? r.customizationNotes : '—';
+        doc += `| ${r.name} | ${center} | ${restriction} | ${notes} |\n`;
+      }
+      doc += `\n`;
+      doc += `**Deploy notes:** after \`pnpm generate\`, review each \`SDF/Objects/customrole_nsix_*.xml\` for permission alignment against your SoD policy. The XML comment header inside each file enumerates the overlay rules that were applied (read-only, group-wide, subsidiary-scoped, remove-approve). Test role login + transaction creation in sandbox before promoting to production.\n\n`;
+    } else if (typeof answers['ns.design.standardRoleCustomization'] === 'string' &&
+               (answers['ns.design.standardRoleCustomization'] as string).trim().length > 0) {
+      doc += `### 5.2 Captured Custom Roles (legacy textarea)\n\n`;
+      doc += `Custom roles captured via the free-text TEXTAREA. Each line emits one \`customrole_nsix_*.xml\` on Generate Package. To migrate to the structured editor for richer per-role control, use the Customizations → Roles step in the wizard.\n\n`;
+    }
+  }
   doc += `---\n\n`;
 
   // ── SECTION 7: Risks & Open Items ───────────────────────────────────────────

@@ -32,6 +32,10 @@ import { generateWorkflowActionScripts } from './generators/sdfWorkflowActionScr
 import { generateSavedSearches } from './generators/sdfSavedSearchGenerator.js';
 import { generateDashboards } from './generators/sdfDashboardGenerator.js';
 import { generateRoles } from './generators/sdfRoleGenerator.js';
+import {
+  generateSdfStructuredRoles,
+  resolveLegacyStandardRoleCustomization,
+} from './generators/sdfStructuredRolesGenerator.js';
 import { generateAccountingPreferences } from './generators/sdfAccountingPreferencesGenerator.js';
 import { generateCompanyInformation } from './generators/sdfCompanyInformationGenerator.js';
 import { generateGeneralPreferences } from './generators/sdfGeneralPreferencesGenerator.js';
@@ -241,6 +245,22 @@ export async function processJob(jobId: string, db: DbModule) {
     const profile = (eng.profile ?? {}) as Record<string, any>;
     const answers = profile.answers ?? {};
 
+    // Phase 25 — compute the effective ns.design.standardRoleCustomization
+    // value once for the whole generation pass. When the structured editor
+    // (ns.design.standardRolesStructured) is populated, the legacy textarea
+    // is treated as empty so:
+    //   1. sdfRoleGenerator (Pack C) skips emit (structured generator emits
+    //      its own customrole_*.xml set instead).
+    //   2. signOffMatrix / perRoleTrainingGuide / trainingMatrix doc generators
+    //      see "no NetSuite roles" rather than stale legacy data — keeps
+    //      docs and SDF in sync per Phase 23 precedence pattern.
+    // When the structured key is empty, this passes through the legacy
+    // textarea unchanged.
+    const effectiveStandardRoleCustomization = resolveLegacyStandardRoleCustomization(
+      answers['ns.design.standardRoleCustomization'] as string | null | undefined,
+      answers['ns.design.standardRolesStructured'] as string | null | undefined,
+    );
+
     // Load rich content (comments, images, AI advice)
     const comments = await db.getSectionComments(eng.id);
     const images = await db.getSectionImages(eng.id);
@@ -348,9 +368,9 @@ export async function processJob(jobId: string, db: DbModule) {
       // Pack C standardRoleCustomization supplements the role list when
       // present (NetSuite engagements). Other adaptors don't have this
       // answer; the generator handles the empty case gracefully.
-      standardRoleCustomization: answers['ns.design.standardRoleCustomization'] as
-        | string
-        | undefined,
+      // Phase 25 — uses the precedence-resolved value so structured-editor
+      // engagements don't re-emit stale legacy textarea data here.
+      standardRoleCustomization: effectiveStandardRoleCustomization,
       members: signoffMembers,
       adaptorName: adaptorCtx.name,
     });
@@ -407,9 +427,9 @@ export async function processJob(jobId: string, db: DbModule) {
     const perRoleResult = generatePerRoleTrainingGuides({
       clientName: eng.clientName as string,
       trainingPerRole: answers['training.curriculum.trainingPerRole'] as string | undefined,
-      standardRoleCustomization: answers['ns.design.standardRoleCustomization'] as
-        | string
-        | undefined,
+      // Phase 25 — uses the precedence-resolved value so structured-editor
+      // engagements don't show stale legacy textarea roles in training docs.
+      standardRoleCustomization: effectiveStandardRoleCustomization,
       cascadeStrategy: answers['training.curriculum.cascadeStrategy'] as string | undefined,
       deliveryMode: answers['training.schedule.deliveryMode'] as string | undefined,
       assessmentRequired: answers['training.assessment.assessmentRequired'] === true,
@@ -458,9 +478,9 @@ export async function processJob(jobId: string, db: DbModule) {
       clientName: eng.clientName as string,
       adaptorName: adaptorCtx.name,
       trainingPerRole: answers['training.curriculum.trainingPerRole'] as string | undefined,
-      standardRoleCustomization: answers['ns.design.standardRoleCustomization'] as
-        | string
-        | undefined,
+      // Phase 25 — uses the precedence-resolved value so structured-editor
+      // engagements don't show stale legacy textarea roles in the matrix.
+      standardRoleCustomization: effectiveStandardRoleCustomization,
       // Workstream scope flags — when none provided the matrix renders
       // all 9 columns (best-guess complete). When any explicit flag is
       // provided the matrix filters to in-scope columns only.
@@ -1381,10 +1401,28 @@ export async function processJob(jobId: string, db: DbModule) {
       // customization-notes overlay. Three AccountConfiguration files
       // (companyinformation / accountingpreferences / generalpreferences)
       // ride alongside under SDF/AccountConfiguration/.
+      //
+      // Phase 25 — structured editor parallel emit. When the structured
+      // answer key `ns.design.standardRolesStructured` is populated, the
+      // legacy textarea is treated as empty (effectiveStandardRoleCustomization
+      // resolves to undefined), preventing double-emission. The structured
+      // generator runs alongside and emits its own customrole_*.xml set
+      // with per-row override semantics. Same shape as Phase 23 custom
+      // fields. Variable hoisted to top of function so doc-gen consumers
+      // (signOffMatrix / training guides / training matrix) stay in sync.
       const rolesResult = generateRoles({
-        standardRoleCustomization: answers['ns.design.standardRoleCustomization'] as string | undefined,
+        standardRoleCustomization: effectiveStandardRoleCustomization,
       });
       Object.assign(sdfFiles, rolesResult.files);
+
+      const structuredRolesResult = generateSdfStructuredRoles({
+        adaptorId: 'netsuite',
+        structuredAnswer: answers['ns.design.standardRolesStructured'] as
+          | string
+          | null
+          | undefined,
+      });
+      Object.assign(sdfFiles, structuredRolesResult.files);
 
       // Base currency for companyinformation derives from the FIRST
       // parsed subsidiary (the root tenant subsidiary). Fall back to

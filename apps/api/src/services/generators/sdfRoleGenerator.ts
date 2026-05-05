@@ -324,7 +324,9 @@ export function applyOverlay(
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function xmlEscape(s: string): string {
+// Phase 25 — exported so sdfStructuredRolesGenerator can reuse the same
+// XML-build path. Identical behaviour, no semantic changes.
+export function xmlEscape(s: string): string {
   return s
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -333,7 +335,7 @@ function xmlEscape(s: string): string {
     .replace(/'/g, '&apos;');
 }
 
-function slugify(s: string): string {
+export function slugify(s: string): string {
   const cleaned = s
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '_')
@@ -359,7 +361,9 @@ function parseLine(line: string): ParsedRoleLine | null {
 
 // ─── XML emission ────────────────────────────────────────────────────────────
 
-function buildRoleXml(args: {
+// Phase 25 — exported so sdfStructuredRolesGenerator can reuse the same
+// XML-build path. Identical behaviour, no semantic changes.
+export function buildRoleXml(args: {
   scriptid: string;
   roleName: string;
   center: CenterId;
