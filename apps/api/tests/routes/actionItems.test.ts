@@ -7,7 +7,7 @@ import { createId } from '@paralleldrive/cuid2';
 import { setupTestDb } from '../_helpers/testDb.js';
 import { actionItemRoutes } from '../../src/routes/actionItems.js';
 import { activityRoutes } from '../../src/routes/activity.js';
-import { getDb, createEngagement } from '../../src/db/index.js';
+import { getDb, createEngagement, bootstrapFirmAdmin } from '../../src/db/index.js';
 
 const JWT_SECRET = 'test-action-items-secret';
 let cleanup: () => void;
@@ -45,6 +45,8 @@ async function seed(): Promise<SeedFixture> {
   });
   const eng = await createEngagement({ firmId, clientName: 'Acme Action Client' });
   const engagementId = (eng as { id: string }).id;
+  // Phase 44.3 — RBAC gates require a role to read/write.
+  await bootstrapFirmAdmin({ firmId, userId });
   const token = app.jwt.sign({ userId, firmId, role: 'CONSULTANT', name: 'Tester', email: `${userId}@example.com` });
   return { firmId, userId, engagementId, token };
 }

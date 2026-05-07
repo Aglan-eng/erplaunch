@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { authenticate } from '../middleware/auth.js';
+import { requirePermission } from '../middleware/rbac.js';
 import * as db from '../db/index.js';
 
 // Phase 38.1 — whitelist of consultant-author activity actions accepted via
@@ -11,8 +12,8 @@ const MANUAL_ACTION_WHITELIST = new Set(['NOTE', 'OBSERVATION', 'TODO', 'DECISIO
 export async function activityRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', authenticate);
 
-  // GET /engagements/:id/activity
-  fastify.get('/engagements/:id/activity', async (request, reply) => {
+  // GET /engagements/:id/activity — Phase 44.3: READ-gated.
+  fastify.get('/engagements/:id/activity', { preHandler: requirePermission('READ', 'ACTIVITY_LOG') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const { limit } = request.query as { limit?: string };
     const engagement = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
@@ -29,7 +30,7 @@ export async function activityRoutes(fastify: FastifyInstance) {
   // values so the activity feed's vocabulary stays bounded; arbitrary strings
   // are 400'd. detail is required + non-empty (a blank note has no audit
   // value).
-  fastify.post('/engagements/:id/activity', async (request, reply) => {
+  fastify.post('/engagements/:id/activity', { preHandler: requirePermission('WRITE', 'ACTIVITY_LOG') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const engagement = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });

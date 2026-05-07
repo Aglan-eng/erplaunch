@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { authenticate } from '../middleware/auth.js';
+import { requirePermission } from '../middleware/rbac.js';
 import * as db from '../db/index.js';
 import { DATA_TEMPLATES, getTemplatesForVertical } from '../config/dataTemplates.js';
 import { getVertical } from '../config/verticals.js';
@@ -406,7 +407,10 @@ export async function dataCollectionRoutes(fastify: FastifyInstance) {
   // ─── Collection Items ─────────────────────────────────────────────────────
 
   // GET /engagements/:id/data-collection
-  fastify.get('/engagements/:id/data-collection', { onRequest: authenticate }, async (request, reply) => {
+  fastify.get('/engagements/:id/data-collection', {
+    onRequest: authenticate,
+    preHandler: requirePermission('READ', 'DATA_COLLECTION'),
+  }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const engagement = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
@@ -421,7 +425,10 @@ export async function dataCollectionRoutes(fastify: FastifyInstance) {
   // DataCollectionItem columns (name/category/description/assignedTo)
   // so the existing list/upload/validate pipelines pick up the new
   // rows transparently. status defaults to PENDING.
-  fastify.post('/engagements/:id/data-collection', { onRequest: authenticate }, async (request, reply) => {
+  fastify.post('/engagements/:id/data-collection', {
+    onRequest: authenticate,
+    preHandler: requirePermission('WRITE', 'DATA_COLLECTION'),
+  }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const engagement = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
@@ -454,7 +461,10 @@ export async function dataCollectionRoutes(fastify: FastifyInstance) {
   });
 
   // PATCH /engagements/:id/data-collection/:itemId
-  fastify.patch('/engagements/:id/data-collection/:itemId', { onRequest: authenticate }, async (request, reply) => {
+  fastify.patch('/engagements/:id/data-collection/:itemId', {
+    onRequest: authenticate,
+    preHandler: requirePermission('WRITE', 'DATA_COLLECTION'),
+  }, async (request, reply) => {
     const { id, itemId } = request.params as { id: string; itemId: string };
     const engagement = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
@@ -465,7 +475,10 @@ export async function dataCollectionRoutes(fastify: FastifyInstance) {
   });
 
   // DELETE /engagements/:id/data-collection/:itemId
-  fastify.delete('/engagements/:id/data-collection/:itemId', { onRequest: authenticate }, async (request, reply) => {
+  fastify.delete('/engagements/:id/data-collection/:itemId', {
+    onRequest: authenticate,
+    preHandler: requirePermission('WRITE', 'DATA_COLLECTION'),
+  }, async (request, reply) => {
     const { id, itemId } = request.params as { id: string; itemId: string };
     const engagement = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });

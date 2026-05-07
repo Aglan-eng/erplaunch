@@ -27,6 +27,7 @@ import {
   UpdateCustomAdaptorDraftSchema,
 } from '@ofoq/shared';
 import { authenticate } from '../middleware/auth.js';
+import { requirePermission } from '../middleware/rbac.js';
 import * as db from '../db/index.js';
 import { parseCustomAdaptor } from '../services/customAdaptorParse.js';
 
@@ -48,14 +49,16 @@ const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5 MB per file (matches fastify-mult
 export async function customAdaptorRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', authenticate);
 
-  // ── List
-  fastify.get('/custom-adaptors', async (request, reply) => {
+  // ── List — Phase 44.3: READ-gated on INTEGRATIONS (firm-level
+  // resource; matrix grants this to APP_ADMIN, SALES_MANAGER,
+  // PROJECT_MANAGER+, INTERNAL_ACCOUNTANT, etc.).
+  fastify.get('/custom-adaptors', { preHandler: requirePermission('READ', 'INTEGRATIONS') }, async (request, reply) => {
     const rows = await db.listCustomAdaptorsForFirm(request.jwtUser.firmId);
     return reply.send({ data: rows });
   });
 
   // ── Create
-  fastify.post('/custom-adaptors', async (request, reply) => {
+  fastify.post('/custom-adaptors', { preHandler: requirePermission('WRITE', 'INTEGRATIONS') }, async (request, reply) => {
     const parsed = CreateCustomAdaptorSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: parsed.error.message } });
@@ -84,7 +87,7 @@ export async function customAdaptorRoutes(fastify: FastifyInstance) {
   });
 
   // ── Get one (firm-scoped)
-  fastify.get('/custom-adaptors/:id', async (request, reply) => {
+  fastify.get('/custom-adaptors/:id', { preHandler: requirePermission('READ', 'INTEGRATIONS') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const row = await db.findCustomAdaptorById(id);
     if (!row) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
@@ -93,7 +96,7 @@ export async function customAdaptorRoutes(fastify: FastifyInstance) {
   });
 
   // ── Upload a single document
-  fastify.post('/custom-adaptors/:id/documents', async (request, reply) => {
+  fastify.post('/custom-adaptors/:id/documents', { preHandler: requirePermission('WRITE', 'INTEGRATIONS') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const row = await db.findCustomAdaptorById(id);
     if (!row) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
@@ -129,7 +132,7 @@ export async function customAdaptorRoutes(fastify: FastifyInstance) {
   });
 
   // ── Kick off AI parse (non-blocking; client polls GET /:id for status)
-  fastify.post('/custom-adaptors/:id/parse', async (request, reply) => {
+  fastify.post('/custom-adaptors/:id/parse', { preHandler: requirePermission('WRITE', 'INTEGRATIONS') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const row = await db.findCustomAdaptorById(id);
     if (!row) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
@@ -153,7 +156,7 @@ export async function customAdaptorRoutes(fastify: FastifyInstance) {
   });
 
   // ── Edit the parsed draft before publish
-  fastify.patch('/custom-adaptors/:id/draft', async (request, reply) => {
+  fastify.patch('/custom-adaptors/:id/draft', { preHandler: requirePermission('WRITE', 'INTEGRATIONS') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const row = await db.findCustomAdaptorById(id);
     if (!row) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
@@ -180,7 +183,7 @@ export async function customAdaptorRoutes(fastify: FastifyInstance) {
   });
 
   // ── Publish
-  fastify.post('/custom-adaptors/:id/publish', async (request, reply) => {
+  fastify.post('/custom-adaptors/:id/publish', { preHandler: requirePermission('WRITE', 'INTEGRATIONS') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const row = await db.findCustomAdaptorById(id);
     if (!row) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
@@ -195,7 +198,7 @@ export async function customAdaptorRoutes(fastify: FastifyInstance) {
   });
 
   // ── Archive (soft-delete)
-  fastify.post('/custom-adaptors/:id/archive', async (request, reply) => {
+  fastify.post('/custom-adaptors/:id/archive', { preHandler: requirePermission('WRITE', 'INTEGRATIONS') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const row = await db.findCustomAdaptorById(id);
     if (!row) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });

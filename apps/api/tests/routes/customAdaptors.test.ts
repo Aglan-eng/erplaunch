@@ -10,6 +10,7 @@ import {
   getDb,
   savePlatformAdaptorDraft,
   findCustomAdaptorById,
+  bootstrapFirmAdmin,
 } from '../../src/db/index.js';
 
 const JWT_SECRET = 'test-custom-adaptors-suite-secret';
@@ -45,6 +46,9 @@ async function seedFirmAndToken(firmName = 'Test Firm'): Promise<{ firmId: strin
     sql: `INSERT INTO User (id, firmId, email, name, passwordHash, role, createdAt) VALUES (?,?,?,?,?,?,?)`,
     args: [userId, firmId, `${userId}@example.com`, 'Tester', 'not-used', 'CONSULTANT', now],
   });
+  // Phase 44.3 — RBAC gates. Bootstrap APP_ADMIN so this user can
+  // exercise the now-gated /custom-adaptors surface.
+  await bootstrapFirmAdmin({ firmId, userId });
   const token = app.jwt.sign({ userId, firmId, role: 'CONSULTANT', name: 'Tester', email: `${userId}@example.com` });
   return { firmId, userId, token };
 }

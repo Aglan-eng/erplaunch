@@ -18,6 +18,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import { authenticate } from '../middleware/auth.js';
+import { requirePermission } from '../middleware/rbac.js';
 import * as db from '../db/index.js';
 import {
   createConversationThread,
@@ -36,7 +37,8 @@ export async function threadsRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', authenticate);
 
   // GET /engagements/:id/threads — list all threads for the engagement.
-  fastify.get('/engagements/:id/threads', async (request, reply) => {
+  // Phase 44.3: READ-gated on COMMENTS (threads are conversational comments).
+  fastify.get('/engagements/:id/threads', { preHandler: requirePermission('READ', 'COMMENTS') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const engagement = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
@@ -47,7 +49,7 @@ export async function threadsRoutes(fastify: FastifyInstance) {
   // POST /engagements/:id/threads — consultant creates a thread + first
   // message in one shot. The first message is treated as a
   // consultant→client send (bypasses pending-review — §5.1 asymmetry).
-  fastify.post('/engagements/:id/threads', async (request, reply) => {
+  fastify.post('/engagements/:id/threads', { preHandler: requirePermission('WRITE', 'COMMENTS') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const engagement = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
@@ -90,7 +92,7 @@ export async function threadsRoutes(fastify: FastifyInstance) {
   });
 
   // GET /engagements/:id/threads/:threadId — full thread + messages.
-  fastify.get('/engagements/:id/threads/:threadId', async (request, reply) => {
+  fastify.get('/engagements/:id/threads/:threadId', { preHandler: requirePermission('READ', 'COMMENTS') }, async (request, reply) => {
     const { id, threadId } = request.params as { id: string; threadId: string };
     const engagement = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
@@ -108,6 +110,7 @@ export async function threadsRoutes(fastify: FastifyInstance) {
   // §5.1 asymmetry (consultant is source of truth).
   fastify.post(
     '/engagements/:id/threads/:threadId/messages',
+    { preHandler: requirePermission('WRITE', 'COMMENTS') },
     async (request, reply) => {
       const { id, threadId } = request.params as { id: string; threadId: string };
       const engagement = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
@@ -138,7 +141,7 @@ export async function threadsRoutes(fastify: FastifyInstance) {
   );
 
   // PATCH /engagements/:id/threads/:threadId — update status.
-  fastify.patch('/engagements/:id/threads/:threadId', async (request, reply) => {
+  fastify.patch('/engagements/:id/threads/:threadId', { preHandler: requirePermission('WRITE', 'COMMENTS') }, async (request, reply) => {
     const { id, threadId } = request.params as { id: string; threadId: string };
     const engagement = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });

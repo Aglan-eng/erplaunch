@@ -1,12 +1,14 @@
 import type { FastifyInstance } from 'fastify';
 import { authenticate } from '../middleware/auth.js';
+import { requirePermission } from '../middleware/rbac.js';
 import * as db from '../db/index.js';
 
 export async function migrationRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', authenticate);
 
-  // GET /engagements/:id/migration
-  fastify.get('/engagements/:id/migration', async (request, reply) => {
+  // GET /engagements/:id/migration — Phase 44.3: READ on DATA_COLLECTION
+  // (migration items are a sibling concept to data-collection items).
+  fastify.get('/engagements/:id/migration', { preHandler: requirePermission('READ', 'DATA_COLLECTION') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const engagement = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
@@ -15,7 +17,7 @@ export async function migrationRoutes(fastify: FastifyInstance) {
   });
 
   // POST /engagements/:id/migration
-  fastify.post('/engagements/:id/migration', async (request, reply) => {
+  fastify.post('/engagements/:id/migration', { preHandler: requirePermission('WRITE', 'DATA_COLLECTION') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const engagement = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
@@ -38,7 +40,7 @@ export async function migrationRoutes(fastify: FastifyInstance) {
   });
 
   // PATCH /engagements/:id/migration/:itemId
-  fastify.patch('/engagements/:id/migration/:itemId', async (request, reply) => {
+  fastify.patch('/engagements/:id/migration/:itemId', { preHandler: requirePermission('WRITE', 'DATA_COLLECTION') }, async (request, reply) => {
     const { id, itemId } = request.params as { id: string; itemId: string };
     const engagement = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
@@ -54,7 +56,7 @@ export async function migrationRoutes(fastify: FastifyInstance) {
   });
 
   // DELETE /engagements/:id/migration/:itemId
-  fastify.delete('/engagements/:id/migration/:itemId', async (request, reply) => {
+  fastify.delete('/engagements/:id/migration/:itemId', { preHandler: requirePermission('WRITE', 'DATA_COLLECTION') }, async (request, reply) => {
     const { id, itemId } = request.params as { id: string; itemId: string };
     const engagement = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });

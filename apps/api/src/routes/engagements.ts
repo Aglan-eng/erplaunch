@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { authenticate } from '../middleware/auth.js';
+import { requirePermission } from '../middleware/rbac.js';
 import { processJob } from '../services/generation.js';
 import { streamJobZip } from '../services/archiveService.js';
 import { buildFileTree, resolveSafePath, mimeForExtension } from '../services/jobFileTree.js';
@@ -320,8 +321,8 @@ export async function engagementRoutes(fastify: FastifyInstance) {
     return reply.send({ data: updated });
   });
 
-  // PATCH /engagements/:id
-  fastify.patch('/engagements/:id', async (request, reply) => {
+  // PATCH /engagements/:id — Phase 44.3: WRITE-gated on ENGAGEMENT_META.
+  fastify.patch('/engagements/:id', { preHandler: requirePermission('WRITE', 'ENGAGEMENT_META') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const check = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!check) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
@@ -660,7 +661,7 @@ export async function engagementRoutes(fastify: FastifyInstance) {
   });
 
   // POST /engagements/:id/generate
-  fastify.post('/engagements/:id/generate', async (request, reply) => {
+  fastify.post('/engagements/:id/generate', { preHandler: requirePermission('WRITE', 'GENERATORS') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const check = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!check) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
@@ -701,7 +702,7 @@ export async function engagementRoutes(fastify: FastifyInstance) {
   });
 
   // GET /engagements/:id/jobs
-  fastify.get('/engagements/:id/jobs', async (request, reply) => {
+  fastify.get('/engagements/:id/jobs', { preHandler: requirePermission('READ', 'GENERATORS') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const check = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!check) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
@@ -710,7 +711,7 @@ export async function engagementRoutes(fastify: FastifyInstance) {
   });
 
   // GET /engagements/:id/jobs/:jobId
-  fastify.get('/engagements/:id/jobs/:jobId', async (request, reply) => {
+  fastify.get('/engagements/:id/jobs/:jobId', { preHandler: requirePermission('READ', 'GENERATORS') }, async (request, reply) => {
     const { id, jobId } = request.params as { id: string; jobId: string };
     const check = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!check) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
@@ -778,7 +779,7 @@ export async function engagementRoutes(fastify: FastifyInstance) {
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   // GET /engagements/:id/members
-  fastify.get('/engagements/:id/members', async (request, reply) => {
+  fastify.get('/engagements/:id/members', { preHandler: requirePermission('READ', 'MEMBERS') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const check = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!check) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
@@ -787,7 +788,7 @@ export async function engagementRoutes(fastify: FastifyInstance) {
   });
 
   // POST /engagements/:id/members
-  fastify.post('/engagements/:id/members', async (request, reply) => {
+  fastify.post('/engagements/:id/members', { preHandler: requirePermission('WRITE', 'MEMBERS') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const check = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!check) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
@@ -801,7 +802,7 @@ export async function engagementRoutes(fastify: FastifyInstance) {
   });
 
   // DELETE /engagements/:id/members/:memberId
-  fastify.delete('/engagements/:id/members/:memberId', async (request, reply) => {
+  fastify.delete('/engagements/:id/members/:memberId', { preHandler: requirePermission('WRITE', 'MEMBERS') }, async (request, reply) => {
     const { id, memberId } = request.params as { id: string; memberId: string };
     const check = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!check) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
@@ -818,7 +819,10 @@ export async function engagementRoutes(fastify: FastifyInstance) {
   });
 
   // PATCH /engagements/:id/members/:memberId
-  fastify.patch('/engagements/:id/members/:memberId', { onRequest: authenticate }, async (request, reply) => {
+  fastify.patch('/engagements/:id/members/:memberId', {
+    onRequest: authenticate,
+    preHandler: requirePermission('WRITE', 'MEMBERS'),
+  }, async (request, reply) => {
     const { id, memberId } = request.params as { id: string; memberId: string };
     const check = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!check) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });

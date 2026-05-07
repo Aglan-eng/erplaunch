@@ -8,7 +8,7 @@ import { createId } from '@paralleldrive/cuid2';
 import { setupTestDb } from '../_helpers/testDb.js';
 import { dataCollectionRoutes } from '../../src/routes/dataCollection.js';
 import { activityRoutes } from '../../src/routes/activity.js';
-import { getDb, createEngagement } from '../../src/db/index.js';
+import { getDb, createEngagement, bootstrapFirmAdmin } from '../../src/db/index.js';
 
 const JWT_SECRET = 'test-data-collection-create-secret';
 let cleanup: () => void;
@@ -47,6 +47,8 @@ async function seed(): Promise<SeedFixture> {
   });
   const eng = await createEngagement({ firmId, clientName: 'Acme DC Client' });
   const engagementId = (eng as { id: string }).id;
+  // Phase 44.3 — RBAC gate.
+  await bootstrapFirmAdmin({ firmId, userId });
   const token = app.jwt.sign({ userId, firmId, role: 'CONSULTANT', name: 'Tester', email: `${userId}@example.com` });
   return { firmId, userId, engagementId, token };
 }

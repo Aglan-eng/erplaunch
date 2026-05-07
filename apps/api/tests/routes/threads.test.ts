@@ -10,7 +10,7 @@ import { portalRoutes } from '../../src/routes/portal.js';
 import { portalAuthRoutes } from '../../src/routes/portalAuth.js';
 import { pendingSubmissionsRoutes } from '../../src/routes/pendingSubmissions.js';
 import { threadsRoutes } from '../../src/routes/threads.js';
-import { getDb, upsertFirmEmailSettings } from '../../src/db/index.js';
+import { getDb, upsertFirmEmailSettings, bootstrapFirmAdmin } from '../../src/db/index.js';
 import { __setTestTransportFactory } from '../../src/services/emailTransport.js';
 import {
   createConversationThread,
@@ -118,6 +118,9 @@ async function seedConsultantUser(firmId: string): Promise<{ userId: string; tok
           VALUES (?,?,?,?,?,?,?)`,
     args: [userId, firmId, `${userId}@x.com`, 'C', passwordHash, 'CONSULTANT', new Date().toISOString()],
   });
+  // Phase 44.3 — RBAC gate. Bootstrap APP_ADMIN for the consultant
+  // so the now-gated /threads endpoints accept their requests.
+  await bootstrapFirmAdmin({ firmId, userId });
   const token = app.jwt.sign({ userId, firmId, role: 'CONSULTANT', name: 'C', email: `${userId}@x.com` });
   return { userId, token };
 }
