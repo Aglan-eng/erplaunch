@@ -1132,6 +1132,30 @@ export async function engagementRoutes(fastify: FastifyInstance) {
     const adaptorId = (engRow.adaptorId as string | undefined) ?? 'netsuite';
     const { platform, adaptorQuestions } = await resolveAdaptorContext(adaptorId, request.jwtUser.firmId);
 
+    // Phase 40.5 — fold engagement context (risks, decisions, members)
+    // into the suggestion prompt so Claude's recommendations stay
+    // consistent with what the team has already agreed to. Each fetch
+    // is independently tolerant of missing data so a brand-new
+    // engagement still gets useful suggestions.
+    const [riskRows, decisionRows, memberRows] = await Promise.all([
+      db.listRisks(id).catch(() => []),
+      db.listDecisions(id).catch(() => []),
+      db.getMembers(id).catch(() => []),
+    ]);
+    const engagementContext = {
+      risks: (riskRows as Array<Record<string, unknown>>).map((r) => ({
+        title: String(r.title ?? ''),
+        severity: r.severity ? String(r.severity) : undefined,
+      })),
+      decisions: (decisionRows as Array<Record<string, unknown>>).map((d) => ({
+        title: String(d.title ?? ''),
+      })),
+      members: (memberRows as Array<Record<string, unknown>>).map((m) => ({
+        name: String(m.name ?? ''),
+        role: String(m.role ?? ''),
+      })),
+    };
+
     const suggestions = await generateSectionSuggestions(
       sectionKey,
       answers,
@@ -1144,7 +1168,7 @@ export async function engagementRoutes(fastify: FastifyInstance) {
         edition: (license?.edition as string) || 'MID_MARKET',
         modules: (license?.modules as string[]) || [],
       },
-      { platform, adaptorQuestions },
+      { platform, adaptorQuestions, engagementContext },
     );
 
     return reply.send({ data: suggestions });

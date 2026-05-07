@@ -168,12 +168,62 @@ Generate answers for ALL applicable questions. Skip questions whose dependsOn co
 
 // ── Section-level Suggestion Generation ─────────────────────────────────────
 
+/**
+ * Phase 40.5 — engagement context shape. Risks/decisions/members are
+ * folded into the suggestion prompt so Claude's recommendations stay
+ * consistent with constraints the team has already agreed to. Keeping
+ * the shape narrow (title + severity + role) keeps token usage bounded
+ * and the data-shape decoupled from the full DB rows.
+ */
+export interface SectionSuggestionContext {
+  risks?: Array<{ title: string; severity?: string }>;
+  decisions?: Array<{ title: string }>;
+  members?: Array<{ name: string; role: string }>;
+}
+
+const MAX_CONTEXT_ITEMS = 10;
+
+function buildContextBlock(ctx: SectionSuggestionContext | undefined): string {
+  if (!ctx) return '';
+  const lines: string[] = [];
+
+  if (ctx.risks && ctx.risks.length > 0) {
+    const items = ctx.risks.slice(0, MAX_CONTEXT_ITEMS).map((r) => {
+      const sev = r.severity ? ` [${r.severity}]` : '';
+      return `- ${r.title}${sev}`;
+    });
+    lines.push('Known risks on this engagement:', ...items);
+  }
+
+  if (ctx.decisions && ctx.decisions.length > 0) {
+    if (lines.length > 0) lines.push('');
+    const items = ctx.decisions.slice(0, MAX_CONTEXT_ITEMS).map((d) => `- ${d.title}`);
+    lines.push('Decisions already taken:', ...items);
+  }
+
+  if (ctx.members && ctx.members.length > 0) {
+    if (lines.length > 0) lines.push('');
+    const items = ctx.members.slice(0, MAX_CONTEXT_ITEMS).map((m) => `- ${m.name} (${m.role})`);
+    lines.push('Project team:', ...items);
+  }
+
+  return lines.join('\n');
+}
+
+// Exposed for unit testing — the shape is exercised separately so changes
+// to the prompt structure don't silently break engagement-context folding.
+export const __testing = { buildContextBlock };
+
 export async function generateSectionSuggestions(
   sectionKey: string,
   existingAnswers: Record<string, unknown>,
   clientInfo: { industry: string; companySize: string; country: string },
   license: { edition: string; modules: string[] },
-  options: { platform?: { id: string; name: string; vendor?: string }; adaptorQuestions?: Question[] } = {},
+  options: {
+    platform?: { id: string; name: string; vendor?: string };
+    adaptorQuestions?: Question[];
+    engagementContext?: SectionSuggestionContext;
+  } = {},
 ): Promise<SectionSuggestions> {
   const client = getAnthropicClient();
   const model = getAiModel();
@@ -209,8 +259,11 @@ export async function generateSectionSuggestions(
 
   const systemPrompt = `You are a ${platformName} expert. Suggest answers for unanswered questions based on the client's industry, size, and existing answers. Return ONLY valid JSON: { "suggestedAnswers": { "id": value }, "reasoning": { "id": "why" } }`;
 
+  const contextBlock = buildContextBlock(options.engagementContext);
+  const contextSection = contextBlock ? `\n\nEngagement context:\n${contextBlock}` : '';
+
   const userPrompt = `Client: ${clientInfo.industry}, ${clientInfo.companySize}, ${clientInfo.country}
-License: ${license.edition}, Modules: ${license.modules.join(', ') || 'none'}
+License: ${license.edition}, Modules: ${license.modules.join(', ') || 'none'}${contextSection}
 
 Already answered:
 ${existingStr}

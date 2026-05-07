@@ -4,7 +4,7 @@ import {
   CircleCheck, Circle, ChevronRight, ChevronDown,
   FolderKanban, TriangleAlert, CircleAlert, BookOpen,
   CalendarClock, Truck, Activity, Settings2, Database,
-  Zap, Sparkles, ShieldCheck, FileText, Inbox, MessageCircle,
+  Zap, Sparkles, ShieldCheck, FileText, Inbox, MessageCircle, Wand2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useWizardStore } from '@/stores/wizardStore';
@@ -52,6 +52,12 @@ const MGMT_ITEMS: SidebarItem[] = [
   { key: 'meetings',        label: 'Meeting Notes',     progress: 0, icon: CalendarClock },
   { key: 'data-collection', label: 'Data Collection',   progress: 0, icon: Database      },
   { key: 'migration',       label: 'Migration Tracker', progress: 0, icon: Truck         },
+  // Phase 40.5 — bulk AI auto-fill across multiple sections at once.
+  // Sits near Data Collection because both are "feed the engagement"
+  // surfaces, and below the operational logs (risks/issues/decisions)
+  // because those provide the engagement context the auto-fill prompt
+  // folds in.
+  { key: 'auto-fill',       label: 'AI Auto-Fill',      progress: 0, icon: Wand2         },
   { key: 'activity',        label: 'Activity Feed',     progress: 0, icon: Activity      },
 ];
 
