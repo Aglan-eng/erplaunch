@@ -11,7 +11,7 @@ import { issueRoutes } from '../../src/routes/issues.js';
 import { decisionRoutes } from '../../src/routes/decisions.js';
 import { meetingRoutes } from '../../src/routes/meetings.js';
 import { activityRoutes } from '../../src/routes/activity.js';
-import { getDb, createEngagement } from '../../src/db/index.js';
+import { getDb, createEngagement, bootstrapFirmAdmin } from '../../src/db/index.js';
 
 const JWT_SECRET = 'test-activity-hooks-secret';
 let cleanup: () => void;
@@ -59,6 +59,10 @@ async function seed(): Promise<SeedFixture> {
   });
   const eng = await createEngagement({ firmId, clientName: 'Acme Manufacturing Ltd' });
   const engagementId = (eng as { id: string }).id;
+  // Phase 43.2 — gate the existing routes behind RBAC. The test seed
+  // mimics a freshly-registered firm so the user gets APP_ADMIN
+  // (matches /auth/register's bootstrapFirmAdmin behaviour).
+  await bootstrapFirmAdmin({ firmId, userId });
   const token = app.jwt.sign({
     userId, firmId, role: 'CONSULTANT', name: 'Test', email: `${userId}@example.com`,
   });

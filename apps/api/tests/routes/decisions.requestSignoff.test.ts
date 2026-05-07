@@ -6,7 +6,7 @@ import bcrypt from 'bcryptjs';
 import { createId } from '@paralleldrive/cuid2';
 import { setupTestDb } from '../_helpers/testDb.js';
 import { decisionRoutes } from '../../src/routes/decisions.js';
-import { getDb, createDecision, updateDecisionSignoff, findDecisionById } from '../../src/db/index.js';
+import { getDb, createDecision, updateDecisionSignoff, findDecisionById, bootstrapFirmAdmin } from '../../src/db/index.js';
 
 const JWT_SECRET = 'test-decisions-request-signoff-secret';
 let cleanup: () => void;
@@ -54,6 +54,9 @@ async function seed(): Promise<SeedFixture> {
     rationale: 'Multi-entity client',
   });
   const decisionId = (decision as { id: string }).id;
+  // Phase 43.2 — bootstrap APP_ADMIN so the new RBAC gate on
+  // POST /decisions/:id/request-signoff (WRITE on DECISIONS) passes.
+  await bootstrapFirmAdmin({ firmId, userId });
   const token = app.jwt.sign({
     userId,
     firmId,

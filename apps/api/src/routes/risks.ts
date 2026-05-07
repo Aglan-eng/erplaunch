@@ -1,12 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import { authenticate } from '../middleware/auth.js';
+import { requirePermission } from '../middleware/rbac.js';
 import * as db from '../db/index.js';
 
 export async function riskRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', authenticate);
 
-  // GET /engagements/:id/risks
-  fastify.get('/engagements/:id/risks', async (request, reply) => {
+  // GET /engagements/:id/risks — Phase 43.2: READ-gated.
+  fastify.get('/engagements/:id/risks', { preHandler: requirePermission('READ', 'RISKS') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const engagement = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
@@ -14,8 +15,8 @@ export async function riskRoutes(fastify: FastifyInstance) {
     return reply.send({ data: risks });
   });
 
-  // POST /engagements/:id/risks
-  fastify.post('/engagements/:id/risks', async (request, reply) => {
+  // POST /engagements/:id/risks — WRITE-gated.
+  fastify.post('/engagements/:id/risks', { preHandler: requirePermission('WRITE', 'RISKS') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const engagement = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
@@ -41,7 +42,7 @@ export async function riskRoutes(fastify: FastifyInstance) {
   });
 
   // PATCH /engagements/:id/risks/:riskId
-  fastify.patch('/engagements/:id/risks/:riskId', async (request, reply) => {
+  fastify.patch('/engagements/:id/risks/:riskId', { preHandler: requirePermission('WRITE', 'RISKS') }, async (request, reply) => {
     const { id, riskId } = request.params as { id: string; riskId: string };
     const engagement = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
@@ -57,7 +58,7 @@ export async function riskRoutes(fastify: FastifyInstance) {
   });
 
   // DELETE /engagements/:id/risks/:riskId
-  fastify.delete('/engagements/:id/risks/:riskId', async (request, reply) => {
+  fastify.delete('/engagements/:id/risks/:riskId', { preHandler: requirePermission('WRITE', 'RISKS') }, async (request, reply) => {
     const { id, riskId } = request.params as { id: string; riskId: string };
     const engagement = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });

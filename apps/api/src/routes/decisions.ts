@@ -1,21 +1,32 @@
 import type { FastifyInstance } from 'fastify';
 import { authenticate } from '../middleware/auth.js';
+import { requirePermission } from '../middleware/rbac.js';
 import * as db from '../db/index.js';
 
 export async function decisionRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', authenticate);
 
   // GET /engagements/:id/decisions
-  fastify.get('/engagements/:id/decisions', async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const engagement = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
-    if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
-    const decisions = await db.listDecisions(id);
-    return reply.send({ data: decisions });
-  });
+  // Phase 43.2 — READ on DECISIONS gates the response. The matrix
+  // grants this to most internal roles + clients, denies to
+  // INTERNAL_ACCOUNTANT (their field-level filter strips this field
+  // anyway in /engagements GET).
+  fastify.get(
+    '/engagements/:id/decisions',
+    { preHandler: requirePermission('READ', 'DECISIONS') },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const engagement = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
+      if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+      const decisions = await db.listDecisions(id);
+      return reply.send({ data: decisions });
+    },
+  );
 
   // POST /engagements/:id/decisions
-  fastify.post('/engagements/:id/decisions', async (request, reply) => {
+  // WRITE-gated: PROJECT_MANAGER / PROJECT_LEAD / CLIENT_SPONSOR /
+  // SUPPORT_LEAD (during SLA_ACTIVE) / APP_ADMIN can author decisions.
+  fastify.post('/engagements/:id/decisions', { preHandler: requirePermission('WRITE', 'DECISIONS') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const engagement = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
@@ -39,7 +50,7 @@ export async function decisionRoutes(fastify: FastifyInstance) {
   });
 
   // PATCH /engagements/:id/decisions/:decisionId
-  fastify.patch('/engagements/:id/decisions/:decisionId', async (request, reply) => {
+  fastify.patch('/engagements/:id/decisions/:decisionId', { preHandler: requirePermission('WRITE', 'DECISIONS') }, async (request, reply) => {
     const { id, decisionId } = request.params as { id: string; decisionId: string };
     const engagement = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
@@ -55,7 +66,7 @@ export async function decisionRoutes(fastify: FastifyInstance) {
   });
 
   // DELETE /engagements/:id/decisions/:decisionId
-  fastify.delete('/engagements/:id/decisions/:decisionId', async (request, reply) => {
+  fastify.delete('/engagements/:id/decisions/:decisionId', { preHandler: requirePermission('WRITE', 'DECISIONS') }, async (request, reply) => {
     const { id, decisionId } = request.params as { id: string; decisionId: string };
     const engagement = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
@@ -80,7 +91,7 @@ export async function decisionRoutes(fastify: FastifyInstance) {
   // PENDING (or any other state) returns 409 to keep the audit trail clean
   // and make the consultant aware they're operating on an in-flight or
   // completed sign-off.
-  fastify.post('/engagements/:id/decisions/:decisionId/request-signoff', async (request, reply) => {
+  fastify.post('/engagements/:id/decisions/:decisionId/request-signoff', { preHandler: requirePermission('WRITE', 'DECISIONS') }, async (request, reply) => {
     const { id, decisionId } = request.params as { id: string; decisionId: string };
     const engagement = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });

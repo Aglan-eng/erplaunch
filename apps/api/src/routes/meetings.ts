@@ -1,12 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import { authenticate } from '../middleware/auth.js';
+import { requirePermission } from '../middleware/rbac.js';
 import * as db from '../db/index.js';
 
 export async function meetingRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', authenticate);
 
-  // GET /engagements/:id/meetings
-  fastify.get('/engagements/:id/meetings', async (request, reply) => {
+  // GET /engagements/:id/meetings — Phase 43.2: READ-gated.
+  fastify.get('/engagements/:id/meetings', { preHandler: requirePermission('READ', 'MEETINGS') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const engagement = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
@@ -15,7 +16,7 @@ export async function meetingRoutes(fastify: FastifyInstance) {
   });
 
   // POST /engagements/:id/meetings
-  fastify.post('/engagements/:id/meetings', async (request, reply) => {
+  fastify.post('/engagements/:id/meetings', { preHandler: requirePermission('WRITE', 'MEETINGS') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const engagement = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
@@ -39,7 +40,7 @@ export async function meetingRoutes(fastify: FastifyInstance) {
   });
 
   // PATCH /engagements/:id/meetings/:meetingId
-  fastify.patch('/engagements/:id/meetings/:meetingId', async (request, reply) => {
+  fastify.patch('/engagements/:id/meetings/:meetingId', { preHandler: requirePermission('WRITE', 'MEETINGS') }, async (request, reply) => {
     const { id, meetingId } = request.params as { id: string; meetingId: string };
     const engagement = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
@@ -55,7 +56,7 @@ export async function meetingRoutes(fastify: FastifyInstance) {
   });
 
   // DELETE /engagements/:id/meetings/:meetingId
-  fastify.delete('/engagements/:id/meetings/:meetingId', async (request, reply) => {
+  fastify.delete('/engagements/:id/meetings/:meetingId', { preHandler: requirePermission('WRITE', 'MEETINGS') }, async (request, reply) => {
     const { id, meetingId } = request.params as { id: string; meetingId: string };
     const engagement = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
     if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
