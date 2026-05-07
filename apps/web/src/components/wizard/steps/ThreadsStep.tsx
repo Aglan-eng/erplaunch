@@ -1,15 +1,27 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { MessageCircle, Plus, Send, ChevronLeft, CircleCheck } from 'lucide-react';
 import { engagementsApi } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import {
+  getLastSeenMap,
+  isThreadUnread,
+  setThreadSeen,
+  type LastSeenMap,
+  type ThreadSummary,
+} from '../threadsInboxHelpers';
 
 /**
- * ThreadsStep (Phase 31, consultant side).
+ * ThreadsStep (Phase 31, consultant side; Phase 40.4 polish).
  *
- * Two-pane layout: thread list ↔ thread detail. The detail view shows
- * the full message history + a composer that POSTs consultant messages
- * directly (bypasses pending-review per §5.1 asymmetry).
+ * Two-pane consultant inbox with mobile fallback:
+ *   - md and up: list on the left, detail on the right side-by-side.
+ *   - below md: single pane — list, then detail with a Back button.
+ *
+ * Unread state is local-first: we persist a per-engagement
+ * `{threadId → lastSeenAt}` map in localStorage and stamp it whenever
+ * the consultant opens a thread. The sidebar reads the same store via
+ * threadsInboxHelpers.getUnreadCount and shows a count pill.
  *
  * Client→consultant messages still flow through the Pending Review tab
  * via QaMessageCard. After the consultant accepts a QA_MESSAGE
@@ -40,10 +52,15 @@ interface MessageRow {
   createdAt: string;
 }
 
+function toSummary(t: ThreadRow): ThreadSummary {
+  return { id: t.id, status: t.status, lastMessageAt: t.lastMessageAt };
+}
+
 export function ThreadsStep({ engagementId }: { engagementId: string }) {
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [showCompose, setShowCompose] = useState(false);
   const qc = useQueryClient();
+  const storage = typeof window !== 'undefined' ? window.localStorage : undefined;
 
   const { data: threads, isLoading } = useQuery({
     queryKey: ['threads', engagementId],
@@ -52,23 +69,56 @@ export function ThreadsStep({ engagementId }: { engagementId: string }) {
     staleTime: 15_000,
   });
 
-  const list: ThreadRow[] = Array.isArray(threads) ? threads : [];
+  // Re-read on every render so when ThreadDetail stamps a new lastSeenAt we
+  // reflect it without round-tripping through component state. The map is
+  // small (per-engagement, per-thread) so the read is effectively free.
+  // The version counter forces useMemo to re-run after a stamp; eslint
+  // can't see why it's listed because it doesn't appear in the body.
+  const [lastSeenVersion, setLastSeenVersion] = useState(0);
+  const lastSeen: LastSeenMap = useMemo(
+    () => getLastSeenMap(engagementId, storage),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [engagementId, storage, lastSeenVersion]
+  );
 
-  if (activeThreadId) {
+  // Memoise the list so its identity is stable across renders that don't
+  // change the underlying query data — keeps the open-thread effect from
+  // re-firing every time React reconciles.
+  const list: ThreadRow[] = useMemo(() => (Array.isArray(threads) ? threads : []), [threads]);
+
+  // Stamp the active thread as seen — runs whenever the active id flips.
+  useEffect(() => {
+    if (!activeThreadId) return;
+    const t = list.find((x) => x.id === activeThreadId);
+    if (!t) return;
+    // We want the map to record the moment we OPENED it, not the
+    // lastMessageAt — but lastMessageAt works just as well as long as it's
+    // monotonically advancing. Using lastMessageAt avoids drift between
+    // server clock and client clock.
+    const stampAt = t.lastMessageAt || new Date().toISOString();
+    setThreadSeen(engagementId, activeThreadId, stampAt, storage);
+    setLastSeenVersion((v) => v + 1);
+    // Sidebar reads from the same React Query cache — invalidate so the
+    // unread pill recomputes against the fresh lastSeen map.
+    qc.invalidateQueries({ queryKey: ['threads-unread', engagementId] });
+  }, [activeThreadId, engagementId, storage, qc, list]);
+
+  // ── Loading state ────────────────────────────────────────────────────
+  if (isLoading) {
     return (
-      <ThreadDetail
-        engagementId={engagementId}
-        threadId={activeThreadId}
-        onBack={() => setActiveThreadId(null)}
-      />
+      <div className="max-w-5xl mx-auto py-8 text-center">
+        <div className="animate-spin h-8 w-8 border-2 border-brand-600 border-t-transparent rounded-full mx-auto" />
+        <p className="mt-3 text-sm text-slate-500">Loading threads…</p>
+      </div>
     );
   }
 
   return (
-    <div className="max-w-3xl mx-auto">
-      <div className="mb-6 flex items-start justify-between gap-3">
+    <div className="max-w-5xl mx-auto">
+      {/* Header */}
+      <div className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 mb-2 flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-slate-900 mb-1 flex items-center gap-2">
             <MessageCircle className="h-6 w-6 text-brand-600" />
             Threads
             {list.length > 0 && (
@@ -85,7 +135,7 @@ export function ThreadsStep({ engagementId }: { engagementId: string }) {
         <button
           type="button"
           onClick={() => setShowCompose(true)}
-          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-brand-600 text-white text-sm font-semibold hover:bg-brand-700 transition-colors"
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-brand-600 text-white text-sm font-semibold hover:bg-brand-700 transition-colors flex-shrink-0"
           data-testid="threads-new-button"
         >
           <Plus className="h-4 w-4" />
@@ -105,12 +155,7 @@ export function ThreadsStep({ engagementId }: { engagementId: string }) {
         />
       )}
 
-      {isLoading ? (
-        <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center">
-          <div className="animate-spin h-8 w-8 border-2 border-brand-600 border-t-transparent rounded-full mx-auto" />
-          <p className="mt-3 text-sm text-slate-500">Loading threads&hellip;</p>
-        </div>
-      ) : list.length === 0 ? (
+      {list.length === 0 ? (
         <div
           className="rounded-2xl border border-dashed border-slate-200 bg-white p-12 text-center"
           data-testid="threads-empty-state"
@@ -125,34 +170,132 @@ export function ThreadsStep({ engagementId }: { engagementId: string }) {
           </p>
         </div>
       ) : (
-        <div className="space-y-2" data-testid="threads-list">
-          {list.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setActiveThreadId(t.id)}
-              className="w-full text-left rounded-xl border border-slate-200 bg-white p-4 hover:border-brand-300 transition-colors"
-              data-testid={`thread-row-${t.id}`}
-            >
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-bold text-slate-900 truncate">{t.subject}</p>
-                {t.status === 'RESOLVED' && (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 flex items-center gap-1">
-                    <CircleCheck className="h-3 w-3" />
-                    Resolved
-                  </span>
-                )}
-              </div>
-              <p className="text-[11px] text-slate-400 mt-1">
-                Last activity: {new Date(t.lastMessageAt).toLocaleString('en-GB', {
-                  day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
-                })}
-              </p>
-            </button>
-          ))}
-        </div>
+        <TwoPaneLayout
+          activeThreadId={activeThreadId}
+          list={list}
+          lastSeen={lastSeen}
+          onSelect={(id) => setActiveThreadId(id)}
+          onBack={() => setActiveThreadId(null)}
+          engagementId={engagementId}
+        />
       )}
     </div>
+  );
+}
+
+// ─── Two-pane layout ─────────────────────────────────────────────────────────
+
+function TwoPaneLayout({
+  activeThreadId, list, lastSeen, onSelect, onBack, engagementId,
+}: {
+  activeThreadId: string | null;
+  list: ThreadRow[];
+  lastSeen: LastSeenMap;
+  onSelect: (id: string) => void;
+  onBack: () => void;
+  engagementId: string;
+}) {
+  const showListOnMobile = activeThreadId === null;
+  const showDetailOnMobile = activeThreadId !== null;
+
+  return (
+    <div className="md:grid md:grid-cols-[320px_minmax(0,1fr)] md:gap-4">
+      {/* List pane — always visible on md+, hidden on mobile when a thread is open */}
+      <div className={cn(
+        'space-y-2',
+        showListOnMobile ? 'block' : 'hidden md:block'
+      )} data-testid="threads-list">
+        {list.map((t) => (
+          <ThreadListRow
+            key={t.id}
+            thread={t}
+            isActive={t.id === activeThreadId}
+            unread={isThreadUnread(toSummary(t), lastSeen)}
+            onClick={() => onSelect(t.id)}
+          />
+        ))}
+      </div>
+
+      {/* Detail pane — visible on md+ when a thread is selected, full-width on mobile */}
+      <div className={cn(showDetailOnMobile ? 'block' : 'hidden md:block')}>
+        {activeThreadId ? (
+          <ThreadDetail
+            engagementId={engagementId}
+            threadId={activeThreadId}
+            onBack={onBack}
+          />
+        ) : (
+          <ThreadDetailEmptyState />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ThreadDetailEmptyState() {
+  return (
+    <div className="hidden md:flex h-full min-h-[300px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center">
+      <div className="mx-auto w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center mb-3">
+        <MessageCircle className="h-6 w-6 text-slate-400" />
+      </div>
+      <p className="text-sm font-semibold text-slate-700">Pick a thread to read</p>
+      <p className="text-xs text-slate-500 mt-1 max-w-xs">
+        Select a thread from the list to view messages and reply.
+      </p>
+    </div>
+  );
+}
+
+function ThreadListRow({
+  thread, isActive, unread, onClick,
+}: {
+  thread: ThreadRow;
+  isActive: boolean;
+  unread: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'w-full text-left rounded-xl border bg-white p-3.5 transition-colors',
+        isActive
+          ? 'border-brand-300 bg-brand-50/40 ring-1 ring-brand-200'
+          : 'border-slate-200 hover:border-brand-200'
+      )}
+      data-testid={`thread-row-${thread.id}`}
+      aria-current={isActive ? 'true' : undefined}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          {unread && (
+            <span
+              className="h-2 w-2 rounded-full bg-brand-500 flex-shrink-0"
+              data-testid={`thread-unread-dot-${thread.id}`}
+              aria-label="Unread"
+            />
+          )}
+          <p className={cn(
+            'text-sm truncate',
+            unread ? 'font-bold text-slate-900' : 'font-semibold text-slate-700'
+          )}>
+            {thread.subject}
+          </p>
+        </div>
+        {thread.status === 'RESOLVED' ? (
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 flex items-center gap-1 flex-shrink-0">
+            <CircleCheck className="h-3 w-3" />
+            Resolved
+          </span>
+        ) : null}
+      </div>
+      <p className="text-[11px] text-slate-400 mt-1">
+        {new Date(thread.lastMessageAt).toLocaleString('en-GB', {
+          day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+        })}
+      </p>
+    </button>
   );
 }
 
@@ -259,54 +402,56 @@ function ThreadDetail({
 
   if (isLoading || !data) {
     return (
-      <div className="max-w-3xl mx-auto py-8 text-center">
+      <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center">
         <div className="animate-spin h-8 w-8 border-2 border-brand-600 border-t-transparent rounded-full mx-auto" />
       </div>
     );
   }
 
   return (
-    <div className="max-w-3xl mx-auto">
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 md:p-5">
+      {/* Mobile-only back button — on md+ the list is always visible alongside */}
       <button
         type="button"
         onClick={onBack}
-        className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 mb-3"
+        className="inline-flex md:hidden items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 mb-3"
         data-testid="thread-detail-back"
       >
         <ChevronLeft className="h-4 w-4" />
         Back to threads
       </button>
       <div className="flex items-start justify-between gap-3 mb-4">
-        <h1 className="text-xl font-bold text-slate-900">{data.thread.subject}</h1>
+        <h2 className="text-lg font-bold text-slate-900 break-words">{data.thread.subject}</h2>
         {data.thread.status === 'OPEN' ? (
           <button
             type="button"
             onClick={() => resolveMut.mutate()}
             disabled={resolveMut.isPending}
-            className="text-xs font-semibold text-slate-500 hover:text-emerald-600 underline-offset-2 hover:underline"
+            className="text-xs font-semibold text-slate-500 hover:text-emerald-600 underline-offset-2 hover:underline flex-shrink-0"
+            data-testid="thread-detail-resolve"
           >
             Mark resolved
           </button>
         ) : (
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 flex items-center gap-1">
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 flex items-center gap-1 flex-shrink-0">
             <CircleCheck className="h-3 w-3" />
             Resolved
           </span>
         )}
       </div>
 
-      <div className="space-y-3 mb-4" data-testid="thread-messages">
+      <div className="space-y-3 mb-4 max-h-[55vh] overflow-y-auto pr-1" data-testid="thread-messages">
         {data.messages.map((m) => (
           <MessageBubble key={m.id} message={m} />
         ))}
       </div>
 
       {data.thread.status === 'OPEN' && (
-        <div className="rounded-2xl border border-slate-200 bg-white p-3">
+        <div className="rounded-2xl border border-slate-200 bg-slate-50/40 p-3">
           <textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            placeholder="Reply to the client&hellip;"
+            placeholder="Reply to the client…"
             rows={3}
             className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/50 mb-2"
             data-testid="thread-detail-composer"
@@ -335,7 +480,7 @@ function MessageBubble({ message }: { message: MessageRow }) {
     <div className={cn('flex', isConsultant ? 'justify-end' : 'justify-start')}>
       <div
         className={cn(
-          'max-w-[80%] rounded-2xl px-4 py-2.5',
+          'max-w-[85%] rounded-2xl px-4 py-2.5',
           isConsultant
             ? 'bg-brand-600 text-white rounded-tr-sm'
             : 'bg-slate-100 text-slate-800 rounded-tl-sm',

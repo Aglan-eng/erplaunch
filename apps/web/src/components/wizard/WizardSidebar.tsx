@@ -10,6 +10,11 @@ import { cn } from '@/lib/utils';
 import { useWizardStore } from '@/stores/wizardStore';
 import { engagementsApi } from '@/lib/api';
 import { bridgeAdaptorSchema } from './adaptorBridge';
+import {
+  getLastSeenMap,
+  getUnreadCount,
+  type ThreadSummary,
+} from './threadsInboxHelpers';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -196,6 +201,32 @@ export function WizardSidebar({ engagementId, sectionProgress, licenseComplete, 
   });
   const pendingCount = (pendingSubmissionsQuery.data ?? []).length;
 
+  // Phase 40.4 — unread Threads count. Reads the same /threads endpoint
+  // ThreadsStep uses, then derives the count locally against a
+  // localStorage `lastSeen` map. Re-runs on focus (default RQ behaviour)
+  // so a thread the consultant just read on another tab updates the pill
+  // here. Active section deliberately ignored — we want the pill visible
+  // even while the consultant is on a different sidebar entry.
+  const threadsQuery = useQuery<ThreadSummary[]>({
+    queryKey: ['threads', engagementId],
+    queryFn: async () => {
+      const raw = (await engagementsApi.listThreads(engagementId)) as Array<{
+        id: string; status: 'OPEN' | 'RESOLVED'; lastMessageAt: string;
+      }>;
+      return raw.map((t) => ({ id: t.id, status: t.status, lastMessageAt: t.lastMessageAt }));
+    },
+    enabled: !!engagementId,
+    staleTime: 15_000,
+  });
+  const storage = typeof window !== 'undefined' ? window.localStorage : undefined;
+  const unreadThreadsCount = useMemo(
+    () => getUnreadCount(threadsQuery.data ?? [], getLastSeenMap(engagementId, storage)),
+    // ThreadsStep stamps the seen map on open and invalidates ['threads'…]
+    // — the data dep here picks that up. Storage handle is stable per
+    // mount, so referential equality is fine.
+    [threadsQuery.data, engagementId, storage]
+  );
+
   // Derive the flow groups for the sidebar from the adaptor's schema. If the
   // adaptor exposes at least one flow with sections we use it; otherwise we
   // fall back to the hard-coded NetSuite layout so pilot engagements that
@@ -308,6 +339,21 @@ export function WizardSidebar({ engagementId, sectionProgress, licenseComplete, 
             isActive ? 'bg-brand-600 text-white' : 'bg-amber-100 text-amber-700',
           )}>
             {pendingCount}
+          </span>
+        )}
+
+        {/* Phase 40.4 — Threads unread count. Same shape as Pending Review
+            but uses brand colour so the consultant can tell them apart at a
+            glance. Hidden when zero so the sidebar stays quiet. */}
+        {item.key === 'threads' && unreadThreadsCount > 0 && (
+          <span
+            className={cn(
+              'text-[9px] font-bold tabular-nums flex-shrink-0 rounded-full px-1.5 py-0.5 min-w-[16px] text-center',
+              isActive ? 'bg-brand-600 text-white' : 'bg-brand-100 text-brand-700',
+            )}
+            data-testid="sidebar-threads-unread"
+          >
+            {unreadThreadsCount}
           </span>
         )}
 
