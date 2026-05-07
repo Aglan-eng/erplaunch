@@ -21,6 +21,7 @@ import { StandardRolesStep } from './steps/StandardRolesStep';
 import { TemplatesStep } from './steps/TemplatesStep';
 import { PendingReviewStep } from './steps/PendingReviewStep';
 import { ThreadsStep } from './steps/ThreadsStep';
+import { ActivityFeedView } from './ActivityFeedView';
 import { DataCollectionPage } from '@/pages/DataCollectionPage';
 import { AIProfileGenerator } from './AIProfileGenerator';
 import { HelpDrawer } from './HelpDrawer';
@@ -93,59 +94,8 @@ function DeadlineReminderBanner({ daysLeft, contractEndDate, onDismiss }: {
   );
 }
 
-// ─── Activity Feed View ──────────────────────────────────────────────────────
-
-function ActivityFeedView({ engagementId }: { engagementId: string }) {
-  const { data: activities = [], isLoading } = useQuery({
-    queryKey: ['activity', engagementId],
-    queryFn: () => engagementsApi.listActivity(engagementId),
-    enabled: !!engagementId,
-  });
-
-  if (isLoading) {
-    return (
-      <div className="max-w-2xl mx-auto py-8 text-center">
-        <div className="animate-spin h-8 w-8 border-2 border-brand-600 border-t-transparent rounded-full mx-auto" />
-        <p className="mt-3 text-sm text-gray-500">Loading activity…</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="max-w-2xl mx-auto space-y-8">
-      <div>
-        <h2 className="text-xl font-black text-gray-900">Activity Feed</h2>
-        <p className="text-sm text-gray-500 mt-1">View all recent activity and changes in this engagement.</p>
-      </div>
-
-      {activities.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-gray-100 p-12 shadow-sm text-center">
-          <p className="text-sm text-gray-500">No activity recorded yet.</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {(activities as Array<{ description?: string; timestamp?: string }>).map((activity, idx) => (
-            <div key={idx} className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
-              <div className="flex items-start gap-3">
-                <div className="h-2 w-2 rounded-full bg-brand-500 mt-2 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-900">{activity.description || 'Activity'}</p>
-                  {activity.timestamp && (
-                    <p className="text-xs text-gray-500 mt-1">
-                      {new Date(activity.timestamp).toLocaleDateString('en-GB', {
-                        day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
-                      })}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+// Activity Feed view extracted to ./ActivityFeedView.tsx (Phase 40.3) so the
+// pure helpers driving filtering, search, and grouping can be unit-tested.
 
 // All valid flow.section keys
 const ALL_SECTION_KEYS = new Set([
