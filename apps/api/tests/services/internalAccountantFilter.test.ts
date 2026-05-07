@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   filterEngagementForAccountant,
   filterEngagementListForAccountant,
+  isAccountantOnly,
 } from '../../src/services/internalAccountantFilter.js';
 
 /**
@@ -29,7 +30,7 @@ describe('filterEngagementForAccountant', () => {
     expect(out).toEqual(eng);
   });
 
-  it('strips members / conflicts / profile / jobs', () => {
+  it('strips conflicts / profile / jobs but keeps members (Phase 44.2 keep-list)', () => {
     const eng = {
       id: 'e1',
       firmId: 'f1',
@@ -41,7 +42,7 @@ describe('filterEngagementForAccountant', () => {
       jobs: [{ status: 'queued' }],
     };
     const out = filterEngagementForAccountant(eng);
-    expect(out).not.toHaveProperty('members');
+    expect(out).toHaveProperty('members'); // Phase 44.2 keeps members
     expect(out).not.toHaveProperty('conflicts');
     expect(out).not.toHaveProperty('profile');
     expect(out).not.toHaveProperty('jobs');
@@ -91,12 +92,76 @@ describe('filterEngagementForAccountant', () => {
 describe('filterEngagementListForAccountant', () => {
   it('applies the per-row filter across the array', () => {
     const list = [
-      { id: 'e1', clientName: 'A', members: [1] },
-      { id: 'e2', clientName: 'B', conflicts: [1] },
+      { id: 'e1', clientName: 'A', conflicts: [1] },
+      { id: 'e2', clientName: 'B', profile: { answers: { foo: 'bar' } } },
     ];
     const out = filterEngagementListForAccountant(list);
     expect(out).toHaveLength(2);
     expect(out[0]).toEqual({ id: 'e1', clientName: 'A' });
     expect(out[1]).toEqual({ id: 'e2', clientName: 'B' });
+  });
+});
+
+describe('Phase 44.2 — keep-list extensions for license + members', () => {
+  it('keeps the nested license summary block', () => {
+    const eng = {
+      id: 'e1',
+      clientName: 'A',
+      license: { edition: 'MID_MARKET', modules: ['ADVANCED_REVENUE'] },
+      decisions: [{ title: 'X' }],
+    };
+    const out = filterEngagementForAccountant(eng);
+    expect(out.license).toEqual({ edition: 'MID_MARKET', modules: ['ADVANCED_REVENUE'] });
+    expect(out).not.toHaveProperty('decisions');
+  });
+
+  it('keeps the members list (read-only — gated by matrix elsewhere)', () => {
+    const eng = {
+      id: 'e1',
+      clientName: 'A',
+      members: [{ name: 'Alice', email: 'alice@example.com', role: 'Sponsor' }],
+      risks: [{ title: 'X' }],
+    };
+    const out = filterEngagementForAccountant(eng);
+    expect(out.members).toHaveLength(1);
+    expect(out).not.toHaveProperty('risks');
+  });
+});
+
+describe('isAccountantOnly', () => {
+  it('returns true for a pure INTERNAL_ACCOUNTANT with no engagement role', () => {
+    expect(isAccountantOnly({
+      firmRoles: ['INTERNAL_ACCOUNTANT'],
+      engagementRoles: [],
+    })).toBe(true);
+  });
+
+  it('returns false when the user is APP_ADMIN (mixed firm-level)', () => {
+    expect(isAccountantOnly({
+      firmRoles: ['APP_ADMIN', 'INTERNAL_ACCOUNTANT'],
+      engagementRoles: [],
+    })).toBe(false);
+  });
+
+  it('returns false when the user has SALES_MANAGER alongside accountant', () => {
+    expect(isAccountantOnly({
+      firmRoles: ['SALES_MANAGER', 'INTERNAL_ACCOUNTANT'],
+      engagementRoles: [],
+    })).toBe(false);
+  });
+
+  it('returns false when the user has any engagement-level role on this engagement', () => {
+    // Mixed PM + Accountant: the PM role wins → full payload.
+    expect(isAccountantOnly({
+      firmRoles: ['INTERNAL_ACCOUNTANT'],
+      engagementRoles: ['PROJECT_MANAGER'],
+    })).toBe(false);
+  });
+
+  it('returns false when the user is not an accountant at all', () => {
+    expect(isAccountantOnly({
+      firmRoles: [],
+      engagementRoles: ['PROJECT_LEAD'],
+    })).toBe(false);
   });
 });

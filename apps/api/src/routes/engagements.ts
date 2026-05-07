@@ -35,6 +35,12 @@ import {
   resolveVisibilityScope,
   applyVisibilityScope,
 } from '../services/engagementVisibility.js';
+import {
+  filterEngagementForAccountant,
+  filterEngagementListForAccountant,
+  isAccountantOnly,
+} from '../services/internalAccountantFilter.js';
+import { listFirmRolesForUser, listEngagementRolesForUser } from '../db/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -128,6 +134,21 @@ export async function engagementRoutes(fastify: FastifyInstance) {
       engagements as Array<{ id: string }>,
       scope,
     );
+
+    // Phase 44.2 — INTERNAL_ACCOUNTANT field-strip on the list. The
+    // dashboard returns just structural + billing-shaped fields when
+    // the user is an accountant with no other elevated firm role.
+    // Engagement-level role mixing (e.g. accountant who's a PM on a
+    // few deals) is detected per-engagement when they click through
+    // to GET /engagements/:id below — the list itself uses the
+    // simpler firm-only check.
+    const firmRoles = await listFirmRolesForUser(request.jwtUser.userId);
+    if (isAccountantOnly({ firmRoles, engagementRoles: [] })) {
+      const stripped = filterEngagementListForAccountant(
+        visible as Array<Record<string, unknown>>,
+      );
+      return reply.send({ data: stripped });
+    }
     return reply.send({ data: visible });
   });
 
@@ -172,6 +193,17 @@ export async function engagementRoutes(fastify: FastifyInstance) {
     const engagement = await db.findEngagementById(id);
     if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
     if (engagement.firmId !== request.jwtUser.firmId) return reply.code(403).send({ error: { code: 'FORBIDDEN' } });
+
+    // Phase 44.2 — accountant field-strip on single-engagement read.
+    // Pulls the user's engagement-level roles for THIS engagement so
+    // a mixed-role user (accountant + PROJECT_LEAD on this deal) gets
+    // the full payload. Pure accountants get the stripped one.
+    const firmRoles = await listFirmRolesForUser(request.jwtUser.userId);
+    const engRoleAssignments = await listEngagementRolesForUser(request.jwtUser.userId, id);
+    const engRoles = engRoleAssignments.map((a) => a.role);
+    if (isAccountantOnly({ firmRoles, engagementRoles: engRoles })) {
+      return reply.send({ data: filterEngagementForAccountant(engagement as Record<string, unknown>) });
+    }
     return reply.send({ data: engagement });
   });
 
