@@ -19,6 +19,7 @@ import {
   isOnboardingDismissed,
   shouldShowOnboarding,
 } from '@/lib/onboardingHelpers';
+import { PermissionButton } from '@/components/rbac/PermissionButton';
 import { PipelinePage } from './PipelinePage';
 import { cn } from '@/lib/utils';
 
@@ -386,9 +387,18 @@ export function DashboardPage() {
               </button>
             </div>
 
-            <Button onClick={() => setNewModalOpen(true)} size="sm">
+            {/* Phase 44.4 — gate engagement-create on ENGAGEMENT_META
+                WRITE. Only roles that can edit engagement details can
+                create new ones (excludes INTERNAL_ACCOUNTANT,
+                CLIENT_*, etc.). */}
+            <PermissionButton
+              action="WRITE"
+              resource="ENGAGEMENT_META"
+              onClick={() => setNewModalOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold px-3 py-2"
+            >
               <Plus className="h-4 w-4" />New
-            </Button>
+            </PermissionButton>
 
             <div className="h-6 w-px bg-gray-200" />
 

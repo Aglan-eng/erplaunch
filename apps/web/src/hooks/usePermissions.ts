@@ -46,17 +46,76 @@ export function actionAtLeast(actual: PermissionAction, required: PermissionActi
   return RANK[actual] >= RANK[required];
 }
 
+export interface PermissionVerdict {
+  allowed: boolean;
+  /** Tooltip copy for buttons disabled by permission — populated when
+   *  allowed is false. Phrased "Requires <ROLE> to <verb> <resource>". */
+  tooltip?: string;
+}
+
 export interface UsePermissionsResult {
   data: PermissionsResponse | undefined;
   isLoading: boolean;
   /** Returns false when permissions haven't loaded yet — fail-closed. */
   can: (action: PermissionAction, resource: PermissionResource) => boolean;
+  /** Phase 44.4 — verdict + tooltip for button gating. */
+  canOrTooltip: (action: PermissionAction, resource: PermissionResource) => PermissionVerdict;
   /** True when the user has any of the named roles (firm OR engagement). */
   hasRole: (...roles: string[]) => boolean;
   /** True when the user has the role on a module (or has it without
    *  module restriction). Used by the wizard sidebar to filter
    *  modules for FUNCTIONAL_CONSULTANT etc. */
   hasModuleAccess: (role: string, moduleId: string) => boolean;
+}
+
+// ─── Phase 44.4 — tooltip helpers ────────────────────────────────────────────
+//
+// Mapping from resource → the role that most cleanly grants WRITE on
+// it. The tooltip is informational; the API still re-checks the matrix.
+
+const REQUIRED_ROLE_FOR_WRITE: Record<PermissionResource, string> = {
+  ENGAGEMENT_META: 'PROJECT_MANAGER',
+  WIZARD_ANSWERS: 'FUNCTIONAL_CONSULTANT',
+  DECISIONS: 'PROJECT_LEAD',
+  RISKS: 'PROJECT_MANAGER',
+  ISSUES: 'PROJECT_MANAGER',
+  MEETINGS: 'PROJECT_MANAGER',
+  MEMBERS: 'PROJECT_MANAGER',
+  DATA_COLLECTION: 'PROJECT_MANAGER',
+  ACTION_ITEMS: 'PROJECT_MANAGER',
+  COMMENTS: 'CLIENT_LEAD',
+  IMAGES: 'PROJECT_MANAGER',
+  GENERATORS: 'PROJECT_MANAGER',
+  BILLING: 'INTERNAL_ACCOUNTANT',
+  ACTIVITY_LOG: 'PROJECT_MANAGER',
+  INTEGRATIONS: 'APP_ADMIN',
+  ROLES: 'APP_ADMIN',
+};
+
+const RESOURCE_LABEL: Record<PermissionResource, string> = {
+  ENGAGEMENT_META: 'engagement details',
+  WIZARD_ANSWERS: 'wizard answers',
+  DECISIONS: 'decisions',
+  RISKS: 'risks',
+  ISSUES: 'issues',
+  MEETINGS: 'meetings',
+  MEMBERS: 'team members',
+  DATA_COLLECTION: 'data collection',
+  ACTION_ITEMS: 'action items',
+  COMMENTS: 'comments',
+  IMAGES: 'attachments',
+  GENERATORS: 'deliverables',
+  BILLING: 'billing',
+  ACTIVITY_LOG: 'the activity log',
+  INTEGRATIONS: 'integrations',
+  ROLES: 'roles',
+};
+
+function tooltipFor(action: PermissionAction, resource: PermissionResource): string {
+  const verb = action === 'WRITE' ? 'edit' : action === 'READ' ? 'view' : 'access';
+  const role = REQUIRED_ROLE_FOR_WRITE[resource];
+  const noun = RESOURCE_LABEL[resource];
+  return `Requires ${role} to ${verb} ${noun}.`;
 }
 
 export function usePermissions(engagementId?: string | null): UsePermissionsResult {
@@ -77,6 +136,21 @@ export function usePermissions(engagementId?: string | null): UsePermissionsResu
       const e = query.data?.effective?.[resource];
       if (!e) return false;
       return actionAtLeast(e, action);
+    };
+  }, [query.data]);
+
+  const canOrTooltip = useMemo(() => {
+    return (action: PermissionAction, resource: PermissionResource): PermissionVerdict => {
+      const e = query.data?.effective?.[resource];
+      if (!e) {
+        // Permissions haven't loaded yet — fail closed but skip the
+        // tooltip so we don't flash a noisy hint during the initial
+        // page render.
+        return { allowed: false };
+      }
+      const allowed = actionAtLeast(e, action);
+      if (allowed) return { allowed: true };
+      return { allowed: false, tooltip: tooltipFor(action, resource) };
     };
   }, [query.data]);
 
@@ -104,6 +178,7 @@ export function usePermissions(engagementId?: string | null): UsePermissionsResu
     data: query.data,
     isLoading: query.isLoading,
     can,
+    canOrTooltip,
     hasRole,
     hasModuleAccess,
   };
