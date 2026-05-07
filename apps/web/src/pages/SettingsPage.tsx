@@ -174,6 +174,28 @@ export function SettingsPage() {
             </form>
           </div>
 
+          {/* Phase 41.4 — entry point to the Email Domain DNS-setup page.
+               Sits below the branding card because both touch "what
+               your client sees" and the admin will likely visit them
+               in the same session. */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <h2 className="text-base font-semibold text-slate-900">Email Domain</h2>
+                <p className="text-sm text-slate-500 mt-1">
+                  Verify your firm's domain so portal invites, password resets, and verification emails reach your clients reliably.
+                </p>
+              </div>
+              <Link
+                to="/settings/email-domain"
+                className="rounded-lg bg-slate-900 text-white text-sm font-medium px-4 py-2 hover:bg-slate-800 flex-shrink-0"
+                data-testid="settings-email-domain-link"
+              >
+                Open
+              </Link>
+            </div>
+          </div>
+
           <ChangePasswordCard />
         </section>
 

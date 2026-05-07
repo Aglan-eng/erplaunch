@@ -26,7 +26,7 @@ import {
   RedisUnavailableError,
   type RedisLike,
 } from '../services/portalRateLimit.js';
-import { sendPasswordResetEmail, sendEmailVerificationEmail, APP_URL } from '../services/email.js';
+import { sendPasswordResetEmail, sendEmailVerificationEmail, APP_URL, EmailSendError } from '../services/email.js';
 import { incrementCounter } from '../services/metrics.js';
 
 /** How long a password reset link stays valid, in minutes. Overridable via env. */
@@ -37,16 +37,27 @@ const VERIFY_TOKEN_TTL_HOURS = Math.max(1, parseInt(process.env.EMAIL_VERIFY_TTL
 
 /**
  * Issue a fresh email verification token for the user and send the email.
- * Best-effort: errors are logged but not re-thrown, so callers in the
- * signup / resend paths don't fail on transient mail outages. Prior active
- * tokens for the same user are invalidated so only the latest link works.
+ *
+ * Phase 41.4 — returns a structured result instead of swallowing the
+ * error and returning null. Callers can branch on `result.ok`:
+ *   - { ok: true }                       email sent
+ *   - { ok: false, code: 'SEND_FAILED', sendCode? }  delivery failed,
+ *     `sendCode` is the typed Resend failure (DOMAIN_NOT_VERIFIED,
+ *     INVALID_RECIPIENT, etc.) when classifyResendFailure produced one
+ *
+ * Prior active tokens for the same user are invalidated regardless of
+ * the send result, so only the latest link ever works.
  */
+type IssueEmailVerificationResult =
+  | { ok: true; verifyUrl: string }
+  | { ok: false; code: 'SEND_FAILED'; sendCode?: string; message: string };
+
 async function issueEmailVerification(
   userId: string,
   email: string,
   name: string,
   log: (level: 'info' | 'error', msg: string, obj?: Record<string, unknown>) => void,
-): Promise<string | null> {
+): Promise<IssueEmailVerificationResult> {
   try {
     await invalidateActiveEmailVerificationsForUser(userId);
     const raw = crypto.randomBytes(32).toString('hex');
@@ -63,10 +74,13 @@ async function issueEmailVerification(
       verifyUrl,
       expiresInHours: VERIFY_TOKEN_TTL_HOURS,
     });
-    return verifyUrl;
+    return { ok: true, verifyUrl };
   } catch (err) {
     log('error', 'auth/email-verify: issue failed', { userId, err: String(err) });
-    return null;
+    if (err instanceof EmailSendError) {
+      return { ok: false, code: 'SEND_FAILED', sendCode: err.code, message: err.message };
+    }
+    return { ok: false, code: 'SEND_FAILED', message: String(err) };
   }
 }
 
@@ -552,10 +566,35 @@ export async function authRoutes(fastify: FastifyInstance) {
     }
     await tryLoginRateLimit(request, async (r) => { await recordRequestCode(r, ip, `verify:${user.id}`); return { ok: true }; });
 
-    void issueEmailVerification(user.id, user.email, user.name, (level, msg, obj) => {
+    // Phase 41.4 — await the result so we can surface delivery failures
+    // (especially Resend's free-tier "domain not verified" 403) to the
+    // caller. Without this the SPA showed a green tick even when the
+    // email never left Resend's outbox, which made signups for new
+    // firms look healthy when they weren't.
+    const issueResult = await issueEmailVerification(user.id, user.email, user.name, (level, msg, obj) => {
       if (level === 'error') request.log.error(obj, msg);
       else request.log.info(obj, msg);
     });
+
+    if (!issueResult.ok) {
+      incrementCounter('auth_email_verification_requested_total', {
+        outcome: issueResult.sendCode === 'DOMAIN_NOT_VERIFIED' ? 'domain_not_verified' : 'send_failed',
+      });
+      // 502 (Bad Gateway) so it's distinct from rate-limit (429) and
+      // input-validation (400). The message is what the SPA renders
+      // verbatim; the structured `code` is what triggers the
+      // Settings → Email Domain CTA in EmailVerificationBanner.
+      const isDomainIssue = issueResult.sendCode === 'DOMAIN_NOT_VERIFIED';
+      return reply.code(502).send({
+        error: {
+          code: isDomainIssue ? 'EMAIL_DOMAIN_NOT_VERIFIED' : 'EMAIL_SEND_FAILED',
+          message: isDomainIssue
+            ? `We couldn't send to ${user.email}. Your firm's email domain isn't verified yet. Visit Settings → Email Domain to fix this.`
+            : `We couldn't send the verification email to ${user.email}. Try again in a moment, or check Settings → Email Domain.`,
+          recipient: user.email,
+        },
+      });
+    }
 
     incrementCounter('auth_email_verification_requested_total', { outcome: 'ok' });
     return reply.send({ data: { ok: true } });

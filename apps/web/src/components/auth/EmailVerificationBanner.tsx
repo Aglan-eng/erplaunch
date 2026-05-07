@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Info, CheckCircle2 } from 'lucide-react';
+import { Info, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { authApi } from '@/lib/api';
 import {
@@ -23,12 +24,16 @@ import {
  * implied an error state, which set the wrong expectation given the
  * banner is benign.
  */
+type SendError =
+  | { kind: 'domain'; recipient: string; message: string }
+  | { kind: 'generic'; message: string };
+
 export function EmailVerificationBanner() {
   const { user } = useAuth();
   const storage = typeof window !== 'undefined' ? window.localStorage : undefined;
   const [sending, setSending] = useState(false);
   const [sentAt, setSentAt] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<SendError | null>(null);
   // Track dismissal in state so toggling it re-renders without forcing a
   // page reload. Initialised from localStorage on first render.
   const [dismissed, setDismissed] = useState<boolean>(() => {
@@ -50,8 +55,25 @@ export function EmailVerificationBanner() {
       // its TTL window from this point.
       resetBannerDismissal(user.id, storage);
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message;
-      setError(msg ?? 'Could not send. Try again in a moment.');
+      // Phase 41.4 — branch on the structured error code so the
+      // "domain not verified" failure surfaces a Settings → Email
+      // Domain CTA instead of a generic toast that the consultant
+      // can't act on.
+      const errorPayload = (err as {
+        response?: { data?: { error?: { code?: string; message?: string; recipient?: string } } };
+      }).response?.data?.error;
+      if (errorPayload?.code === 'EMAIL_DOMAIN_NOT_VERIFIED') {
+        setError({
+          kind: 'domain',
+          recipient: errorPayload.recipient ?? user.email,
+          message: errorPayload.message ?? 'Email domain isn\'t verified yet.',
+        });
+      } else {
+        setError({
+          kind: 'generic',
+          message: errorPayload?.message ?? 'Could not send. Try again in a moment.',
+        });
+      }
     } finally {
       setSending(false);
     }
@@ -84,7 +106,28 @@ export function EmailVerificationBanner() {
             Sent. Check your inbox (and spam folder).
           </p>
         )}
-        {error && <p className="text-[11px] text-red-700 mt-1">{error}</p>}
+        {error?.kind === 'domain' && (
+          <div
+            className="mt-1.5 rounded-md bg-amber-50 border border-amber-200 px-2.5 py-1.5"
+            data-testid="email-verification-domain-error"
+          >
+            <p className="text-[11px] text-amber-800 inline-flex items-start gap-1">
+              <AlertTriangle className="h-3 w-3 flex-shrink-0 mt-px" />
+              <span>
+                We couldn't send to <span className="font-mono font-semibold">{error.recipient}</span>.
+                Your firm's email domain isn't verified yet.{' '}
+                <Link
+                  to="/settings/email-domain"
+                  className="font-semibold underline underline-offset-2 hover:text-amber-900"
+                  data-testid="email-domain-cta"
+                >
+                  Visit Settings → Email Domain to fix this.
+                </Link>
+              </span>
+            </p>
+          </div>
+        )}
+        {error?.kind === 'generic' && <p className="text-[11px] text-red-700 mt-1">{error.message}</p>}
       </div>
       <div className="flex items-center gap-2 flex-shrink-0">
         <button

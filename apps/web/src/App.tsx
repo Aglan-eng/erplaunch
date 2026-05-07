@@ -14,6 +14,7 @@ const ClientPortalPage = lazy(() => import('./pages/ClientPortalPage').then(m =>
 const PortalLoginPage = lazy(() => import('./pages/PortalLoginPage').then(m => ({ default: m.PortalLoginPage })));
 const PortalVerifyPage = lazy(() => import('./pages/PortalVerifyPage').then(m => ({ default: m.PortalVerifyPage })));
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then(m => ({ default: m.SettingsPage })));
+const EmailDomainPage = lazy(() => import('./pages/EmailDomainPage').then(m => ({ default: m.EmailDomainPage })));
 const StatusReportPage = lazy(() => import('./pages/StatusReportPage').then(m => ({ default: m.StatusReportPage })));
 const VerticalWorkspacePage = lazy(() => import('./pages/VerticalWorkspacePage').then(m => ({ default: m.VerticalWorkspacePage })));
 const CustomAdaptorsPage = lazy(() => import('./pages/CustomAdaptorsPage').then(m => ({ default: m.CustomAdaptorsPage })));
@@ -76,6 +77,14 @@ function AppRoutes() {
           element={
             <RequireAuth>
               <ErrorBoundary><SettingsPage /></ErrorBoundary>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/settings/email-domain"
+          element={
+            <RequireAuth>
+              <ErrorBoundary><EmailDomainPage /></ErrorBoundary>
             </RequireAuth>
           }
         />

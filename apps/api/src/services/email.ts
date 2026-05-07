@@ -6,11 +6,79 @@
  *   1. Sign up at https://resend.com (free tier: 100 emails/day)
  *   2. Add RESEND_API_KEY=re_xxxx to your .env
  *   3. Optionally set EMAIL_FROM=noreply@yourdomain.com
+ *
+ * Phase 41.4 — surface unverified-domain failures as a structured
+ * error so the route layer can return a code the SPA recognises and
+ * render the "Visit Settings → Email Domain" prompt. Without this
+ * the Resend free-tier restriction (only sends to the account-owner
+ * email until DNS is verified) was completely silent and signups
+ * for new firms looked like they'd worked when they hadn't.
  */
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY ?? '';
 const EMAIL_FROM     = process.env.EMAIL_FROM ?? 'OFOQ Accelerator <onboarding@resend.dev>';
 const APP_URL        = process.env.APP_URL ?? 'http://localhost:5173';
+
+export type EmailSendErrorCode =
+  | 'DOMAIN_NOT_VERIFIED'
+  | 'INVALID_RECIPIENT'
+  | 'RATE_LIMITED'
+  | 'PROVIDER_ERROR';
+
+export class EmailSendError extends Error {
+  constructor(
+    public readonly code: EmailSendErrorCode,
+    message: string,
+    public readonly status?: number,
+    public readonly providerBody?: string,
+  ) {
+    super(message);
+    this.name = 'EmailSendError';
+  }
+}
+
+/**
+ * Translate a Resend 4xx body into a structured EmailSendError. The
+ * pattern-matching is deliberately tolerant — Resend's free-tier
+ * 403 message has shifted between "You can only send testing emails…"
+ * and "domain is not verified" over time, so we look for both.
+ */
+function classifyResendFailure(status: number, body: string): EmailSendError {
+  const lower = body.toLowerCase();
+  if (
+    status === 403 &&
+    (lower.includes('domain') || lower.includes('only send testing emails') || lower.includes('verify your domain'))
+  ) {
+    return new EmailSendError(
+      'DOMAIN_NOT_VERIFIED',
+      "Resend rejected the send because the firm's email domain hasn't been verified yet.",
+      status,
+      body,
+    );
+  }
+  if (status === 422 || (status === 400 && lower.includes('email'))) {
+    return new EmailSendError(
+      'INVALID_RECIPIENT',
+      'Resend rejected the recipient address.',
+      status,
+      body,
+    );
+  }
+  if (status === 429) {
+    return new EmailSendError(
+      'RATE_LIMITED',
+      'Resend rate-limited the send.',
+      status,
+      body,
+    );
+  }
+  return new EmailSendError(
+    'PROVIDER_ERROR',
+    `Resend API error ${status}: ${body}`,
+    status,
+    body,
+  );
+}
 
 interface EmailPayload {
   to: string;
@@ -47,9 +115,13 @@ async function sendEmail(payload: EmailPayload): Promise<void> {
 
   if (!resp.ok) {
     const body = await resp.text();
-    throw new Error(`Resend API error ${resp.status}: ${body}`);
+    throw classifyResendFailure(resp.status, body);
   }
 }
+
+// Internal — exposed for unit tests so we can pin the 403 → DOMAIN_NOT_VERIFIED
+// classification without reaching for the network.
+export const __testing = { classifyResendFailure };
 
 // ─── Templates ────────────────────────────────────────────────────────────────
 
