@@ -180,4 +180,63 @@ export async function teamRoutes(fastify: FastifyInstance) {
     const log = await db.listRoleAuditLog(firmId, 200);
     return reply.send({ data: log });
   });
+
+  // ─── Phase 43.5 — frontend permission lookup ──────────────────────────────
+  //
+  // GET /me/permissions(?engagementId=X) returns the current user's
+  // firm + engagement roles plus an effective permissions map keyed
+  // by resource. The SPA's usePermissions() hook calls this on every
+  // engagement-context page so sidebar items + action buttons can
+  // disable themselves without a 403 round-trip.
+  //
+  // No requirePermission gate here — every authenticated user has
+  // the right to read their OWN permissions.
+  fastify.get('/me/permissions', async (request, reply) => {
+    const userId = request.jwtUser.userId;
+    const firmId = request.jwtUser.firmId;
+    const query = (request.query ?? {}) as { engagementId?: string };
+
+    const firmRoles = await db.listFirmRolesForUser(userId);
+    let engagementRoles: string[] = [];
+    let assignedModulesByRole: Record<string, string[] | null> = {};
+    let stage = 'DISCOVERY';
+
+    if (query.engagementId) {
+      const eng = await db.findEngagementByIdAndFirmId(query.engagementId, firmId);
+      if (eng) {
+        const status = ((eng as Record<string, unknown>).status as string | undefined) ?? 'DISCOVERY';
+        const { normaliseStage } = await import('../types/roles.js');
+        stage = normaliseStage(status);
+        const assignments = await db.listEngagementRolesForUser(userId, query.engagementId);
+        engagementRoles = assignments.map((a) => a.role);
+        assignedModulesByRole = assignments.reduce((acc, a) => {
+          acc[a.role] = a.assignedModules;
+          return acc;
+        }, {} as Record<string, string[] | null>);
+      }
+    }
+
+    const { evaluateEffectiveAction } = await import('../services/permissions.js');
+    const { RESOURCES } = await import('../types/roles.js');
+    type R = (typeof RESOURCES)[number];
+    const effective: Record<string, 'NONE' | 'READ' | 'WRITE'> = {};
+    const allRoles = [...firmRoles, ...engagementRoles] as Array<R extends never ? never : string>;
+    for (const resource of RESOURCES) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      effective[resource] = evaluateEffectiveAction(allRoles as any, stage as any, resource);
+    }
+
+    return reply.send({
+      data: {
+        userId,
+        firmId,
+        engagementId: query.engagementId ?? null,
+        stage,
+        firmRoles,
+        engagementRoles,
+        assignedModulesByRole,
+        effective,
+      },
+    });
+  });
 }

@@ -267,6 +267,59 @@ describe('engagement role assignment', () => {
 
 // ─── Audit log ───────────────────────────────────────────────────────────────
 
+// ─── GET /me/permissions ─────────────────────────────────────────────────────
+
+describe('GET /me/permissions', () => {
+  it('returns firm + engagement roles plus an effective resource map', async () => {
+    const f = await seed();
+    const r = await app.inject({
+      method: 'GET',
+      url: `/api/v1/me/permissions?engagementId=${f.engagementId}`,
+      headers: { authorization: `Bearer ${f.adminToken}` },
+    });
+    expect(r.statusCode).toBe(200);
+    const body = r.json() as {
+      data: {
+        firmRoles: string[];
+        engagementRoles: string[];
+        stage: string;
+        effective: Record<string, string>;
+      };
+    };
+    expect(body.data.firmRoles).toContain('APP_ADMIN');
+    expect(body.data.stage).toBe('BUILD');
+    // APP_ADMIN has WRITE on every resource.
+    expect(body.data.effective.DECISIONS).toBe('WRITE');
+    expect(body.data.effective.BILLING).toBe('WRITE');
+  });
+
+  it('returns NONE everywhere for a user with no roles', async () => {
+    const f = await seed();
+    const r = await app.inject({
+      method: 'GET',
+      url: `/api/v1/me/permissions?engagementId=${f.engagementId}`,
+      headers: { authorization: `Bearer ${f.otherToken}` },
+    });
+    expect(r.statusCode).toBe(200);
+    const body = r.json() as { data: { effective: Record<string, string> } };
+    expect(body.data.effective.DECISIONS).toBe('NONE');
+    expect(body.data.effective.BILLING).toBe('NONE');
+  });
+
+  it('falls back to DISCOVERY stage when no engagementId is provided', async () => {
+    const f = await seed();
+    const r = await app.inject({
+      method: 'GET',
+      url: '/api/v1/me/permissions',
+      headers: { authorization: `Bearer ${f.adminToken}` },
+    });
+    expect(r.statusCode).toBe(200);
+    const body = r.json() as { data: { stage: string; engagementId: string | null } };
+    expect(body.data.stage).toBe('DISCOVERY');
+    expect(body.data.engagementId).toBeNull();
+  });
+});
+
 describe('GET /firm/role-audit-log', () => {
   it('returns recent grant/revoke entries for APP_ADMIN', async () => {
     const f = await seed();

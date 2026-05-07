@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils';
 import { useWizardStore } from '@/stores/wizardStore';
 import { engagementsApi } from '@/lib/api';
 import { bridgeAdaptorSchema } from './adaptorBridge';
+import { usePermissions, type PermissionResource } from '@/hooks/usePermissions';
 import {
   getLastSeenMap,
   getUnreadCount,
@@ -185,6 +186,10 @@ function MiniProgress({ pct, color = 'stroke-brand-400' }: { pct: number; color?
 
 export function WizardSidebar({ engagementId, sectionProgress, licenseComplete, projectSetupComplete = false }: WizardSidebarProps) {
   const { currentSection, setCurrentSection } = useWizardStore();
+
+  // Phase 43.5 — current user's permissions for this engagement.
+  // The Project Mgmt section filters items by permission below.
+  const { can: permsCan, isLoading: permsLoading } = usePermissions(engagementId);
 
   const adaptorQuery = useQuery({
     queryKey: ['engagement-adaptor', engagementId],
@@ -422,14 +427,40 @@ export function WizardSidebar({ engagementId, sectionProgress, licenseComplete, 
     );
   };
 
+  // Phase 43.5 — map sidebar items to the permission resource the
+  // section reads. Items the user can't READ are hidden. While
+  // permissions are still loading we render the full set to avoid a
+  // flash-of-empty-sidebar; the API still 403s if a forbidden user
+  // somehow opens a section before the gate kicks in.
+  const SIDEBAR_RESOURCE_MAP: Record<string, PermissionResource | null> = {
+    'pending-review': 'COMMENTS', // pending review touches client comments
+    'threads': 'COMMENTS',
+    'risks': 'RISKS',
+    'issues': 'ISSUES',
+    'decisions': 'DECISIONS',
+    'meetings': 'MEETINGS',
+    'data-collection': 'DATA_COLLECTION',
+    'migration': 'WIZARD_ANSWERS',
+    'auto-fill': 'WIZARD_ANSWERS',
+    'activity': 'ACTIVITY_LOG',
+  };
+
   const renderMgmtSection = () => {
-    const hasActive = MGMT_ITEMS.some((i) => currentSection === i.key);
+    const visibleItems = permsLoading
+      ? MGMT_ITEMS
+      : MGMT_ITEMS.filter((item) => {
+          const resource = SIDEBAR_RESOURCE_MAP[item.key];
+          if (!resource) return true; // unmapped items default to visible
+          return permsCan('READ', resource);
+        });
+    const hasActive = visibleItems.some((i) => currentSection === i.key);
+    if (visibleItems.length === 0) return null;
     return (
       <div>
         {renderSectionHeader({ id: 'mgmt', label: 'Project Mgmt', hasActive })}
         {!collapsed.mgmt && (
           <div className="mt-0.5 space-y-0.5 pl-1">
-            {MGMT_ITEMS.map((item) => renderItem(item))}
+            {visibleItems.map((item) => renderItem(item))}
           </div>
         )}
       </div>
