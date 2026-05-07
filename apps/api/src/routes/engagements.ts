@@ -921,7 +921,11 @@ export async function engagementRoutes(fastify: FastifyInstance) {
     const profile = await db.getProfile(id);
     const answers = (profile?.answers ?? {}) as Record<string, unknown>;
     const license = await db.getLicense(id);
-    const comment = await db.getSectionComment(id, sectionKey);
+    // Phase 39.4 — pull the full comment thread for this section, not just
+    // the first row. Phase 38.2 made section comments multi-per-section but
+    // the advisor was still reading getSectionComment() (single row), so
+    // additional consultant context was silently dropped from the prompt.
+    const commentText = await db.listSectionCommentBodies(id, sectionKey);
     const conflicts = await db.getConflicts(id);
 
     type ConflictRow = { questionIds?: string[]; message: string; severity: string; resolution: string };
@@ -967,7 +971,7 @@ export async function engagementRoutes(fastify: FastifyInstance) {
     const advisorInput = {
       sectionKey,
       answers,
-      comment: (comment?.text as string) || '',
+      comment: commentText,
       license: {
         edition: (license?.edition as string) || 'MID_MARKET',
         modules: (license?.modules as string[]) || [],

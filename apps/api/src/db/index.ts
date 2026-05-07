@@ -1474,6 +1474,30 @@ export async function deleteSectionCommentById(id: string): Promise<boolean> {
   return true;
 }
 
+/**
+ * Phase 39.4 — pull every comment for a section in chronological order
+ * and join their bodies with newlines. Used by the AI Advisor route so
+ * it sees the full thread context instead of just the first row.
+ *
+ * Falls back to the legacy `text` column when `body` is null (rows that
+ * predate Phase 38.2's column add), so engagements with old-shape
+ * comments still surface them to the advisor.
+ */
+export async function listSectionCommentBodies(engagementId: string, sectionKey: string): Promise<string> {
+  const db = getDb();
+  const r = await db.execute({
+    sql: `SELECT COALESCE(body, text) AS content
+            FROM SectionComment
+            WHERE engagementId = ? AND sectionKey = ?
+            ORDER BY COALESCE(createdAt, updatedAt) ASC`,
+    args: [engagementId, sectionKey],
+  });
+  const bodies = (r.rows as Array<Record<string, unknown>>)
+    .map((row) => (row.content as string | null) ?? '')
+    .filter((s) => s.trim().length > 0);
+  return bodies.join('\n\n');
+}
+
 export async function getSectionComment(engagementId: string, sectionKey: string) {
   const db = getDb();
   const r = await db.execute({ sql: `SELECT * FROM SectionComment WHERE engagementId = ? AND sectionKey = ?`, args: [engagementId, sectionKey] });

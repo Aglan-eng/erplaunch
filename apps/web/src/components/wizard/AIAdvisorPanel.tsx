@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Sparkles, TriangleAlert, BookOpen, ClipboardList, RefreshCw,
   ChevronDown, ChevronRight, Loader, ArrowUpRight, Copy, Check,
@@ -72,6 +72,27 @@ export function AIAdvisorPanel({ engagementId, sectionKey }: AIAdvisorPanelProps
 
   const advice = cachedAdvice?.advice as AdviceData | undefined;
 
+  // Phase 39.4 — track whether the section has at least one answer so the
+  // auto-trigger doesn't burn a Claude call (and cache a low-quality
+  // empty-state advice payload) the moment the consultant lands on a fresh
+  // section. The consultant can still click "Generate Advice" manually.
+  const { data: profile } = useQuery({
+    queryKey: ['profile', engagementId],
+    queryFn: () => engagementsApi.getProfile(engagementId),
+    enabled: !!engagementId,
+    staleTime: 30_000,
+  });
+  const sectionHasAnswers = useMemo(() => {
+    const answers = (profile?.answers ?? {}) as Record<string, unknown>;
+    if (sectionKey === 'license') {
+      // License section answers live on the LicenseProfile, not the
+      // BusinessProfile — treat as "always advisable" so the existing
+      // license advice flow keeps firing.
+      return true;
+    }
+    return Object.keys(answers).some((k) => k.startsWith(`${sectionKey}.`));
+  }, [profile, sectionKey]);
+
   // Generate/refresh mutation
   const generateMutation = useMutation({
     mutationFn: () => engagementsApi.generateAdvice(engagementId, sectionKey),
@@ -92,6 +113,12 @@ export function AIAdvisorPanel({ engagementId, sectionKey }: AIAdvisorPanelProps
   // ── Proactive AI: auto-generate advice when entering a section ──
   // Only triggers once per section (tracked by ref) and only when there's no
   // cached advice and no in-flight request.
+  //
+  // Phase 39.4 — also requires the section to have at least one answer.
+  // Without this gate we'd auto-fire a Claude call on a fresh section,
+  // cache the resulting low-context advice via answersHash, and have the
+  // user see stale results until they explicitly Refresh. Now the
+  // consultant gets the manual "Generate Advice" CTA on empty sections.
   const autoTriggered = useRef<string | null>(null);
   useEffect(() => {
     if (
@@ -99,6 +126,7 @@ export function AIAdvisorPanel({ engagementId, sectionKey }: AIAdvisorPanelProps
       !hasAdvice &&
       !isGenerating &&
       sectionKey &&
+      sectionHasAnswers &&
       autoTriggered.current !== sectionKey
     ) {
       autoTriggered.current = sectionKey;
@@ -109,7 +137,7 @@ export function AIAdvisorPanel({ engagementId, sectionKey }: AIAdvisorPanelProps
       return () => clearTimeout(timer);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoading, hasAdvice, sectionKey]);
+  }, [isLoading, hasAdvice, sectionKey, sectionHasAnswers]);
 
   const copyInstruction = (step: number, text: string) => {
     navigator.clipboard.writeText(text);
@@ -209,10 +237,13 @@ export function AIAdvisorPanel({ engagementId, sectionKey }: AIAdvisorPanelProps
               <div className="p-3 rounded-2xl bg-slate-50">
                 <Sparkles className="h-6 w-6 text-slate-300" />
               </div>
-              <p className="text-sm font-medium text-slate-500">Preparing advice…</p>
+              <p className="text-sm font-medium text-slate-500">
+                {sectionHasAnswers ? 'Preparing advice…' : 'No answers yet'}
+              </p>
               <p className="text-xs text-slate-400 max-w-xs text-center">
-                AI advice will auto-generate when you enter this section, or click
-                "Generate Advice" to get implementation suggestions now.
+                {sectionHasAnswers
+                  ? 'AI advice will auto-generate when you enter this section, or click "Generate Advice" to get implementation suggestions now.'
+                  : 'Answer a question or two in this section first — the advisor produces sharper guidance with at least some context. You can also click "Generate Advice" to ask anyway.'}
               </p>
             </div>
           )}
