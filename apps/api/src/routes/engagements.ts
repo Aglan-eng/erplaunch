@@ -31,6 +31,10 @@ import {
   handoffEventFor,
   handoffMessageFor,
 } from '../services/lifecycleTransitions.js';
+import {
+  resolveVisibilityScope,
+  applyVisibilityScope,
+} from '../services/engagementVisibility.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -106,12 +110,25 @@ export async function engagementRoutes(fastify: FastifyInstance) {
   // Phase 37.1 — by default ARCHIVED engagements are filtered out so the
   // dashboard isn't cluttered with old test data. Pass ?includeArchived=true
   // (e.g., from an admin "Archived Engagements" view) to opt in.
+  //
+  // Phase 44.1 — engagement-list visibility filter. Firm-level roles see
+  // every engagement; engagement-level-only roles see only the rows they
+  // hold a current-stage assignment on (per VISIBILITY_RULES). A user
+  // with no roles at all sees an empty list.
   fastify.get('/engagements', async (request, reply) => {
     const { includeArchived } = request.query as { includeArchived?: string };
     const engagements = await db.listEngagements(request.jwtUser.firmId, {
       includeArchived: includeArchived === 'true',
     });
-    return reply.send({ data: engagements });
+    const scope = await resolveVisibilityScope({
+      userId: request.jwtUser.userId,
+      firmId: request.jwtUser.firmId,
+    });
+    const visible = applyVisibilityScope(
+      engagements as Array<{ id: string }>,
+      scope,
+    );
+    return reply.send({ data: visible });
   });
 
   // POST /engagements

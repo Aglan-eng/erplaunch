@@ -24,6 +24,7 @@ import {
   createPortalTodo,
   createDataCollectionItem,
   findEngagementById,
+  bootstrapFirmAdmin,
 } from '../../src/db/index.js';
 
 const JWT_SECRET = 'test-archive-secret';
@@ -68,6 +69,9 @@ async function seedConsultant(): Promise<SeedFixture> {
   });
   const eng = await createEngagement({ firmId, clientName: 'Acme Manufacturing Ltd' });
   const engagementId = (eng as { id: string }).id;
+  // Phase 44.1 — visibility filter requires a role to see the list.
+  // Mimic /auth/register's bootstrap so the user has APP_ADMIN.
+  await bootstrapFirmAdmin({ firmId, userId });
   const token = app.jwt.sign({
     userId,
     firmId,
