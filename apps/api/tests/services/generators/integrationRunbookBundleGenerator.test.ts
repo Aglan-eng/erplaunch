@@ -201,3 +201,114 @@ describe('Pack ZZ — integrationRunbookBundleGenerator: overlay-driven personal
     expect(runbook).toContain('Flag for manual fix');
   });
 });
+
+// ─── Phase 41.1 — recovery + escalation prose flexes by frequency + criticality
+//
+// Old behaviour: every runbook said "Escalation trigger: if recovery
+// exceeds 4 hours OR if more than 5% of cycle volume requires manual
+// fallback" — identical for a real-time tax call (should be 30 min) and
+// a nightly expense batch (should be 24 hours). Phase 41.1 branches on
+// frequency + isCriticalPath so the runbook reads like a runbook for
+// THIS integration, not a generic methodology doc.
+
+describe('Pack ZZ — Phase 41.1 cadence-aware Recovery prose', () => {
+  it('real-time + critical-path uses a 30-minute escalation trigger', () => {
+    const out = generateIntegrationRunbookBundle({
+      clientName: 'Atlas',
+      adaptorName: 'NetSuite',
+      answers: {
+        // Avalara Tax is critical-path by default; explicit Realtime
+        // frequency drives the recovery profile.
+        'integrations.catalog.integrationCatalog':
+          'Avalara Tax | Transactional API | Bidirectional | Realtime | RESTlet + SDK | Avalara',
+      },
+    });
+    const runbook = out.files['01_avalara_tax.md'];
+    expect(runbook).toContain('30 minutes');
+    expect(runbook).toContain('Real-time critical-path integration');
+    // The legacy generic 4-hour trigger should be gone.
+    expect(runbook).not.toMatch(/recovery exceeds 4 hours OR if more than 5%/);
+  });
+
+  it('daily batch uses a 24-hour trigger and "missed cycle" framing', () => {
+    const out = generateIntegrationRunbookBundle({
+      clientName: 'Atlas',
+      adaptorName: 'NetSuite',
+      answers: {
+        'integrations.catalog.integrationCatalog':
+          'Concur Expenses | Master-data | Inbound | Daily | iPaaS | SAP Concur',
+      },
+    });
+    const runbook = out.files['01_concur_expenses.md'];
+    expect(runbook).toContain('24 hours');
+    expect(runbook).toContain('one missed cycle');
+    expect(runbook).toContain('Daily batch integration');
+  });
+
+  it('weekly cadence uses email-only escalation framing', () => {
+    const out = generateIntegrationRunbookBundle({
+      clientName: 'Atlas',
+      adaptorName: 'NetSuite',
+      answers: {
+        'integrations.catalog.integrationCatalog':
+          'Acme Reporting | Reporting | Outbound | Weekly | iPaaS | Acme',
+      },
+    });
+    const runbook = out.files['01_acme_reporting.md'];
+    expect(runbook).toContain('Email-only escalation is acceptable');
+    expect(runbook).toContain('Low-cadence batch integration');
+  });
+
+  it('hourly + critical-path tightens to a 1-hour trigger', () => {
+    const out = generateIntegrationRunbookBundle({
+      clientName: 'Atlas',
+      adaptorName: 'NetSuite',
+      answers: {
+        // Avalara Tax is critical-path; override frequency to Hourly.
+        'integrations.catalog.integrationCatalog':
+          'Avalara Tax | Transactional API | Bidirectional | Hourly | RESTlet + SDK | Avalara',
+      },
+    });
+    const runbook = out.files['01_avalara_tax.md'];
+    expect(runbook).toContain('1 hour');
+    expect(runbook).toContain('Hourly critical-path integration');
+  });
+
+  it('smoke-test pass criteria reflects the cadence', () => {
+    const realtime = generateIntegrationRunbookBundle({
+      clientName: 'Atlas',
+      adaptorName: 'NetSuite',
+      answers: {
+        'integrations.catalog.integrationCatalog':
+          'Avalara Tax | Transactional API | Bidirectional | Realtime | RESTlet + SDK | Avalara',
+      },
+    });
+    expect(realtime.files['01_avalara_tax.md']).toContain('sub-second SLA');
+
+    // Daily critical-path requires inbound + transactional + daily —
+    // so isCriticalPath returns true and the "overnight batch" framing
+    // applies (not the looser standard-daily framing).
+    const daily = generateIntegrationRunbookBundle({
+      clientName: 'Atlas',
+      adaptorName: 'NetSuite',
+      answers: {
+        'integrations.catalog.integrationCatalog':
+          'Daily Bank Feed | Transactional | Inbound | Daily | iPaaS | Acme Bank',
+      },
+    });
+    expect(daily.files['01_daily_bank_feed.md']).toContain('overnight batch');
+    expect(daily.files['01_daily_bank_feed.md']).toContain('09:00 local time');
+
+    // A non-critical daily integration uses the looser framing.
+    const dailyStandard = generateIntegrationRunbookBundle({
+      clientName: 'Atlas',
+      adaptorName: 'NetSuite',
+      answers: {
+        'integrations.catalog.integrationCatalog':
+          'Concur Expenses | Master-data | Inbound | Daily | iPaaS | SAP Concur',
+      },
+    });
+    expect(dailyStandard.files['01_concur_expenses.md']).toContain('Daily batch integration');
+    expect(dailyStandard.files['01_concur_expenses.md']).not.toContain('09:00 local time');
+  });
+});

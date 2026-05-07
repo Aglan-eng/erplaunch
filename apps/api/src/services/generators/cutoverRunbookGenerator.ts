@@ -60,6 +60,28 @@ export interface CutoverRunbookGeneratorInput {
   targetGoLiveDate?: string | null;
   /** TEXTAREA cutover.team.dryRunDates — embedded in pre-cutover phase. */
   dryRunDates?: string | null;
+  /**
+   * Phase 41.1 — engagement-specific data that lets the runbook stop
+   * sounding like a methodology whitepaper:
+   *
+   * - `migrationObjects` lists the actual objects in scope (resolved
+   *   upstream via `migrationHelpers.objectsInScope`). The BIG_BANG
+   *   extract row uses these instead of the hardcoded "customers,
+   *   vendors, items, open AR/AP, opening TB, inventory snapshot"
+   *   string — which read identically for every engagement and
+   *   frequently included objects the engagement didn't migrate.
+   *
+   * - `licenseModules` shapes the PHASED_MODULE wave table. The old
+   *   table hardcoded "Finance + Master Data → Inventory + Procurement
+   *   → Sales + AR → Manufacturing + Returns" regardless of what was
+   *   licensed; an engagement without Manufacturing still got Wave 4.
+   *
+   * Both are optional — when omitted the generator falls back to the
+   *  legacy generic prose so callers that don't yet pipe these in
+   *  still produce valid (if generic) output.
+   */
+  migrationObjects?: ReadonlyArray<{ id: string; label: string }>;
+  licenseModules?: ReadonlyArray<string>;
 }
 
 export interface CutoverRunbookGeneratorOutput {
@@ -189,7 +211,34 @@ function fmtTimeRange(start: number, end: number): string {
   return `${fmtTime(start)} → ${fmtTime(end)}`;
 }
 
-function bigBangRows(windowH: number, roster: RosterRow[]): RunbookRow[] {
+/**
+ * Phase 41.1 — render the extract-step activity from the actual
+ * objects in migration scope instead of the hardcoded "customers,
+ * vendors, items, open AR/AP, opening TB, inventory snapshot" string.
+ *
+ * Cap to a reasonable number of items so a 16-object NetSuite scope
+ * doesn't push the activity column off the page; suffix "+ N more"
+ * when truncated so the consultant knows the table is summarising.
+ */
+const EXTRACT_LABEL_CAP = 6;
+
+function extractActivityFor(objects: ReadonlyArray<{ label: string }>): string {
+  if (!objects || objects.length === 0) {
+    // Legacy generic fallback — preserves output for callers that
+    // haven't piped in migration objects yet.
+    return 'Run data extraction scripts (customers, vendors, items, open AR/AP, opening TB, inventory snapshot)';
+  }
+  const labels = objects.map((o) => o.label);
+  const head = labels.slice(0, EXTRACT_LABEL_CAP).join(', ');
+  const more = labels.length > EXTRACT_LABEL_CAP ? ` + ${labels.length - EXTRACT_LABEL_CAP} more` : '';
+  return `Run data extraction scripts: ${head}${more}`;
+}
+
+function bigBangRows(
+  windowH: number,
+  roster: RosterRow[],
+  migrationObjects: ReadonlyArray<{ id: string; label: string }> = [],
+): RunbookRow[] {
   const consultantPM = findOwner(roster, ['consultant pm', 'overall command', 'consultant project manager']);
   const itLead = findOwner(roster, ['it lead', 'it admin', 'sysadmin', 'platform admin']);
   const migrationLead = findOwner(roster, [
@@ -228,9 +277,14 @@ function bigBangRows(windowH: number, roster: RosterRow[]): RunbookRow[] {
     {
       timeRange: fmtTimeRange(0.5, extractEnd),
       owner: migrationLead,
-      activity:
-        'Run data extraction scripts (customers, vendors, items, open AR/AP, opening TB, inventory snapshot)',
-      passCriteria: 'All extracts complete; record counts match expected within ±0.1%',
+      activity: extractActivityFor(migrationObjects),
+      // Phase 41.1 — pass criteria mentions the actual object count so
+      // the consultant has a number to verify against rather than
+      // the abstract "All extracts complete".
+      passCriteria:
+        migrationObjects.length > 0
+          ? `All ${migrationObjects.length} extracts complete; record counts match expected within ±0.1%`
+          : 'All extracts complete; record counts match expected within ±0.1%',
     },
     {
       timeRange: fmtTimeRange(extractEnd, transformEnd),
@@ -311,8 +365,9 @@ function preCutoverSection(args: {
 function bigBangBody(args: {
   windowH: number;
   roster: RosterRow[];
+  migrationObjects: ReadonlyArray<{ id: string; label: string }>;
 }): string {
-  const rows = bigBangRows(args.windowH, args.roster);
+  const rows = bigBangRows(args.windowH, args.roster, args.migrationObjects);
   const tableRows = rows
     .map(
       (r) =>
@@ -402,26 +457,151 @@ function phasedEntityBody(args: { roster: RosterRow[] }): string {
   ].join('\n');
 }
 
-function phasedModuleBody(args: { roster: RosterRow[] }): string {
+/**
+ * Phase 41.1 — group licensed modules into cutover waves following
+ * canonical ERP dependency order:
+ *
+ *   Wave 1 — Foundation + Finance (R2R, GL, AR, AP basics)
+ *   Wave 2 — Procurement (P2P) + Inventory
+ *   Wave 3 — Sales (O2C) + Customer-facing
+ *   Wave 4 — Manufacturing + Returns
+ *
+ * A wave that has no licensed modules is skipped entirely so an
+ * engagement without manufacturing doesn't get a phantom Wave 4.
+ *
+ * The matcher uses substring keywords so it tolerates the various
+ * naming conventions across NetSuite SuiteSuccess module bundles
+ * and Odoo module ids ("inventory", "stock", "warehouse" all map to
+ * Wave 2 etc).
+ */
+interface ModuleWave {
+  number: number;
+  label: string;
+  matchKeywords: string[];
+  dependencies: string;
+}
+
+const PHASED_MODULE_WAVES: ReadonlyArray<ModuleWave> = [
+  {
+    number: 1,
+    label: 'Foundation + Finance',
+    matchKeywords: ['finance', 'gl ', 'general ledger', 'r2r', 'accounting', 'cash', 'bank', 'foundation'],
+    dependencies: 'Foundation only',
+  },
+  {
+    number: 2,
+    label: 'Procurement + Inventory',
+    matchKeywords: ['procure', 'p2p', 'purchasing', 'vendor', 'ap ', 'expense', 'inventory', 'stock', 'warehouse', 'wms'],
+    dependencies: 'Wave 1 stable',
+  },
+  {
+    number: 3,
+    label: 'Sales + Customer Operations',
+    matchKeywords: ['sales', 'o2c', 'order to cash', 'crm', 'ar ', 'invoic', 'customer', 'collection', 'shipping', 'fulfilment', 'fulfillment'],
+    dependencies: 'Wave 1 + 2 stable',
+  },
+  {
+    number: 4,
+    label: 'Manufacturing + Returns',
+    matchKeywords: ['manufactur', 'mfg', 'production', 'work order', 'mrp', 'bom', 'quality', 'return', 'rma'],
+    dependencies: 'Waves 1-3 stable',
+  },
+];
+
+function moduleMatchesWave(moduleName: string, wave: ModuleWave): boolean {
+  const lower = moduleName.toLowerCase();
+  return wave.matchKeywords.some((kw) => lower.includes(kw));
+}
+
+function bucketModulesIntoWaves(
+  modules: ReadonlyArray<string>,
+): Array<{ wave: ModuleWave; modules: string[] }> {
+  if (modules.length === 0) return [];
+  const out: Array<{ wave: ModuleWave; modules: string[] }> = [];
+  const claimed = new Set<string>();
+
+  for (const wave of PHASED_MODULE_WAVES) {
+    const matched = modules.filter((m) => !claimed.has(m) && moduleMatchesWave(m, wave));
+    matched.forEach((m) => claimed.add(m));
+    if (matched.length > 0) out.push({ wave, modules: matched });
+  }
+
+  // Modules that didn't match any wave keyword bucket into a final
+  // "Other" wave so they're surfaced — better to over-include than
+  // silently drop a licensed module from the cutover plan.
+  const unmatched = modules.filter((m) => !claimed.has(m));
+  if (unmatched.length > 0) {
+    const lastWaveNum = (out[out.length - 1]?.wave.number ?? 0) + 1;
+    out.push({
+      wave: {
+        number: lastWaveNum,
+        label: 'Other / unclassified',
+        matchKeywords: [],
+        dependencies: 'Prior waves stable',
+      },
+      modules: unmatched,
+    });
+  }
+  return out;
+}
+
+function phasedModuleBody(args: {
+  roster: RosterRow[];
+  licenseModules: ReadonlyArray<string>;
+}): string {
   const consultantPM = findOwner(args.roster, ['consultant pm', 'overall command']);
+  const buckets = bucketModulesIntoWaves(args.licenseModules);
+
+  // Generic fallback when no modules are wired through (legacy callers).
+  if (buckets.length === 0) {
+    return [
+      '## Cutover Window — Phased by Module',
+      '',
+      'Phased-module style: modules cut over in dependency order. Typical sequence: ',
+      'Finance + Master Data → Inventory + Procurement → Sales + AR → Manufacturing + Returns. ',
+      'Useful when downstream modules can wait until upstream is stable.',
+      '',
+      '_License modules were not provided — the wave table below is a generic placeholder. Replace with the engagement\'s actual licensed modules to render a tailored wave plan._',
+      '',
+      '### Wave Schedule',
+      '',
+      '| Wave | Modules | Dependencies | Owner | Status |',
+      '|------|---------|--------------|-------|--------|',
+      `| 1 | Finance + Master Data | Foundation only | ${consultantPM} | ⏳ |`,
+      `| 2 | Inventory + Procurement | Wave 1 stable | ${consultantPM} | ⏳ |`,
+      `| 3 | Sales + AR | Wave 1 + 2 stable | ${consultantPM} | ⏳ |`,
+      `| 4 | Manufacturing + Returns | Waves 1-3 stable | ${consultantPM} | ⏳ |`,
+      '',
+      '_(Adjust the sequence per the engagement\'s actual module dependencies. Each wave goes through extract / transform / load / validate / smoke.)_',
+      '',
+    ].join('\n');
+  }
+
+  // Tailored wave table — only renders waves that have at least one
+  // licensed module, so an engagement without Manufacturing doesn't
+  // get a phantom Wave 4.
+  const tableRows = buckets
+    .map(
+      ({ wave, modules }) =>
+        `| ${wave.number} | ${wave.label} (${modules.join(', ')}) | ${wave.dependencies} | ${consultantPM} | ⏳ |`,
+    )
+    .join('\n');
 
   return [
     '## Cutover Window — Phased by Module',
     '',
-    'Phased-module style: modules cut over in dependency order. Typical sequence: ',
-    'Finance + Master Data → Inventory + Procurement → Sales + AR → Manufacturing + Returns. ',
-    'Useful when downstream modules can wait until upstream is stable.',
+    'Phased-module style: modules cut over in dependency order. The wave table below is ',
+    `derived from the **${args.licenseModules.length} licensed module(s)** for this engagement — `,
+    'waves that have no in-scope module are omitted so the runbook only schedules work the ',
+    'team will actually execute.',
     '',
     '### Wave Schedule',
     '',
     '| Wave | Modules | Dependencies | Owner | Status |',
     '|------|---------|--------------|-------|--------|',
-    `| 1 | Finance + Master Data | Foundation only | ${consultantPM} | ⏳ |`,
-    `| 2 | Inventory + Procurement | Wave 1 stable | ${consultantPM} | ⏳ |`,
-    `| 3 | Sales + AR | Wave 1 + 2 stable | ${consultantPM} | ⏳ |`,
-    `| 4 | Manufacturing + Returns | Waves 1-3 stable | ${consultantPM} | ⏳ |`,
+    tableRows,
     '',
-    '_(Adjust the sequence per the engagement\'s actual module dependencies. Each wave goes through extract / transform / load / validate / smoke.)_',
+    '_(Each wave goes through extract / transform / load / validate / smoke. Adjust the bucket assignments if the engagement\'s actual dependencies differ from the canonical ordering.)_',
     '',
   ].join('\n');
 }
@@ -513,6 +693,12 @@ export function generateCutoverRunbook(
   const roster = parseRoster((input.cutoverTeamRoster ?? '').toString());
   const dryRuns = parseDryRunDates((input.dryRunDates ?? '').toString());
 
+  // Phase 41.1 — engagement-specific inputs flow through here. Default
+  // to empty arrays so legacy callers without these fields still
+  // produce valid (if generic) output.
+  const migrationObjects = input.migrationObjects ?? [];
+  const licenseModules = input.licenseModules ?? [];
+
   let body = '';
   switch (style) {
     case 'PARALLEL_RUN':
@@ -522,11 +708,11 @@ export function generateCutoverRunbook(
       body = phasedEntityBody({ roster });
       break;
     case 'PHASED_MODULE':
-      body = phasedModuleBody({ roster });
+      body = phasedModuleBody({ roster, licenseModules });
       break;
     case 'BIG_BANG':
     default:
-      body = bigBangBody({ windowH, roster });
+      body = bigBangBody({ windowH, roster, migrationObjects });
       break;
   }
 

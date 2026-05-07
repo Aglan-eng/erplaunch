@@ -269,3 +269,67 @@ describe('generateSolutionDoc — custom adaptor (fall-through default)', () => 
     expect(md).not.toContain('SDF');
   });
 });
+
+// ─── Phase 41.1 — Section 5 Roles: drop the duplicate canonical table
+// when the engagement has captured Phase 25 structured roles. The old
+// behaviour rendered a generic Finance Manager / Procurement Manager /
+// Sales Manager table on every doc regardless of what the consultant
+// captured, which read identically across clients and competed with
+// the structured roles section for "here are the roles" attention.
+
+describe('generateSolutionDoc — Phase 41.1 canonical roles suppression', () => {
+  it('renders the canonical Finance Manager / Procurement Manager table when no structured roles exist', () => {
+    const md = generateSolutionDoc(baseData(NETSUITE_CTX));
+    expect(md).toContain('### 5.1 Canonical Roles (reference)');
+    expect(md).toContain('| Finance Manager |');
+    expect(md).toContain('| Procurement Manager |');
+    expect(md).toContain('| Sales Manager |');
+  });
+
+  it('suppresses the canonical table when structured roles are captured', () => {
+    const md = generateSolutionDoc(
+      baseData(NETSUITE_CTX, {
+        answers: {
+          'r2r.entities.multiEntity': true,
+          'p2p.purchasing.poApprovalRequired': true,
+          // Phase 25 structured roles — minimal valid payload.
+          'ns.design.standardRolesStructured': JSON.stringify([
+            { name: 'AR Clerk', centerOverride: null, restrictionOverride: null, customizationNotes: '' },
+          ]),
+        },
+      }),
+    );
+    expect(md).not.toContain('### 5.1 Canonical Roles (reference)');
+    // The canonical role table rows should be gone (the role names
+    // can still appear elsewhere in the doc — e.g. the Approval
+    // Workflows section legitimately mentions "Procurement Manager"
+    // as the routing target — so we only assert the table-row prefixes
+    // here, not the bare role names.
+    expect(md).not.toContain('| Finance Manager | R2R, P2P |');
+    expect(md).not.toContain('| Procurement Manager | P2P |');
+    expect(md).not.toContain('| Sales Manager | O2C |');
+    // The structured-roles section takes 5.1.
+    expect(md).toContain('### 5.1 Captured Custom Roles (Phase 25 structured editor)');
+    expect(md).toContain('| AR Clerk |');
+  });
+
+  it('preserves section numbering when both structured roles and templates exist', () => {
+    const md = generateSolutionDoc(
+      baseData(NETSUITE_CTX, {
+        answers: {
+          'r2r.entities.multiEntity': true,
+          'ns.design.standardRolesStructured': JSON.stringify([
+            { name: 'AR Clerk', centerOverride: null, restrictionOverride: null, customizationNotes: '' },
+          ]),
+          'ns.design.templatesStructured': JSON.stringify([
+            { name: 'Invoice Template', kind: 'PDF', preferred: true, sections: ['header', 'lines'], notes: '' },
+          ]),
+        },
+      }),
+    );
+    // Roles = 5.1, Templates = 5.2 (no gap).
+    expect(md).toContain('### 5.1 Captured Custom Roles');
+    expect(md).toContain('### 5.2 Custom Templates');
+    expect(md).not.toContain('### 5.3 Custom Templates');
+  });
+});

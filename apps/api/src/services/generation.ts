@@ -590,6 +590,17 @@ export async function processJob(jobId: string, db: DbModule) {
         ? (answers['odoo.migration.parallelRunDays'] as number)
         : undefined;
 
+    // Phase 41.1 — pipe migration objects + license modules through so
+    // the runbook's BIG_BANG extract row and PHASED_MODULE wave table
+    // are derived from the engagement, not hardcoded SaaS-speak. Lazy
+    // import so the migrationHelpers dep doesn't get pulled into tests
+    // that exercise other parts of generation.ts.
+    const { objectsInScope } = await import('./generators/migrationHelpers.js');
+    const cutoverMigrationObjects = objectsInScope({
+      adaptorName: adaptorCtx.name,
+      answers: answers as Record<string, unknown>,
+    }).map((o) => ({ id: o.id, label: o.label }));
+
     const runbookResult = generateCutoverRunbook({
       clientName: eng.clientName as string,
       adaptorName: adaptorCtx.name,
@@ -600,6 +611,8 @@ export async function processJob(jobId: string, db: DbModule) {
       cutoverTeamRoster: answers['cutover.team.cutoverTeamRoster'] as string | undefined,
       targetGoLiveDate: answers['kickoff.mandate.targetGoLiveDate'] as string | undefined,
       dryRunDates: answers['cutover.team.dryRunDates'] as string | undefined,
+      migrationObjects: cutoverMigrationObjects,
+      licenseModules: license.modules ?? [],
     });
     await fs.writeFile(path.join(cutoverDir, 'Cutover_Runbook.md'), runbookResult.markdown);
     await fs.writeFile(path.join(cutoverDir, 'Cutover_Runbook.html'), runbookResult.html);

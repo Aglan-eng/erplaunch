@@ -114,6 +114,116 @@ function dashboardRef(ctx: BundleContext, row: ParsedCatalogRow): string {
     : `**Dashboard tile:** Studio dashboard panel "${row.name} — Health" with PostgreSQL view \`v_int_${slug}_health\`.`;
 }
 
+/**
+ * Phase 41.1 — classify the integration's cadence so Recovery and
+ * Escalation prose can flex. A real-time critical-path call (e.g.
+ * Avalara tax) needs a 30-minute escalation trigger; a nightly
+ * batch (e.g. Concur expense) tolerates a 24-hour window. The old
+ * hardcoded "4 hours OR more than 5%" applied to every integration
+ * regardless of cadence — half too tight, half too loose.
+ */
+type IntegrationCadence = 'realtime' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'unknown';
+
+function classifyCadence(frequency: string): IntegrationCadence {
+  const lower = (frequency ?? '').toLowerCase();
+  if (/real[- ]?time|streaming|sync|live|webhook|event/.test(lower)) return 'realtime';
+  if (/hour|every \d+ min/.test(lower)) return 'hourly';
+  if (/dail|nightly|overnight|every day/.test(lower)) return 'daily';
+  if (/week/.test(lower)) return 'weekly';
+  if (/month|quarter/.test(lower)) return 'monthly';
+  return 'unknown';
+}
+
+interface RecoveryProfile {
+  /** Triggering language for the war-room escalation prose. */
+  escalationTrigger: string;
+  /** Replay-procedure framing tailored to the cadence. */
+  replayPreamble: string;
+  /** Pass-criteria framing for the smoke tests. */
+  smokeFraming: string;
+}
+
+function recoveryProfileFor(cadence: IntegrationCadence, criticalPath: boolean): RecoveryProfile {
+  // Critical-path tightens the trigger threshold by ~half regardless
+  // of cadence, since these block period close.
+  switch (cadence) {
+    case 'realtime':
+      return criticalPath
+        ? {
+            escalationTrigger:
+              'if recovery exceeds **30 minutes** OR if more than **1%** of in-flight events fail, page the internal owner immediately and convene war-room session per `Documentation/Hypercare/War_Room_SOP.md`. Real-time critical-path integrations cannot tolerate batch-style recovery windows.',
+            replayPreamble:
+              'Real-time critical-path integration. Replay the exact event sequence from the source-system audit log; do **not** bulk-replay (out-of-order events corrupt state).',
+            smokeFraming:
+              'test event traverses end-to-end within sub-second SLA; reconciliation passes record-for-record on first business cycle.',
+          }
+        : {
+            escalationTrigger:
+              'if recovery exceeds **2 hours** OR if more than **5%** of in-flight events fail, page the internal owner and convene war-room session per `Documentation/Hypercare/War_Room_SOP.md`.',
+            replayPreamble:
+              'Real-time integration. Replay the event sequence from the source-system audit log preserving order; bulk-replay is acceptable only for idempotent endpoints.',
+            smokeFraming:
+              'test event traverses end-to-end within sub-second SLA; cycle reconciliation passes within tolerance.',
+          };
+    case 'hourly':
+      return criticalPath
+        ? {
+            escalationTrigger:
+              'if recovery exceeds **1 hour** (one missed cycle) OR if more than **2%** of cycle volume requires manual fallback, page the internal owner and convene war-room session per `Documentation/Hypercare/War_Room_SOP.md`.',
+            replayPreamble:
+              'Hourly critical-path integration. Replay the failed cycle as a single batch from the source-system audit log; verify against the next scheduled cycle before resuming automation.',
+            smokeFraming:
+              'test cycle traverses end-to-end within the cycle window; reconciliation passes against source.',
+          }
+        : {
+            escalationTrigger:
+              'if recovery exceeds **4 hours** (4 missed cycles) OR if more than **10%** of cycle volume requires manual fallback, page the internal owner.',
+            replayPreamble:
+              'Hourly integration. Replay missed cycles in order from the source-system audit log; resume automation after the first successful catch-up cycle.',
+            smokeFraming:
+              'test cycle traverses end-to-end within the cycle window; reconciliation matches source.',
+          };
+    case 'daily':
+      return criticalPath
+        ? {
+            escalationTrigger:
+              'if recovery exceeds **4 hours** OR if the next daily cycle cannot be guaranteed on schedule, page the internal owner. A missed daily run on a critical-path integration blocks period close.',
+            replayPreamble:
+              'Daily critical-path integration. Replay the missed batch from the source-system audit log before the next scheduled cycle so the daily window stays clean.',
+            smokeFraming:
+              'overnight batch traverses end-to-end before next-day open; reconciliation passes by 09:00 local time.',
+          }
+        : {
+            escalationTrigger:
+              'if recovery exceeds **24 hours** (one missed cycle) OR if more than **5%** of cycle volume requires manual fallback, page the internal owner.',
+            replayPreamble:
+              'Daily batch integration. Replay the missed batch from the source-system audit log; verify reconciliation before scheduling the next batch.',
+            smokeFraming:
+              'next scheduled batch reconciles 100% record-for-record against source.',
+          };
+    case 'weekly':
+    case 'monthly':
+      return {
+        escalationTrigger:
+          'if recovery cannot be completed before the next scheduled cycle OR if reconciliation variance exceeds **5%**, raise via standard incident process. Email-only escalation is acceptable; war-room not required for low-cadence integrations unless variance is material.',
+        replayPreamble:
+          'Low-cadence batch integration. Replay the missed cycle from the source-system audit log before the next scheduled cycle.',
+        smokeFraming:
+          'next scheduled cycle reconciles within tolerance against source.',
+      };
+    case 'unknown':
+    default:
+      return {
+        escalationTrigger:
+          'if recovery exceeds **4 hours** OR if more than **5%** of cycle volume requires manual fallback, page the internal owner and convene war-room session per `Documentation/Hypercare/War_Room_SOP.md`. _(Cadence unknown — tighten to 30 minutes if this is real-time, loosen to 24 hours if this is a daily batch.)_',
+        replayPreamble:
+          'Replay procedure (cadence-agnostic — confirm cadence-specific steps with the integration owner before executing).',
+        smokeFraming:
+          'test record successfully traverses end-to-end within frequency SLA; reconciliation match against source.',
+      };
+  }
+}
+
 function buildRunbook(row: ParsedCatalogRow, ctx: BundleContext): string {
   const lcName = row.name.toLowerCase();
   const ownerEntry = ctx.owners.get(lcName);
@@ -148,6 +258,13 @@ function buildRunbook(row: ParsedCatalogRow, ctx: BundleContext): string {
   const postCutover = smokeEntry?.postCutover.length
     ? smokeEntry.postCutover
     : '_[ASSIGN post-cutover smoke test]_';
+
+  // Phase 41.1 — recovery + escalation prose now flexes per cadence
+  // and criticality so a real-time tax call and a nightly expense
+  // batch don't both get the same generic "4 hours OR 5%" trigger.
+  const cadence = classifyCadence(row.frequency ?? '');
+  const isCritical = isCriticalPath(row);
+  const recoveryProfile = recoveryProfileFor(cadence, isCritical);
 
   // Error patterns are joined by name; a single integration can have N rows.
   const errorRows = ctx.errorPatterns
@@ -223,6 +340,8 @@ function buildRunbook(row: ParsedCatalogRow, ctx: BundleContext): string {
     '',
     '## 7. Recovery Procedures',
     '',
+    `_${recoveryProfile.replayPreamble}_`,
+    '',
     '**Replay procedure:**',
     '',
     '1. Identify the failed transaction window from the log location above.',
@@ -238,13 +357,13 @@ function buildRunbook(row: ParsedCatalogRow, ctx: BundleContext): string {
     '3. Reconcile manual entries against source within the next cycle.',
     '4. Resume automated flow only after middleware is fully restored AND smoke test passes.',
     '',
-    '**Escalation trigger:** if recovery exceeds 4 hours OR if more than 5% of cycle volume requires manual fallback, page the internal owner and convene war-room session per `Documentation/Hypercare/War_Room_SOP.md`.',
+    `**Escalation trigger:** ${recoveryProfile.escalationTrigger}`,
     '',
     '## 8. Pre-Cutover Smoke Test',
     '',
     preCutover,
     '',
-    '**Pass criteria:** test record successfully traverses end-to-end within frequency SLA; reconciliation match against source.',
+    `**Pass criteria:** ${recoveryProfile.smokeFraming}`,
     '',
     '## 9. Post-Cutover Smoke Test',
     '',

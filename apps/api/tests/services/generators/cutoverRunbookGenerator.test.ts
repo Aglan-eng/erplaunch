@@ -234,3 +234,105 @@ describe('Pack V — cutoverRunbookGenerator: cross-references', () => {
     expect(out.markdown).toContain('Defect_Log_Template.md');
   });
 });
+
+// ─── Phase 41.1 — engagement-specific BIG_BANG extract row + PHASED_MODULE waves
+//
+// The runbook used to read identically across engagements: a hardcoded
+// extract list ("customers, vendors, items, open AR/AP, opening TB,
+// inventory snapshot") and a hardcoded 4-wave PHASED_MODULE table that
+// included Manufacturing for clients that didn't license it. These
+// tests pin the new behaviour: BIG_BANG names the actual objects, and
+// PHASED_MODULE only renders waves that have at least one in-scope
+// licensed module.
+
+describe('Pack V — Phase 41.1 BIG_BANG extract row', () => {
+  it('falls back to the legacy generic list when no migrationObjects are provided', () => {
+    const out = generateCutoverRunbook({
+      clientName: 'Atlas',
+      cutoverTeamRoster: SAMPLE_ROSTER,
+    });
+    expect(out.markdown).toContain('Run data extraction scripts (customers, vendors, items, open AR/AP, opening TB, inventory snapshot)');
+  });
+
+  it('names the actual objects when migrationObjects are provided', () => {
+    const out = generateCutoverRunbook({
+      clientName: 'Atlas',
+      cutoverTeamRoster: SAMPLE_ROSTER,
+      migrationObjects: [
+        { id: 'subsidiaries', label: 'Subsidiaries' },
+        { id: 'customers', label: 'Customers' },
+        { id: 'items', label: 'Items / Products' },
+      ],
+    });
+    expect(out.markdown).toContain('Run data extraction scripts: Subsidiaries, Customers, Items / Products');
+    // Pass-criteria mentions the count.
+    expect(out.markdown).toContain('All 3 extracts complete');
+  });
+
+  it('truncates very long object lists with a "+ N more" suffix', () => {
+    const labels = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+    const out = generateCutoverRunbook({
+      clientName: 'Atlas',
+      cutoverTeamRoster: SAMPLE_ROSTER,
+      migrationObjects: labels.map((l) => ({ id: l.toLowerCase(), label: l })),
+    });
+    // 8 objects, cap at 6 → "A, B, C, D, E, F + 2 more"
+    expect(out.markdown).toContain('A, B, C, D, E, F + 2 more');
+    expect(out.markdown).toContain('All 8 extracts complete');
+  });
+});
+
+describe('Pack V — Phase 41.1 PHASED_MODULE waves derived from license modules', () => {
+  it('renders only waves that have at least one in-scope licensed module', () => {
+    const out = generateCutoverRunbook({
+      clientName: 'Atlas',
+      cutoverStyle: 'PHASED_MODULE',
+      cutoverTeamRoster: SAMPLE_ROSTER,
+      // Only Foundation + Finance + Sales modules — Procurement and
+      // Manufacturing waves should be omitted.
+      licenseModules: ['Finance', 'General Ledger', 'Sales (CRM)', 'Invoicing'],
+    });
+    expect(out.markdown).toContain('Foundation + Finance');
+    expect(out.markdown).toContain('Sales + Customer Operations');
+    // Procurement + Manufacturing waves should NOT appear when no
+    // matching module was licensed.
+    expect(out.markdown).not.toContain('Procurement + Inventory');
+    expect(out.markdown).not.toContain('Manufacturing + Returns');
+  });
+
+  it('lists the actual module names inside each wave row', () => {
+    const out = generateCutoverRunbook({
+      clientName: 'Atlas',
+      cutoverStyle: 'PHASED_MODULE',
+      cutoverTeamRoster: SAMPLE_ROSTER,
+      licenseModules: ['General Ledger', 'Inventory', 'Manufacturing'],
+    });
+    expect(out.markdown).toContain('Foundation + Finance (General Ledger)');
+    expect(out.markdown).toContain('Procurement + Inventory (Inventory)');
+    expect(out.markdown).toContain('Manufacturing + Returns (Manufacturing)');
+  });
+
+  it('groups unmatched modules into a final "Other" wave so nothing silently drops', () => {
+    const out = generateCutoverRunbook({
+      clientName: 'Atlas',
+      cutoverStyle: 'PHASED_MODULE',
+      cutoverTeamRoster: SAMPLE_ROSTER,
+      licenseModules: ['General Ledger', 'Mystery Bespoke Module'],
+    });
+    expect(out.markdown).toContain('Foundation + Finance');
+    expect(out.markdown).toContain('Other / unclassified');
+    expect(out.markdown).toContain('Mystery Bespoke Module');
+  });
+
+  it('falls back to the legacy 4-wave table when licenseModules is absent', () => {
+    const out = generateCutoverRunbook({
+      clientName: 'Atlas',
+      cutoverStyle: 'PHASED_MODULE',
+      cutoverTeamRoster: SAMPLE_ROSTER,
+    });
+    // Legacy unconditional waves still rendered for backward-compatibility.
+    expect(out.markdown).toContain('| 1 | Finance + Master Data');
+    expect(out.markdown).toContain('| 4 | Manufacturing + Returns');
+    expect(out.markdown).toContain('License modules were not provided');
+  });
+});

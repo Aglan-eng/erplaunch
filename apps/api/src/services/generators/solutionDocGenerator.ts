@@ -560,25 +560,48 @@ export function generateSolutionDoc(data: SolutionDocData): string {
   doc += `---\n\n`;
 
   // ── SECTION 6: Roles & Permissions ──────────────────────────────────────────
-  // Phase 25 — when ns.design.standardRolesStructured is populated, render the
-  // structured roles in addition to the canonical role table. The structured
-  // payload drives the SDF customrole_*.xml emit; this surfaces the same
-  // captured intent in the design document so consultants and clients see
-  // exactly what's about to be deployed.
+  // Phase 25 — when ns.design.standardRolesStructured is populated, the
+  // structured roles ARE the design — they drive SDF customrole_*.xml
+  // emit. Phase 41.1 fix: in that case we lead with the engagement's
+  // captured roles instead of a canonical Finance Manager / Procurement
+  // Manager / Sales Manager table that's identical for every client.
+  // The canonical table only renders as a fallback when no structured
+  // roles were captured (legacy textarea or empty).
   doc += `## 5. User Roles & Access\n\n`;
-  doc += `### 5.1 Canonical Roles\n\n`;
-  doc += `| Role | Functional Area | Key Permissions |\n| :--- | :--- | :--- |\n`;
-  doc += `| Finance Manager | R2R, P2P | Period close, journal entries, AP payments |\n`;
-  doc += `| Procurement Manager | P2P | PO approval, vendor management |\n`;
-  doc += `| Sales Manager | O2C | SO approval, pricing, credit management |\n`;
-  if (hasFlow('mfg.')) doc += `| Production Manager | MFG | Work orders, BOM management, demand planning |\n`;
-  if (hasFlow('rtn.')) doc += `| Warehouse Manager | RTN | RMA processing, returns inspection |\n`;
-  doc += `| System Administrator | All | Full access for configuration and support |\n\n`;
+
+  // Look up structured roles up front so we can branch the section header.
+  const structuredRolesForDoc = isNetSuite
+    ? parseStructuredRolesForDoc(answers['ns.design.standardRolesStructured'])
+    : [];
+  const hasStructuredRoles = structuredRolesForDoc.length > 0;
+
+  if (!hasStructuredRoles) {
+    // Legacy / no-capture path — render the canonical reference table.
+    doc += `### 5.1 Canonical Roles (reference)\n\n`;
+    doc += `_The table below is a generic reference — it lists the typical role archetypes for an ERP implementation. Replace it with engagement-specific roles via the Customizations → Roles wizard step before sign-off._\n\n`;
+    doc += `| Role | Functional Area | Key Permissions |\n| :--- | :--- | :--- |\n`;
+    doc += `| Finance Manager | R2R, P2P | Period close, journal entries, AP payments |\n`;
+    doc += `| Procurement Manager | P2P | PO approval, vendor management |\n`;
+    doc += `| Sales Manager | O2C | SO approval, pricing, credit management |\n`;
+    if (hasFlow('mfg.')) doc += `| Production Manager | MFG | Work orders, BOM management, demand planning |\n`;
+    if (hasFlow('rtn.')) doc += `| Warehouse Manager | RTN | RMA processing, returns inspection |\n`;
+    doc += `| System Administrator | All | Full access for configuration and support |\n\n`;
+  }
 
   if (isNetSuite) {
-    const structuredRoles = parseStructuredRolesForDoc(answers['ns.design.standardRolesStructured']);
+    const structuredRoles = structuredRolesForDoc;
+    // Phase 41.1 — section numbers below are dynamic so we don't leave
+    // gaps (5.1 → 5.3 with no 5.2). The canonical reference table
+    // already rendered as 5.1 above when structured roles are absent;
+    // structured/legacy roles take 5.1 when canonical was suppressed,
+    // otherwise 5.2.
+    let nextRoleSubsection = hasStructuredRoles ? 1 : 2;
+
     if (structuredRoles.length > 0) {
-      doc += `### 5.2 Captured Custom Roles (Phase 25 structured editor)\n\n`;
+      // When structured roles exist, they ARE the design — the
+      // canonical table is suppressed above so the SDD doesn't show
+      // two competing "here are the roles" surfaces.
+      doc += `### 5.${nextRoleSubsection} Captured Custom Roles (Phase 25 structured editor)\n\n`;
       doc += `These roles will be emitted as Oracle SDF \`customrole_nsix_*.xml\` objects on Generate Package. The classifier auto-selects a starter permission set per role family; explicit overrides are noted in the Center / Restriction columns.\n\n`;
       doc += `| Role Name | Center Override | Restriction Override | Customization Notes |\n| :--- | :--- | :--- | :--- |\n`;
       for (const r of structuredRoles) {
@@ -589,16 +612,18 @@ export function generateSolutionDoc(data: SolutionDocData): string {
       }
       doc += `\n`;
       doc += `**Deploy notes:** after \`pnpm generate\`, review each \`SDF/Objects/customrole_nsix_*.xml\` for permission alignment against your SoD policy. The XML comment header inside each file enumerates the overlay rules that were applied (read-only, group-wide, subsidiary-scoped, remove-approve). Test role login + transaction creation in sandbox before promoting to production.\n\n`;
+      nextRoleSubsection++;
     } else if (typeof answers['ns.design.standardRoleCustomization'] === 'string' &&
                (answers['ns.design.standardRoleCustomization'] as string).trim().length > 0) {
-      doc += `### 5.2 Captured Custom Roles (legacy textarea)\n\n`;
+      doc += `### 5.${nextRoleSubsection} Captured Custom Roles (legacy textarea)\n\n`;
       doc += `Custom roles captured via the free-text TEXTAREA. Each line emits one \`customrole_nsix_*.xml\` on Generate Package. To migrate to the structured editor for richer per-role control, use the Customizations → Roles step in the wizard.\n\n`;
+      nextRoleSubsection++;
     }
 
     // Phase 26 — Custom Templates capture surfaces here too when populated.
     const structuredTemplates = parseStructuredTemplatesForDoc(answers['ns.design.templatesStructured']);
     if (structuredTemplates.length > 0) {
-      doc += `### 5.3 Custom Templates (Phase 26 structured editor)\n\n`;
+      doc += `### 5.${nextRoleSubsection} Custom Templates (Phase 26 structured editor)\n\n`;
       doc += `These templates will be emitted as Oracle SDF \`advancedpdftemplate\` (PDF/HTML) or \`emailtemplate\` (DUNNING_EMAIL) objects on Generate Package. The XML body contains a stub with TODO markers per captured section; consultants edit the real FreeMarker / BFO content in NetSuite UI after deploy.\n\n`;
       doc += `| Template Name | Kind | Preferred | Sections | Notes |\n| :--- | :--- | :--- | :--- | :--- |\n`;
       for (const t of structuredTemplates) {
