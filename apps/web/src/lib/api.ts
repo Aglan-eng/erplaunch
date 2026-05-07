@@ -580,3 +580,48 @@ export const verticalsApi = {
   list: () => api.get('/verticals').then((r) => r.data.data),
   get: (id: string) => api.get(`/verticals/${id}`).then((r) => r.data.data),
 };
+
+// ─── Phase 43.4 — Team / Roles ──────────────────────────────────────────────
+
+export interface TeamMember {
+  id: string;
+  email: string;
+  name: string;
+  firmRoles: string[];
+}
+
+export interface EngagementRoleAssignmentRow {
+  userId: string;
+  role: string;
+  assignedModules: string[] | null;
+}
+
+export interface RoleAuditEntry {
+  id: string;
+  firmId: string;
+  actorUserId: string;
+  targetUserId: string;
+  action: 'ROLE_GRANTED' | 'ROLE_REVOKED';
+  role: string;
+  scope: string;
+  createdAt: string;
+}
+
+export const teamApi = {
+  listTeam: (): Promise<TeamMember[]> =>
+    api.get('/firm/team').then((r) => r.data.data),
+  grantFirmRole: (userId: string, role: string): Promise<{ ok: true }> =>
+    api.post('/firm/roles', { userId, role }).then((r) => r.data.data),
+  revokeFirmRole: (userId: string, role: string): Promise<{ ok: true }> =>
+    api.delete('/firm/roles', { data: { userId, role } }).then((r) => r.data.data),
+
+  listEngagementRoles: (engagementId: string): Promise<EngagementRoleAssignmentRow[]> =>
+    api.get(`/engagements/${engagementId}/roles`).then((r) => r.data.data),
+  grantEngagementRole: (engagementId: string, body: { userId: string; role: string; assignedModules?: string[] | null }) =>
+    api.post(`/engagements/${engagementId}/roles`, body).then((r) => r.data.data),
+  revokeEngagementRole: (engagementId: string, userId: string, role: string) =>
+    api.delete(`/engagements/${engagementId}/roles`, { data: { userId, role } }).then((r) => r.data.data),
+
+  listAuditLog: (): Promise<RoleAuditEntry[]> =>
+    api.get('/firm/role-audit-log').then((r) => r.data.data),
+};
