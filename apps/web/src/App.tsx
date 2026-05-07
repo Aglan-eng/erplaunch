@@ -8,6 +8,7 @@ const LoginPage = lazy(() => import('./pages/LoginPage').then(m => ({ default: m
 const SignupPage = lazy(() => import('./pages/SignupPage').then(m => ({ default: m.SignupPage })));
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then(m => ({ default: m.DashboardPage })));
 const ArchivedDashboardPage = lazy(() => import('./pages/ArchivedDashboardPage').then(m => ({ default: m.ArchivedDashboardPage })));
+const JobBrowserPage = lazy(() => import('./pages/JobBrowserPage').then(m => ({ default: m.JobBrowserPage })));
 const WizardPage = lazy(() => import('./pages/WizardPage').then(m => ({ default: m.WizardPage })));
 const ClientPortalPage = lazy(() => import('./pages/ClientPortalPage').then(m => ({ default: m.ClientPortalPage })));
 const PortalLoginPage = lazy(() => import('./pages/PortalLoginPage').then(m => ({ default: m.PortalLoginPage })));
@@ -91,6 +92,14 @@ function AppRoutes() {
           element={
             <RequireAuth>
               <ErrorBoundary><WizardPage /></ErrorBoundary>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/engagements/:id/jobs/:jobId"
+          element={
+            <RequireAuth>
+              <ErrorBoundary><JobBrowserPage /></ErrorBoundary>
             </RequireAuth>
           }
         />

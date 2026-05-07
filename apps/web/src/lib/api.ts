@@ -164,6 +164,22 @@ export const engagementsApi = {
   getJob: (id: string, jobId: string) =>
     api.get(`/engagements/${id}/jobs/${jobId}`).then((r) => r.data.data),
 
+  // Phase 39.3 — deliverable browser. listJobFiles returns the JSON tree;
+  // jobFileUrl returns a URL the browser can hit directly (used by <iframe>
+  // for HTML preview and by <a download> for binary download).
+  listJobFiles: (id: string, jobId: string) =>
+    api
+      .get<{ data: { name: string; type: 'dir' | 'file'; size?: number; children?: unknown[] } }>(
+        `/engagements/${id}/jobs/${jobId}/files`,
+      )
+      .then((r) => r.data.data),
+
+  jobFileUrl: (id: string, jobId: string, relPath: string): string => {
+    const base = api.defaults.baseURL ?? '/api/v1';
+    const encoded = relPath.split('/').map(encodeURIComponent).join('/');
+    return `${base}/engagements/${id}/jobs/${jobId}/files/${encoded}`;
+  },
+
   // Comments
   getComments: (id: string) =>
     api.get(`/engagements/${id}/comments`).then((r) => r.data.data),

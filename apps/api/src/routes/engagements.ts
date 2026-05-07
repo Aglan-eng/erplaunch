@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { authenticate } from '../middleware/auth.js';
 import { processJob } from '../services/generation.js';
 import { streamJobZip } from '../services/archiveService.js';
+import { buildFileTree, resolveSafePath, mimeForExtension } from '../services/jobFileTree.js';
 import type { GenerationJobData } from '../plugins/queue.js';
 import {
   CreateEngagementSchema,
@@ -611,6 +612,48 @@ export async function engagementRoutes(fastify: FastifyInstance) {
     if ((job as { status?: string }).status !== 'COMPLETE') return reply.code(400).send({ error: { code: 'JOB_NOT_COMPLETE', message: 'Job is not yet complete' } });
     const outputDir = path.join(__dirname, '..', '..', 'outputs', jobId);
     await streamJobZip(outputDir, jobId, reply);
+  });
+
+  // Phase 39.3 — GET /engagements/:id/jobs/:jobId/files
+  // Returns the JSON tree of the job's output directory (folder hierarchy
+  // + file names + sizes, no content). Powers the deliverable browser UI's
+  // sidebar.
+  fastify.get('/engagements/:id/jobs/:jobId/files', async (request, reply) => {
+    const { id, jobId } = request.params as { id: string; jobId: string };
+    const check = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
+    if (!check) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+    const job = await db.findJobByIdAndEngagementId(jobId, id);
+    if (!job) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+    const outputDir = path.join(__dirname, '..', '..', 'outputs', jobId);
+    if (!await fs.access(outputDir).then(() => true).catch(() => false)) {
+      // No output yet — return an empty tree rather than 404 so the UI can
+      // render a "this job hasn't been run yet" empty state.
+      return reply.send({ data: { name: '', type: 'dir', children: [] } });
+    }
+    const tree = await buildFileTree(outputDir);
+    return reply.send({ data: tree });
+  });
+
+  // Phase 39.3 — GET /engagements/:id/jobs/:jobId/files/*
+  // Streams a single file's content with appropriate Content-Type. The
+  // `*` wildcard captures the relative path inside the job's output dir;
+  // resolveSafePath() rejects anything that escapes via `..`.
+  fastify.get('/engagements/:id/jobs/:jobId/files/*', async (request, reply) => {
+    const { id, jobId } = request.params as { id: string; jobId: string; '*': string };
+    const subPath = (request.params as Record<string, string>)['*'];
+    if (!subPath) return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'file path required' } });
+    const check = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
+    if (!check) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+    const job = await db.findJobByIdAndEngagementId(jobId, id);
+    if (!job) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+    const outputDir = path.join(__dirname, '..', '..', 'outputs', jobId);
+    const safePath = resolveSafePath(outputDir, subPath);
+    if (!safePath) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+    const buf = await fs.readFile(safePath);
+    return reply
+      .header('Content-Type', mimeForExtension(safePath))
+      .header('Cache-Control', 'no-cache')
+      .send(buf);
   });
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

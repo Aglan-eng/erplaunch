@@ -209,6 +209,16 @@ function JobStatusCard({ job, compact, engagementId, isNetSuite }: { job: Job; c
 
         {job.status === 'COMPLETE' && job.outputUrl && (
           <div className="flex flex-col items-end gap-1.5">
+            {/* Phase 39.3 — Browse-files page (file tree + per-file preview).
+                Sits above the existing ZIP download so the consultant doesn't
+                need to download-and-unzip just to inspect a single file. */}
+            <a
+              href={`/engagements/${engagementId}/jobs/${job.id}`}
+              className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 transition-colors shadow-sm"
+            >
+              <FileText className="h-4 w-4" />
+              Browse files
+            </a>
             {/* Full package download */}
             <a
               href={`${baseUrl}/api/v1/engagements/${engagementId}/jobs/${job.id}/download`}
