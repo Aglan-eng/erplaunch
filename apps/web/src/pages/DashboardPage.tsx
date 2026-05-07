@@ -25,18 +25,37 @@ import { cn } from '@/lib/utils';
 type Tab = 'cards' | 'pipeline';
 type SortKey = 'newest' | 'oldest' | 'health' | 'stage' | 'name';
 
-const STAGE_ORDER = ['DISCOVERY', 'SCOPING', 'BUILD', 'UAT', 'GO_LIVE', 'CLOSED'];
+// Phase 43.3 — extended lifecycle stages. Existing GO_LIVE / CLOSED
+// keys stay supported (legacy engagements still carry them in the
+// status column) and render under the new GOLIVE / ARCHIVED slots.
+const STAGE_ORDER = [
+  'PROSPECT', 'PROPOSED', 'CONTRACTED',
+  'DISCOVERY', 'SCOPING', 'BUILD', 'UAT', 'GOLIVE',
+  'CLOSEOUT', 'SLA_ACTIVE', 'ARCHIVED',
+];
 const STAGE_LABELS: Record<string, string> = {
+  PROSPECT: 'Prospect', PROPOSED: 'Proposed', CONTRACTED: 'Contracted',
   DISCOVERY: 'Discovery', SCOPING: 'Scoping', BUILD: 'Build',
-  UAT: 'UAT', GO_LIVE: 'Go-Live', CLOSED: 'Closed',
+  UAT: 'UAT', GOLIVE: 'Go-Live',
+  CLOSEOUT: 'Closeout', SLA_ACTIVE: 'In SLA', ARCHIVED: 'Archived',
+  // Legacy aliases — same display label as their canonical equivalents.
+  GO_LIVE: 'Go-Live', CLOSED: 'Archived',
 };
 const STAGE_COLORS: Record<string, string> = {
-  DISCOVERY: 'bg-sky-100 text-sky-700 border-sky-200',
-  SCOPING:   'bg-violet-100 text-violet-700 border-violet-200',
-  BUILD:     'bg-amber-100 text-amber-700 border-amber-200',
-  UAT:       'bg-orange-100 text-orange-700 border-orange-200',
-  GO_LIVE:   'bg-green-100 text-green-700 border-green-200',
-  CLOSED:    'bg-gray-100 text-gray-500 border-gray-200',
+  PROSPECT:   'bg-slate-100 text-slate-700 border-slate-200',
+  PROPOSED:   'bg-cyan-100 text-cyan-700 border-cyan-200',
+  CONTRACTED: 'bg-blue-100 text-blue-700 border-blue-200',
+  DISCOVERY:  'bg-sky-100 text-sky-700 border-sky-200',
+  SCOPING:    'bg-violet-100 text-violet-700 border-violet-200',
+  BUILD:      'bg-amber-100 text-amber-700 border-amber-200',
+  UAT:        'bg-orange-100 text-orange-700 border-orange-200',
+  GOLIVE:     'bg-green-100 text-green-700 border-green-200',
+  CLOSEOUT:   'bg-emerald-100 text-emerald-700 border-emerald-200',
+  SLA_ACTIVE: 'bg-teal-100 text-teal-700 border-teal-200',
+  ARCHIVED:   'bg-gray-100 text-gray-500 border-gray-200',
+  // Legacy fallbacks.
+  GO_LIVE:    'bg-green-100 text-green-700 border-green-200',
+  CLOSED:     'bg-gray-100 text-gray-500 border-gray-200',
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

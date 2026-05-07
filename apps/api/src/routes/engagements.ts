@@ -24,6 +24,13 @@ import { fileURLToPath } from 'url';
 import { createId } from '@paralleldrive/cuid2';
 import { findSectionLabel, flattenAdaptorSchemaToQuestions } from '../services/adaptorSchemaHelpers.js';
 import type { Question as SharedQuestion } from '@ofoq/shared';
+import {
+  nextStage,
+  previousStage,
+  toStage,
+  handoffEventFor,
+  handoffMessageFor,
+} from '../services/lifecycleTransitions.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -275,6 +282,67 @@ export async function engagementRoutes(fastify: FastifyInstance) {
     }
     const updated = await db.updateEngagement(id, result.data);
     return reply.send({ data: updated });
+  });
+
+  // ─── Phase 43.3 — lifecycle stage transitions ─────────────────────────────
+  //
+  // Two routes that wrap updateEngagement with the canonical stage
+  // ordering + handoff event firing. /advance and /regress are the
+  // recommended entry points; PATCH /engagements/:id can still set
+  // arbitrary status values for back-compat but won't fire handoffs.
+
+  // POST /engagements/:id/advance — bump the stage forward by one.
+  fastify.post('/engagements/:id/advance', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const eng = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
+    if (!eng) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+    const currentStatus = ((eng as Record<string, unknown>).status as string | undefined) ?? 'DISCOVERY';
+    const next = nextStage(currentStatus);
+    if (!next) {
+      return reply.code(409).send({
+        error: {
+          code: 'TERMINAL_STAGE',
+          message: 'Engagement is at the terminal stage (ARCHIVED) — cannot advance further.',
+        },
+      });
+    }
+    const updated = await db.updateEngagement(id, { status: next });
+    const fromStage = toStage(currentStatus);
+    const event = handoffEventFor(fromStage, next);
+    await db.logActivity(
+      id,
+      request.jwtUser.firmId,
+      event,
+      handoffMessageFor(event, fromStage, next),
+    );
+    return reply.send({ data: updated, transition: { from: fromStage, to: next, event } });
+  });
+
+  // POST /engagements/:id/regress — move backwards by one.
+  fastify.post('/engagements/:id/regress', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const eng = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
+    if (!eng) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+    const currentStatus = ((eng as Record<string, unknown>).status as string | undefined) ?? 'DISCOVERY';
+    const prev = previousStage(currentStatus);
+    if (!prev) {
+      return reply.code(409).send({
+        error: {
+          code: 'INITIAL_STAGE',
+          message: 'Engagement is at the initial stage (PROSPECT) — cannot regress further.',
+        },
+      });
+    }
+    const updated = await db.updateEngagement(id, { status: prev });
+    const fromStage = toStage(currentStatus);
+    const event = handoffEventFor(fromStage, prev); // always ENGAGEMENT_REGRESSED
+    await db.logActivity(
+      id,
+      request.jwtUser.firmId,
+      event,
+      handoffMessageFor(event, fromStage, prev),
+    );
+    return reply.send({ data: updated, transition: { from: fromStage, to: prev, event } });
   });
 
   // GET /engagements/:id/profile
