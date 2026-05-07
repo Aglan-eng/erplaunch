@@ -14,6 +14,11 @@ import { Button } from '@/components/ui/Button';
 import { ErplaunchLogo } from '@/components/ui/ErplaunchLogo';
 import { firmDisplayName } from '@/lib/firmDisplayName';
 import { EmailVerificationBanner } from '@/components/auth/EmailVerificationBanner';
+import { OnboardingWizard } from '@/components/dashboard/OnboardingWizard';
+import {
+  isOnboardingDismissed,
+  shouldShowOnboarding,
+} from '@/lib/onboardingHelpers';
 import { PipelinePage } from './PipelinePage';
 import { cn } from '@/lib/utils';
 
@@ -263,6 +268,23 @@ export function DashboardPage() {
   const [sortKey, setSortKey] = useState<SortKey>('newest');
   const [sortOpen, setSortOpen] = useState(false);
 
+  // Phase 41.5 — onboarding wizard for fresh firms.
+  // Storage handle is captured once. The tick state forces a re-read
+  // of localStorage when "Skip for now" is clicked so the wizard
+  // hides without a page reload — useMemo depends on tick so the
+  // recompute fires on the next render.
+  const onboardingStorage = typeof window !== 'undefined' ? window.localStorage : undefined;
+  const [onboardingDismissedTick, setOnboardingDismissedTick] = useState(0);
+  const onboardingDismissed = useMemo(() => {
+    if (!user) return false;
+    return isOnboardingDismissed(user.id, onboardingStorage);
+    // The tick is intentionally a dependency — its only purpose is to
+    // re-run this computation after dismissOnboarding writes to
+    // localStorage. eslint can't see why because the value isn't read
+    // inside the closure.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, onboardingStorage, onboardingDismissedTick]);
+
   const { data, isLoading } = useQuery({
     queryKey: ['engagements'],
     queryFn: () => engagementsApi.list(),
@@ -392,7 +414,29 @@ export function DashboardPage() {
             </div>
           </>
         ) : engagements.length === 0 ? (
-          <EmptyState onNew={() => setNewModalOpen(true)} />
+          shouldShowOnboarding({ engagementCount: engagements.length, dismissed: onboardingDismissed }) ? (
+            <>
+              {/* Phase 41.5 — onboarding card for fresh firms (zero
+                  engagements, not dismissed). Replaces the bare empty
+                  state with a guided four-step path: pick ERP →
+                  create engagement → invite client → walk Discovery. */}
+              <OnboardingWizard
+                engagementCount={engagements.length}
+                hasInvitedClient={false /* derive from real signal once invite-tracking lands */}
+                hasOpenedWizard={false}
+                adaptorPreferenceSet={false}
+                onCreateEngagement={() => setNewModalOpen(true)}
+                onDismiss={() => setOnboardingDismissedTick((t) => t + 1)}
+              />
+              {/* Keep the original empty-state CTA as a secondary
+                  affordance below the wizard so consultants who
+                  already know what they're doing aren't forced to
+                  scan the four-step list. */}
+              <EmptyState onNew={() => setNewModalOpen(true)} />
+            </>
+          ) : (
+            <EmptyState onNew={() => setNewModalOpen(true)} />
+          )
         ) : tab === 'pipeline' ? (
           <>
             <StatsBar engagements={engagements} />
