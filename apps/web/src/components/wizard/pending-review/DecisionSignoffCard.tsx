@@ -1,10 +1,13 @@
-import React, { useState } from 'react';
-import { Check, X, MessageSquare, FileSignature, ThumbsUp, ThumbsDown } from 'lucide-react';
+import React from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { FileSignature, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { engagementsApi } from '@/lib/api';
 import {
   registerCardRenderer,
   type CardRendererProps,
 } from './cardRenderers';
+import { ReviewActions } from './ReviewActions';
 
 /**
  * DecisionSignoffCard (Phase 32, final §5 phase).
@@ -16,14 +19,37 @@ import {
  * REJECTED (rare; e.g. signature on the wrong decision).
  */
 
+interface DecisionRow {
+  id: string;
+  title?: string;
+  context?: string;
+  decision?: string;
+  rationale?: string;
+}
+
 function DecisionSignoffCard({ submission, onAccept, onReject, isReviewing }: CardRendererProps) {
-  const [comment, setComment] = useState('');
   const payload = submission.payload as {
     decisionItemId?: string;
     signed?: boolean;
     comment?: string;
   };
   const isSigned = payload.signed === true;
+
+  // Phase 41.2 — hydrate the referenced decision so the consultant
+  // sees the title + body, not just the UUID. The audit flagged this
+  // as the single biggest demo blocker: it was impossible to make an
+  // informed accept/reject without leaving the page to look up the
+  // decision elsewhere.
+  //
+  // Query reuses the same `decisions` queryKey other parts of the
+  // wizard already populate, so cache hits are common.
+  const { data: decisions } = useQuery<DecisionRow[]>({
+    queryKey: ['decisions', submission.engagementId],
+    queryFn: () => engagementsApi.listDecisions(submission.engagementId) as Promise<DecisionRow[]>,
+    enabled: !!submission.engagementId && !!payload.decisionItemId,
+    staleTime: 60_000,
+  });
+  const decision = decisions?.find((d) => d.id === payload.decisionItemId);
 
   return (
     <div
@@ -68,14 +94,52 @@ function DecisionSignoffCard({ submission, onAccept, onReject, isReviewing }: Ca
         </div>
       </div>
 
-      {/* Decision reference */}
-      <div className="rounded-xl bg-slate-50/70 border border-slate-100 p-4 mb-4">
-        <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
-          Decision ID
-        </p>
-        <p className="text-xs font-mono text-slate-700 mb-2">{payload.decisionItemId ?? '(unknown)'}</p>
+      {/* Decision reference — Phase 41.2 hydrates the title/body so
+          the consultant doesn't have to leave the page to evaluate
+          the sign-off. Falls back to the UUID display when the lookup
+          fails (decision deleted, query error, etc.) so the card
+          never renders empty. */}
+      <div className="rounded-xl bg-slate-50/70 border border-slate-100 p-4 mb-4" data-testid={`decision-signoff-decision-${submission.id}`}>
+        {decision ? (
+          <>
+            <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+              Decision
+            </p>
+            <p className="text-sm font-bold text-slate-900 mb-2">{decision.title ?? '(untitled)'}</p>
+            {decision.context && decision.context.trim().length > 0 && (
+              <>
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Context</p>
+                <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed mb-2">{decision.context}</p>
+              </>
+            )}
+            {decision.decision && decision.decision.trim().length > 0 && (
+              <>
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Decision</p>
+                <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed mb-2">{decision.decision}</p>
+              </>
+            )}
+            {decision.rationale && decision.rationale.trim().length > 0 && (
+              <>
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Rationale</p>
+                <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">{decision.rationale}</p>
+              </>
+            )}
+          </>
+        ) : (
+          <>
+            <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+              Decision ID
+            </p>
+            <p className="text-xs font-mono text-slate-700">{payload.decisionItemId ?? '(unknown)'}</p>
+            <p className="text-[11px] text-slate-400 mt-1 italic">
+              Decision details unavailable — the decision may have been removed since the client signed.
+            </p>
+          </>
+        )}
+
         {payload.comment && payload.comment.trim().length > 0 && (
           <>
+            <hr className="my-3 border-slate-200" />
             <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
               Client comment
             </p>
@@ -86,49 +150,13 @@ function DecisionSignoffCard({ submission, onAccept, onReject, isReviewing }: Ca
         )}
       </div>
 
-      <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">
-        <MessageSquare className="inline h-3 w-3 mr-1" />
-        Comment (optional)
-      </label>
-      <textarea
-        value={comment}
-        onChange={(e) => setComment(e.target.value)}
-        placeholder="Optional"
-        rows={2}
-        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/50 mb-3"
-        data-testid={`decision-signoff-comment-${submission.id}`}
+      <ReviewActions
+        submissionId={submission.id}
+        testIdPrefix="decision-signoff"
+        isReviewing={isReviewing}
+        onAccept={onAccept}
+        onReject={onReject}
       />
-
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          disabled={isReviewing}
-          onClick={() => onAccept(comment)}
-          className={cn(
-            'inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-colors',
-            'bg-emerald-600 text-white hover:bg-emerald-700',
-            'disabled:opacity-50 disabled:cursor-not-allowed',
-          )}
-          data-testid={`decision-signoff-accept-${submission.id}`}
-        >
-          <Check className="h-3.5 w-3.5" />
-          Accept
-        </button>
-        <button
-          type="button"
-          disabled={isReviewing}
-          onClick={() => onReject(comment)}
-          className={cn(
-            'inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-colors',
-            'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-rose-600 hover:border-rose-200',
-            'disabled:opacity-50 disabled:cursor-not-allowed',
-          )}
-          data-testid={`decision-signoff-reject-${submission.id}`}
-        >
-          <X className="h-3.5 w-3.5" />
-          Reject
-        </button>
-      </div>
     </div>
   );
 }

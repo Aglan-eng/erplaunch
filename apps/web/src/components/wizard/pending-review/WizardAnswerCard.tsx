@@ -1,11 +1,10 @@
-import React, { useMemo, useState } from 'react';
-import { Check, X, MessageSquare } from 'lucide-react';
+import React, { useMemo } from 'react';
 import { allQuestions } from '@ofoq/shared';
-import { cn } from '@/lib/utils';
 import {
   registerCardRenderer,
   type CardRendererProps,
 } from './cardRenderers';
+import { ReviewActions } from './ReviewActions';
 
 /**
  * WizardAnswerCard (Phase 29).
@@ -59,7 +58,6 @@ function formatAnswer(answer: unknown, q: QuestionLite | undefined): string {
 }
 
 function WizardAnswerCard({ submission, onAccept, onReject, isReviewing }: CardRendererProps) {
-  const [comment, setComment] = useState('');
   const payload = submission.payload as { questionId?: string; answer?: unknown };
   const question = useMemo(
     () => (typeof payload.questionId === 'string' ? findQuestionById(payload.questionId) : undefined),
@@ -139,51 +137,16 @@ function WizardAnswerCard({ submission, onAccept, onReject, isReviewing }: CardR
         </div>
       )}
 
-      {/* Comment */}
-      <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">
-        <MessageSquare className="inline h-3 w-3 mr-1" />
-        Comment (optional)
-      </label>
-      <textarea
-        value={comment}
-        onChange={(e) => setComment(e.target.value)}
-        placeholder="Optional — visible to client in the audit log"
-        rows={2}
-        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/50 transition-shadow mb-3"
-        data-testid={`wizard-answer-comment-${submission.id}`}
+      {/* Phase 41.2 — comment + actions extracted into shared
+          ReviewActions; see that file for the disclosure-style comment
+          collapse and the verb-consistency rationale. */}
+      <ReviewActions
+        submissionId={submission.id}
+        testIdPrefix="wizard-answer"
+        isReviewing={isReviewing}
+        onAccept={onAccept}
+        onReject={onReject}
       />
-
-      {/* Actions */}
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          disabled={isReviewing}
-          onClick={() => onAccept(comment)}
-          className={cn(
-            'inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-colors',
-            'bg-emerald-600 text-white hover:bg-emerald-700',
-            'disabled:opacity-50 disabled:cursor-not-allowed',
-          )}
-          data-testid={`wizard-answer-accept-${submission.id}`}
-        >
-          <Check className="h-3.5 w-3.5" />
-          Accept
-        </button>
-        <button
-          type="button"
-          disabled={isReviewing}
-          onClick={() => onReject(comment)}
-          className={cn(
-            'inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-colors',
-            'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-rose-600 hover:border-rose-200',
-            'disabled:opacity-50 disabled:cursor-not-allowed',
-          )}
-          data-testid={`wizard-answer-reject-${submission.id}`}
-        >
-          <X className="h-3.5 w-3.5" />
-          Reject
-        </button>
-      </div>
     </div>
   );
 }

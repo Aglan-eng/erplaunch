@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
-import { Check, X, MessageSquare, FileText, Download } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import React from 'react';
+import { FileText, Download } from 'lucide-react';
 import {
   registerCardRenderer,
   type CardRendererProps,
 } from './cardRenderers';
+import { ReviewActions } from './ReviewActions';
 
 /**
  * DataFileCard (Phase 30).
@@ -25,7 +25,6 @@ function formatBytes(bytes: number): string {
 }
 
 function DataFileCard({ submission, onAccept, onReject, isReviewing }: CardRendererProps) {
-  const [comment, setComment] = useState('');
   const payload = submission.payload as {
     stagedFileId?: string;
     dataCollectionItemId?: string;
@@ -81,60 +80,32 @@ function DataFileCard({ submission, onAccept, onReject, isReviewing }: CardRende
           </p>
         </div>
         {downloadUrl && (
+          // Phase 41.2 — open in a new tab so the consultant can flip
+          // back to the queue without losing their place. Renamed
+          // "Preview" → "Download" to match what the link actually
+          // does (the audit flagged the verb mismatch as a friction
+          // point — no inline preview yet, so the label should be
+          // honest about it).
           <a
             href={downloadUrl}
+            target="_blank"
+            rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:text-blue-600 hover:border-blue-200 transition-colors"
             data-testid={`data-file-download-${submission.id}`}
           >
             <Download className="h-3.5 w-3.5" />
-            Preview
+            Download
           </a>
         )}
       </div>
 
-      <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">
-        <MessageSquare className="inline h-3 w-3 mr-1" />
-        Comment (optional)
-      </label>
-      <textarea
-        value={comment}
-        onChange={(e) => setComment(e.target.value)}
-        placeholder="Optional — visible to client in the audit log"
-        rows={2}
-        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/50 transition-shadow mb-3"
-        data-testid={`data-file-comment-${submission.id}`}
+      <ReviewActions
+        submissionId={submission.id}
+        testIdPrefix="data-file"
+        isReviewing={isReviewing}
+        onAccept={onAccept}
+        onReject={onReject}
       />
-
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          disabled={isReviewing}
-          onClick={() => onAccept(comment)}
-          className={cn(
-            'inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-colors',
-            'bg-emerald-600 text-white hover:bg-emerald-700',
-            'disabled:opacity-50 disabled:cursor-not-allowed',
-          )}
-          data-testid={`data-file-accept-${submission.id}`}
-        >
-          <Check className="h-3.5 w-3.5" />
-          Accept
-        </button>
-        <button
-          type="button"
-          disabled={isReviewing}
-          onClick={() => onReject(comment)}
-          className={cn(
-            'inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-colors',
-            'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-rose-600 hover:border-rose-200',
-            'disabled:opacity-50 disabled:cursor-not-allowed',
-          )}
-          data-testid={`data-file-reject-${submission.id}`}
-        >
-          <X className="h-3.5 w-3.5" />
-          Reject
-        </button>
-      </div>
     </div>
   );
 }
