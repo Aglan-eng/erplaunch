@@ -7,6 +7,11 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { engagementsApi } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import {
+  shouldDisableGenerate,
+  emptyStateTitle,
+  emptyStateMessage,
+} from './aiAdvisorEmptyState';
 
 interface AIAdvisorPanelProps {
   engagementId: string;
@@ -164,7 +169,10 @@ export function AIAdvisorPanel({ engagementId, sectionKey }: AIAdvisorPanelProps
           </div>
           <div className="flex-1 min-w-0">
             <span className="text-sm font-black text-slate-900 tracking-tight">
-              AI Implementation Expert
+              AI Advisor
+            </span>
+            <span className="ml-2 text-[10px] font-medium text-slate-400">
+              Implementation Expert
             </span>
             {hasAdvice && (
               <span className="ml-2 text-[10px] font-semibold text-violet-500 bg-violet-50 px-1.5 py-0.5 rounded-full">
@@ -173,18 +181,28 @@ export function AIAdvisorPanel({ engagementId, sectionKey }: AIAdvisorPanelProps
             )}
           </div>
 
+          {/* Phase 40.2 — `Generate Advice` is now disabled until the section
+              has at least one answer, matching the auto-fire gate in
+              Phase 39.4. The pure helper drives both the auto-fire flag and
+              this manual-button disabled flag so they can never drift apart. */}
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
               generateMutation.mutate();
             }}
-            disabled={isGenerating}
+            disabled={shouldDisableGenerate({ sectionHasAnswers, isGenerating })}
+            title={
+              !sectionHasAnswers && !hasAdvice
+                ? 'Answer at least one question to enable advice generation'
+                : undefined
+            }
             className={cn(
               'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all active:scale-95',
               hasAdvice
                 ? 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                : 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-200/50 hover:shadow-lg'
+                : 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-200/50 hover:shadow-lg',
+              shouldDisableGenerate({ sectionHasAnswers, isGenerating }) && 'opacity-50 cursor-not-allowed'
             )}
           >
             {isGenerating ? (
@@ -200,7 +218,7 @@ export function AIAdvisorPanel({ engagementId, sectionKey }: AIAdvisorPanelProps
             ) : (
               <>
                 <Sparkles className="h-3 w-3" />
-                Generate Advice
+                Get advice
               </>
             )}
           </button>
@@ -231,19 +249,19 @@ export function AIAdvisorPanel({ engagementId, sectionKey }: AIAdvisorPanelProps
             </div>
           )}
 
-          {/* Empty state */}
+          {/* Empty state — copy lives in aiAdvisorEmptyState.ts so the test
+              suite can pin the "Answer at least one question to get advice"
+              message without rendering React. */}
           {!isGenerating && !hasAdvice && (
-            <div className="flex flex-col items-center py-8 gap-3">
+            <div className="flex flex-col items-center py-8 gap-3" data-testid="ai-advisor-empty-state">
               <div className="p-3 rounded-2xl bg-slate-50">
                 <Sparkles className="h-6 w-6 text-slate-300" />
               </div>
               <p className="text-sm font-medium text-slate-500">
-                {sectionHasAnswers ? 'Preparing advice…' : 'No answers yet'}
+                {emptyStateTitle(sectionHasAnswers)}
               </p>
               <p className="text-xs text-slate-400 max-w-xs text-center">
-                {sectionHasAnswers
-                  ? 'AI advice will auto-generate when you enter this section, or click "Generate Advice" to get implementation suggestions now.'
-                  : 'Answer a question or two in this section first — the advisor produces sharper guidance with at least some context. You can also click "Generate Advice" to ask anyway.'}
+                {emptyStateMessage(sectionHasAnswers)}
               </p>
             </div>
           )}
