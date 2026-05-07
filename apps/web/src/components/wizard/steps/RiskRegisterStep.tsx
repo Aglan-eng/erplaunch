@@ -6,6 +6,10 @@ import {
 import { engagementsApi } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { ExportButton } from '@/components/ExportButton';
+import {
+  PermissionDeniedState,
+  extractPermissionDenied,
+} from '@/components/rbac/PermissionDeniedState';
 
 interface Risk {
   id: string;
@@ -348,10 +352,31 @@ function RiskRow({
 // ─── Main Step ────────────────────────────────────────────────────────────────
 
 export function RiskRegisterStep({ engagementId }: { engagementId: string }) {
-  const { data: risks = [], refetch } = useQuery({
+  const { data: risks = [], refetch, error } = useQuery({
     queryKey: ['risks', engagementId],
     queryFn: () => engagementsApi.listRisks(engagementId),
+    // Phase 44.5 — don't retry 403s; we want to surface them as the
+    // PermissionDeniedState immediately rather than thrash the server.
+    retry: (failureCount, err) => {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 403) return false;
+      return failureCount < 3;
+    },
   });
+
+  // Phase 44.5 — when the API returns 403 FORBIDDEN, render the
+  // friendly empty state rather than blank list / red toast. Caller
+  // pages handle other errors via their own paths.
+  const denied = extractPermissionDenied(error);
+  if (denied) {
+    return (
+      <PermissionDeniedState
+        requiredRole={denied.requiredRole}
+        verb="view"
+        resourceLabel="the risk register"
+      />
+    );
+  }
 
   const openCount = risks.filter((r: Risk) => r.status === 'OPEN').length;
   const criticalCount = risks.filter((r: Risk) => {
