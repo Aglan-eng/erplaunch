@@ -19,6 +19,7 @@ import {
   consumeEmailVerificationToken,
   invalidateActiveEmailVerificationsForUser,
   markUserEmailVerified,
+  bootstrapFirmAdmin,
 } from '../db/index.js';
 import {
   checkRequestCodeLimit,
@@ -258,6 +259,18 @@ export async function authRoutes(fastify: FastifyInstance) {
       return reply.code(500).send({ error: { code: 'USER_CREATE_FAILED' } });
     }
     const u = user as { id: string; email: string; name: string; role: string; firmId: string };
+
+    // Phase 43.1 — auto-grant APP_ADMIN to the firm creator. This
+    // preserves the single-user pilot setup (PO + every existing
+    // signup gets full admin) while letting future team members be
+    // added without admin rights by default.
+    try {
+      await bootstrapFirmAdmin({ firmId: firm.id, userId: u.id });
+    } catch (err) {
+      // Non-fatal: the firm + user exist; the admin can be granted
+      // manually later. Log and continue so signup still succeeds.
+      request.log.error({ err: String(err), firmId: firm.id, userId: u.id }, 'auth/register: bootstrapFirmAdmin failed');
+    }
 
     // Kick off email verification (Phase 19). Fire-and-forget — the user is
     // signed in either way; verification is offered, not enforced.

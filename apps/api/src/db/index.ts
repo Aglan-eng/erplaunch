@@ -783,6 +783,58 @@ async function createTables(db: Client) {
   try { await db.execute(`ALTER TABLE DecisionItem ADD COLUMN clientSignoffComment TEXT`); } catch { /* idempotent */ }
   try { await db.execute(`ALTER TABLE DecisionItem ADD COLUMN clientSignoffMemberId TEXT`); } catch { /* idempotent */ }
   try { await db.execute(`ALTER TABLE DecisionItem ADD COLUMN clientSignoffSourceSubmissionId TEXT`); } catch { /* idempotent */ }
+
+  // ─── Phase 43.1 — RBAC schema ──────────────────────────────────────────────
+  // FirmRole holds the four firm-level roles (APP_ADMIN, SALES_MANAGER,
+  // SUPPORT_LEAD, INTERNAL_ACCOUNTANT). The (firmId, userId, role)
+  // triple is unique so duplicate grants are no-ops.
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS FirmRole (
+      id        TEXT PRIMARY KEY,
+      firmId    TEXT NOT NULL REFERENCES Firm(id) ON DELETE CASCADE,
+      userId    TEXT NOT NULL REFERENCES User(id) ON DELETE CASCADE,
+      role      TEXT NOT NULL,
+      createdAt TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (firmId, userId, role)
+    )
+  `);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_firmrole_user ON FirmRole(userId)`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_firmrole_firm ON FirmRole(firmId)`);
+
+  // EngagementRole holds the eleven per-engagement roles. assignedModules
+  // is a JSON array of module ids (e.g. ["r2r","p2p"]) for the
+  // module-scoped roles (FUNCTIONAL_CONSULTANT, TECHNICAL_CONSULTANT,
+  // CLIENT_SME); NULL means "all modules" or "not module-scoped".
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS EngagementRole (
+      id               TEXT PRIMARY KEY,
+      engagementId     TEXT NOT NULL REFERENCES Engagement(id) ON DELETE CASCADE,
+      userId           TEXT NOT NULL REFERENCES User(id) ON DELETE CASCADE,
+      role             TEXT NOT NULL,
+      assignedModules  TEXT,
+      createdAt        TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (engagementId, userId, role)
+    )
+  `);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_engagementrole_user       ON EngagementRole(userId)`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_engagementrole_engagement ON EngagementRole(engagementId)`);
+
+  // RoleAuditLog: append-only forensic trail. Every grant/revoke writes
+  // one row so audits can reconstruct the role timeline. Scope is
+  // either 'FIRM' or 'ENGAGEMENT:<id>'.
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS RoleAuditLog (
+      id            TEXT PRIMARY KEY,
+      firmId        TEXT NOT NULL REFERENCES Firm(id) ON DELETE CASCADE,
+      actorUserId   TEXT NOT NULL,
+      targetUserId  TEXT NOT NULL,
+      action        TEXT NOT NULL,
+      role          TEXT NOT NULL,
+      scope         TEXT NOT NULL,
+      createdAt     TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_roleauditlog_firm ON RoleAuditLog(firmId)`);
 }
 
 // ─── Helper types ─────────────────────────────────────────────────────────────
@@ -961,6 +1013,15 @@ export async function createGoogleUserAndFirm(args: {
     sql: `UPDATE User SET emailVerifiedAt = ? WHERE id = ?`,
     args: [new Date().toISOString(), id],
   });
+  // Phase 43.1 — first user of a freshly-created firm gets APP_ADMIN
+  // automatically. Lazy-imported to avoid a circular import between
+  // db/index.ts and db/rbac.ts (which imports from this module).
+  try {
+    const { bootstrapFirmAdmin } = await import('./rbac.js');
+    await bootstrapFirmAdmin({ firmId: firm.id, userId: id });
+  } catch {
+    // Non-fatal — firm + user exist, admin can be promoted manually.
+  }
   const user = await findUserById(id);
   return user ? { user, firm } : null;
 }
@@ -2720,3 +2781,26 @@ export {
   markUserEmailVerified,
 } from './emailVerificationToken.js';
 export type { EmailVerificationToken } from './emailVerificationToken.js';
+
+// ─── Re-exports for Phase 43.1 RBAC helpers ─────────────────────────────────
+export {
+  grantFirmRole,
+  revokeFirmRole,
+  listFirmRolesForUser,
+  listFirmUsersWithRoles,
+  grantEngagementRole,
+  revokeEngagementRole,
+  listEngagementRolesForUser,
+  listEngagementRolesForEngagement,
+  listRoleAuditLog,
+  bootstrapFirmAdmin,
+} from './rbac.js';
+export type {
+  RoleAuditEntry,
+  GrantFirmRoleArgs,
+  GrantEngagementRoleArgs,
+  RevokeEngagementRoleArgs,
+  EngagementRoleAssignment,
+  EngagementRoleRow,
+  FirmUserWithRoles,
+} from './rbac.js';
