@@ -33,7 +33,14 @@ export interface RoleAuditEntry {
   firmId: string;
   actorUserId: string;
   targetUserId: string;
-  action: 'ROLE_GRANTED' | 'ROLE_REVOKED';
+  /**
+   * ROLE_GRANTED + ROLE_REVOKED come from grantFirmRole / grantEngagementRole.
+   * ADMIN_BACKFILL_GRANTED is the Phase 43.7 marker for the boot-time
+   * migration that promoted the oldest user of a firm-without-admin
+   * to APP_ADMIN — distinct from a normal grant so the audit trail
+   * stays clean.
+   */
+  action: 'ROLE_GRANTED' | 'ROLE_REVOKED' | 'ADMIN_BACKFILL_GRANTED';
   role: Role;
   scope: string; // 'FIRM' | 'ENGAGEMENT:<id>'
   createdAt: string;
@@ -315,4 +322,92 @@ export async function bootstrapFirmAdmin(args: { firmId: string; userId: string 
     role: 'APP_ADMIN',
     actorUserId: args.userId,
   });
+}
+
+// ─── Phase 43.7 — backfill APP_ADMIN on existing firms ───────────────────────
+
+export interface BackfillResult {
+  /** One entry per firm that received an APP_ADMIN row this run. */
+  granted: Array<{ firmId: string; userId: string; email: string }>;
+  /** Count of firms skipped because they already had an APP_ADMIN. */
+  skippedHasAdmin: number;
+  /** Count of firms skipped because they had no users at all. */
+  skippedNoUsers: number;
+}
+
+/**
+ * Backfill APP_ADMIN for every firm that lacks one. Phase 43.1 only
+ * fires bootstrapFirmAdmin on `/auth/register` and createGoogleUserAndFirm,
+ * so any firm that existed before 43.1 deployed will have zero
+ * FirmRole rows — and Phase 43.2's gates lock them out of every
+ * resource the matrix requires WRITE on.
+ *
+ * Behaviour:
+ *   - For every Firm row, check for an existing FirmRole(APP_ADMIN);
+ *     skip when one exists (the migration must not displace the
+ *     current admin or grant a second one).
+ *   - When none exists, find the oldest User in the firm by createdAt
+ *     ASC and INSERT a FirmRole(APP_ADMIN) row for them.
+ *   - Write a single ADMIN_BACKFILL_GRANTED entry to RoleAuditLog so
+ *     the firm-level audit trail clearly distinguishes a backfill
+ *     grant from a normal /auth/register-time bootstrap or an admin
+ *     grant.
+ *   - Firms with zero users are skipped (logged in the result so the
+ *     boot log can flag them).
+ *
+ * Idempotent. Safe to call from initDb on every boot.
+ */
+export async function backfillAppAdmins(): Promise<BackfillResult> {
+  const db = getDb();
+  const firms = await db.execute({ sql: `SELECT id FROM Firm`, args: [] });
+  const firmIds = firms.rows.map((row) => (row as unknown as { id: string }).id);
+
+  const result: BackfillResult = { granted: [], skippedHasAdmin: 0, skippedNoUsers: 0 };
+
+  for (const firmId of firmIds) {
+    // Has anyone in this firm got APP_ADMIN already?
+    const existing = await db.execute({
+      sql: `SELECT 1 FROM FirmRole WHERE firmId = ? AND role = 'APP_ADMIN' LIMIT 1`,
+      args: [firmId],
+    });
+    if (existing.rows.length > 0) {
+      result.skippedHasAdmin++;
+      continue;
+    }
+
+    // Oldest user wins. ORDER BY createdAt ASC, then id ASC as a
+    // deterministic tiebreaker (createdAt has 1s resolution in
+    // SQLite, so two users created in the same second would tie).
+    const oldest = await db.execute({
+      sql: `SELECT id, email FROM User WHERE firmId = ? ORDER BY createdAt ASC, id ASC LIMIT 1`,
+      args: [firmId],
+    });
+    if (oldest.rows.length === 0) {
+      result.skippedNoUsers++;
+      continue;
+    }
+    const { id: userId, email } = oldest.rows[0] as unknown as { id: string; email: string };
+
+    // INSERT the FirmRole row directly (skip grantFirmRole so we
+    // don't write a generic ROLE_GRANTED entry — the
+    // ADMIN_BACKFILL_GRANTED entry below is what the audit trail
+    // wants instead).
+    await db.execute({
+      sql: `INSERT INTO FirmRole (id, firmId, userId, role) VALUES (?,?,?,?)`,
+      args: [createId(), firmId, userId, 'APP_ADMIN'],
+    });
+
+    // Audit entry. actorUserId=SYSTEM is a sentinel — we don't write
+    // it to a real User row, but the column has no FK so this is
+    // valid. Future code that joins User on actorUserId must handle
+    // the SYSTEM literal (currently no such code exists).
+    await db.execute({
+      sql: `INSERT INTO RoleAuditLog (id, firmId, actorUserId, targetUserId, action, role, scope) VALUES (?,?,?,?,?,?,?)`,
+      args: [createId(), firmId, 'SYSTEM', userId, 'ADMIN_BACKFILL_GRANTED', 'APP_ADMIN', 'FIRM'],
+    });
+
+    result.granted.push({ firmId, userId, email });
+  }
+
+  return result;
 }

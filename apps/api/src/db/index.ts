@@ -42,6 +42,31 @@ export async function initDb() {
   await _client.execute('PRAGMA foreign_keys=ON');
 
   await createTables(_client);
+
+  // Phase 43.7 — backfill APP_ADMIN on every firm that lacks one.
+  // Idempotent: re-running on every boot is the same as running it
+  // once. Print a single summary line so ops can confirm the
+  // migration ran (and didn't silently grant unexpected admins).
+  // Lazy-imported to avoid the circular dep with db/rbac.ts.
+  try {
+    const { backfillAppAdmins } = await import('./rbac.js');
+    const result = await backfillAppAdmins();
+    if (result.granted.length > 0 || result.skippedNoUsers > 0) {
+      // Always log when we acted; quiet when there was nothing to do.
+      console.log(
+        `[db] backfillAppAdmins: granted=${result.granted.length}, skipped(has-admin)=${result.skippedHasAdmin}, skipped(no-users)=${result.skippedNoUsers}`,
+      );
+      for (const g of result.granted) {
+        console.log(`[db] backfillAppAdmins: granted APP_ADMIN to ${g.email} on firm ${g.firmId}`);
+      }
+    }
+  } catch (err) {
+    // Non-fatal — RBAC backfill failures shouldn't block the API
+    // from starting. The Phase 43.6 walkthrough has manual SQL
+    // anyone can run to fix it after the fact.
+    console.error('[db] backfillAppAdmins failed:', err instanceof Error ? err.message : String(err));
+  }
+
   return _client;
 }
 
@@ -2794,6 +2819,7 @@ export {
   listEngagementRolesForEngagement,
   listRoleAuditLog,
   bootstrapFirmAdmin,
+  backfillAppAdmins,
 } from './rbac.js';
 export type {
   RoleAuditEntry,
@@ -2803,4 +2829,5 @@ export type {
   EngagementRoleAssignment,
   EngagementRoleRow,
   FirmUserWithRoles,
+  BackfillResult,
 } from './rbac.js';

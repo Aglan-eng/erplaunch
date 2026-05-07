@@ -22,6 +22,8 @@ import {
   listEngagementRolesForEngagement,
   listRoleAuditLog,
   bootstrapFirmAdmin,
+  backfillAppAdmins,
+  getDb,
 } from '../../src/db/index.js';
 
 let cleanup: () => void;
@@ -316,5 +318,120 @@ describe('bootstrapFirmAdmin (auto-grant on firm creation)', () => {
     await bootstrapFirmAdmin({ firmId: firm.id, userId: user.id });
     const roles = await listFirmRolesForUser(user.id);
     expect(roles.filter((r) => r === 'APP_ADMIN')).toHaveLength(1);
+  });
+});
+
+// ─── Phase 43.7 — backfill APP_ADMIN for existing firms ──────────────────────
+
+describe('backfillAppAdmins', () => {
+  /**
+   * Create a firm with `userCount` users inserted via direct SQL with
+   * staggered createdAt so the "oldest" check is deterministic. The
+   * users array is ordered by createdAt ASC — index 0 is the oldest.
+   */
+  async function makeFirmWithUsers(userCount: number, firmSlug: string): Promise<{
+    firmId: string;
+    users: Array<{ id: string; email: string }>;
+  }> {
+    const db = getDb();
+    const firmId = `firm-${firmSlug}`;
+    const baseTime = Date.parse('2026-01-01T00:00:00.000Z');
+    await db.execute({
+      sql: `INSERT INTO Firm (id, name, slug, plan, createdAt) VALUES (?,?,?,?,?)`,
+      args: [firmId, `Firm ${firmSlug}`, firmSlug, 'STARTER', new Date(baseTime).toISOString()],
+    });
+    const users: Array<{ id: string; email: string }> = [];
+    for (let i = 0; i < userCount; i++) {
+      const id = `${firmSlug}-user-${i}`;
+      const email = `${firmSlug}-${i}@example.com`;
+      // Stagger createdAt by 1s per user so ORDER BY createdAt ASC
+      // returns them in insertion order regardless of clock skew.
+      const createdAt = new Date(baseTime + i * 1000).toISOString();
+      await db.execute({
+        sql: `INSERT INTO User (id, firmId, email, name, passwordHash, role, createdAt) VALUES (?,?,?,?,?,?,?)`,
+        args: [id, firmId, email, `User ${i}`, 'x', 'CONSULTANT', createdAt],
+      });
+      users.push({ id, email });
+    }
+    return { firmId, users };
+  }
+
+  it('grants APP_ADMIN to the oldest user in each firm that lacks one', async () => {
+    const a = await makeFirmWithUsers(3, 'alpha');
+    const b = await makeFirmWithUsers(2, 'bravo');
+
+    const result = await backfillAppAdmins();
+    expect(result.granted).toHaveLength(2);
+    expect(result.granted.map((g) => g.firmId).sort()).toEqual([a.firmId, b.firmId].sort());
+
+    // The oldest user (index 0) should be the recipient in each firm.
+    const aRoles = await listFirmRolesForUser(a.users[0].id);
+    expect(aRoles).toContain('APP_ADMIN');
+    const bRoles = await listFirmRolesForUser(b.users[0].id);
+    expect(bRoles).toContain('APP_ADMIN');
+
+    // No grant on the other users in firm A.
+    expect(await listFirmRolesForUser(a.users[1].id)).toEqual([]);
+    expect(await listFirmRolesForUser(a.users[2].id)).toEqual([]);
+  });
+
+  it('skips firms that already have an APP_ADMIN', async () => {
+    const a = await makeFirmWithUsers(2, 'has-admin');
+    // Pre-grant to the second user (NOT the oldest) so we can prove
+    // the backfill respects the existing row.
+    await grantFirmRole({
+      firmId: a.firmId,
+      userId: a.users[1].id,
+      role: 'APP_ADMIN',
+      actorUserId: a.users[1].id,
+    });
+
+    const b = await makeFirmWithUsers(2, 'no-admin');
+
+    const result = await backfillAppAdmins();
+    // Only firm B got a grant.
+    expect(result.granted).toHaveLength(1);
+    expect(result.granted[0].firmId).toBe(b.firmId);
+
+    // Firm A still has the original (non-oldest) admin and nothing
+    // else — the backfill didn't add a second one.
+    const usersWithAdminInA = await listFirmUsersWithRoles(a.firmId);
+    const adminsInA = usersWithAdminInA.filter((u) => u.roles.includes('APP_ADMIN'));
+    expect(adminsInA).toHaveLength(1);
+    expect(adminsInA[0].userId).toBe(a.users[1].id); // unchanged
+  });
+
+  it('is idempotent — re-running produces no new rows', async () => {
+    await makeFirmWithUsers(2, 'rerun');
+
+    const first = await backfillAppAdmins();
+    expect(first.granted).toHaveLength(1);
+
+    const second = await backfillAppAdmins();
+    expect(second.granted).toHaveLength(0);
+  });
+
+  it('writes an ADMIN_BACKFILL_GRANTED audit entry per granted firm', async () => {
+    const a = await makeFirmWithUsers(2, 'audit-test');
+    await backfillAppAdmins();
+
+    const log = await listRoleAuditLog(a.firmId);
+    const backfillEntries = log.filter((l) => l.action === 'ADMIN_BACKFILL_GRANTED');
+    expect(backfillEntries).toHaveLength(1);
+    expect(backfillEntries[0].role).toBe('APP_ADMIN');
+    expect(backfillEntries[0].targetUserId).toBe(a.users[0].id);
+    expect(backfillEntries[0].scope).toBe('FIRM');
+  });
+
+  it('skips firms with zero users (no candidate to grant to)', async () => {
+    const db = getDb();
+    await db.execute({
+      sql: `INSERT INTO Firm (id, name, slug, plan, createdAt) VALUES (?,?,?,?,?)`,
+      args: ['empty-firm', 'Empty Firm', 'empty-firm-slug', 'STARTER', new Date().toISOString()],
+    });
+
+    const result = await backfillAppAdmins();
+    expect(result.granted).toHaveLength(0);
+    expect(result.skippedNoUsers).toBe(1);
   });
 });
