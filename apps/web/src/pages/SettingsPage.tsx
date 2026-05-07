@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, authApi } from '../lib/api';
+import { PortalPreviewPanel } from '../components/settings/PortalPreviewPanel';
 
 interface FirmBranding {
   displayName: string;
@@ -178,10 +179,13 @@ export function SettingsPage() {
 
         <aside className="lg:col-span-1">
           <div className="bg-white rounded-2xl border border-slate-200 p-5 sticky top-6">
-            <h3 className="text-xs font-semibold text-slate-500 tracking-wide uppercase mb-3">
+            <h3 className="text-xs font-semibold text-slate-500 tracking-wide uppercase mb-1">
               Portal preview
             </h3>
-            <PortalHeaderPreview
+            <p className="text-[11px] text-slate-400 mb-3">
+              This is what your client sees when they sign in.
+            </p>
+            <PortalPreviewPanel
               displayName={form.displayName || branding?.displayName || 'Your Firm'}
               logoUrl={form.logoUrl || branding?.logoUrl || null}
               primaryColor={form.primaryColor}
@@ -334,52 +338,10 @@ function ColorInput({ value, onChange }: { value: string; onChange: (v: string) 
   );
 }
 
-function PortalHeaderPreview({
-  displayName,
-  logoUrl,
-  primaryColor,
-  secondaryColor,
-  supportEmail,
-}: {
-  displayName: string;
-  logoUrl: string | null;
-  primaryColor: string;
-  secondaryColor: string;
-  supportEmail: string | null;
-}) {
-  const gradient = `linear-gradient(135deg, ${primaryColor}, ${secondaryColor})`;
-  return (
-    <div className="rounded-xl overflow-hidden border border-slate-200 shadow-sm">
-      <div
-        className="h-20 flex items-center px-4 gap-3"
-        style={{ background: gradient }}
-      >
-        {logoUrl ? (
-          // eslint-disable-next-line jsx-a11y/alt-text
-          <img
-            src={logoUrl}
-            className="h-8 w-8 rounded-lg bg-white/30 ring-1 ring-white/40 object-contain"
-            onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
-          />
-        ) : (
-          <div className="h-8 w-8 rounded-lg bg-white/30 ring-1 ring-white/40 flex items-center justify-center text-white font-bold">
-            {displayName.charAt(0).toUpperCase()}
-          </div>
-        )}
-        <span className="text-white font-semibold text-sm drop-shadow-sm truncate">{displayName}</span>
-      </div>
-      <div className="p-4 bg-white text-xs text-slate-600 space-y-1.5">
-        <p className="font-medium text-slate-900">Hi Alex,</p>
-        <p>Welcome to your project portal.</p>
-        {supportEmail && (
-          <p className="text-slate-400 text-[11px]">
-            Questions? Email <a href={`mailto:${supportEmail}`} style={{ color: primaryColor }} className="underline">{supportEmail}</a>
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
+// PortalHeaderPreview was extracted to components/settings/PortalPreviewPanel
+// in Phase 41.3 and replaced with a richer mock that mirrors PortalLayout
+// (header + section list + CTA + support footer). Kept this comment as a
+// landmark for `git log -p` archaeology.
 
 /**
  * Change-password card (Phase 17). Sibling of the Branding section.
