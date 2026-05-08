@@ -1,8 +1,14 @@
 /**
  * Phase 45.8 — Renewal + expansion tracker routes.
  *
- *   GET   /engagements/:id/renewal — current state + computed urgency
- *   PATCH /engagements/:id/renewal — upsert one or more fields
+ *   GET   /engagements/:id/renewal-state — current state + computed urgency
+ *   PATCH /engagements/:id/renewal-state — upsert one or more fields
+ *
+ * The path uses `renewal-state` to match the underlying table name
+ * (EngagementRenewalState) and the Phase 45.8 spec — keeps routes,
+ * tables, and DB helpers visually aligned. Phase 45.9 fixed an earlier
+ * typo where the routes shipped at the shorter `/renewal` path,
+ * causing prod to 404.
  *
  * Gated on the BILLING resource — the renewal/expansion record is
  * commercial-side data the matrix already restricts to APP_ADMIN,
@@ -44,7 +50,7 @@ export async function renewalRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.addHook('preHandler', authenticate);
 
   fastify.get(
-    '/engagements/:id/renewal',
+    '/engagements/:id/renewal-state',
     { preHandler: requirePermission('READ', 'BILLING') },
     async (request, reply) => {
       const { id } = request.params as { id: string };
@@ -71,7 +77,7 @@ export async function renewalRoutes(fastify: FastifyInstance): Promise<void> {
   );
 
   fastify.patch(
-    '/engagements/:id/renewal',
+    '/engagements/:id/renewal-state',
     { preHandler: requirePermission('WRITE', 'BILLING') },
     async (request, reply) => {
       const { id } = request.params as { id: string };
