@@ -365,6 +365,18 @@ export async function engagementRoutes(fastify: FastifyInstance) {
       event,
       handoffMessageFor(event, fromStage, next),
     );
+    // Phase 45.1 — when entering CLOSEOUT, auto-create the 9-item
+    // checklist so the new step page has rows to render. Idempotent
+    // — re-entering CLOSEOUT (advance after a regress) doesn't
+    // duplicate. Failure is non-fatal since the checklist can be
+    // re-bootstrapped manually if it somehow doesn't land.
+    if (next === 'CLOSEOUT') {
+      try {
+        await db.createCloseoutChecklist(id);
+      } catch (err) {
+        request.log.warn({ err: String(err), engagementId: id }, 'closeout checklist auto-create failed');
+      }
+    }
     return reply.send({ data: updated, transition: { from: fromStage, to: next, event } });
   });
 

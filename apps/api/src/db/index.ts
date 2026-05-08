@@ -860,6 +860,27 @@ async function createTables(db: Client) {
     )
   `);
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_roleauditlog_firm ON RoleAuditLog(firmId)`);
+
+  // ─── Phase 45.1 — Closeout checklist ─────────────────────────────────────
+  // One row per (engagementId, key) — the 9 keys are auto-inserted when
+  // the engagement transitions into CLOSEOUT (lifecycle hook in
+  // services/lifecycleTransitions). Idempotent: re-running the
+  // transition is a no-op thanks to the UNIQUE constraint.
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS CloseoutChecklistItem (
+      id            TEXT PRIMARY KEY,
+      engagementId  TEXT NOT NULL REFERENCES Engagement(id) ON DELETE CASCADE,
+      key           TEXT NOT NULL,
+      status        TEXT NOT NULL DEFAULT 'NOT_STARTED',
+      completedBy   TEXT,
+      completedAt   TEXT,
+      notes         TEXT,
+      createdAt     TEXT NOT NULL DEFAULT (datetime('now')),
+      updatedAt     TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (engagementId, key)
+    )
+  `);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_closeout_engagement ON CloseoutChecklistItem(engagementId)`);
 }
 
 // ─── Helper types ─────────────────────────────────────────────────────────────
@@ -2831,3 +2852,14 @@ export type {
   FirmUserWithRoles,
   BackfillResult,
 } from './rbac.js';
+
+// ─── Re-exports for Phase 45.1 closeout checklist ───────────────────────────
+export {
+  createCloseoutChecklist,
+  listCloseoutChecklist,
+  updateCloseoutChecklistItem,
+} from './closeoutChecklist.js';
+export type {
+  CloseoutChecklistRow,
+  UpdateCloseoutChecklistItemArgs,
+} from './closeoutChecklist.js';

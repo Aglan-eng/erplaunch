@@ -23,6 +23,7 @@ import { migrationRoutes } from './routes/migration.js';
 import { activityRoutes } from './routes/activity.js';
 import { actionItemRoutes } from './routes/actionItems.js';
 import { teamRoutes } from './routes/team.js';
+import { closeoutRoutes } from './routes/closeout.js';
 import { portalRoutes } from './routes/portal.js';
 import { portalAuthRoutes } from './routes/portalAuth.js';
 import { pendingSubmissionsRoutes } from './routes/pendingSubmissions.js';
@@ -162,6 +163,8 @@ export async function buildServer() {
   await fastify.register(actionItemRoutes, { prefix: '/api/v1' });
   // Phase 43.4 — Settings → Team page API.
   await fastify.register(teamRoutes, { prefix: '/api/v1' });
+  // Phase 45.1 — Closeout checklist routes.
+  await fastify.register(closeoutRoutes, { prefix: '/api/v1' });
   await fastify.register(portalAuthRoutes, { prefix: '/api/v1' });
   await fastify.register(portalRoutes, { prefix: '/api/v1' });
   // Phase 28 — pending-submission infrastructure (§5.1 foundation). Hosts

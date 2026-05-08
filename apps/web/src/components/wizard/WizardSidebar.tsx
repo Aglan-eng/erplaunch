@@ -4,7 +4,7 @@ import {
   CircleCheck, Circle, ChevronRight, ChevronDown,
   FolderKanban, TriangleAlert, CircleAlert, BookOpen,
   CalendarClock, Truck, Activity, Settings2, Database,
-  Zap, Sparkles, ShieldCheck, FileText, Inbox, MessageCircle, Wand2,
+  Zap, Sparkles, ShieldCheck, FileText, Inbox, MessageCircle, Wand2, Flag,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useWizardStore } from '@/stores/wizardStore';
@@ -60,7 +60,19 @@ const MGMT_ITEMS: SidebarItem[] = [
   // folds in.
   { key: 'auto-fill',       label: 'AI Auto-Fill',      progress: 0, icon: Wand2         },
   { key: 'activity',        label: 'Activity Feed',     progress: 0, icon: Activity      },
+  // Phase 45.1 — Closeout step. Only renders when the engagement is
+  // actually in CLOSEOUT (or ARCHIVED); the filter below hides it
+  // mid-implementation so the sidebar isn't cluttered. The render
+  // logic lives in renderMgmtSection (engagementStatus prop reads
+  // from the loaded engagement query).
+  { key: 'closeout',        label: 'Closeout',          progress: 0, icon: Flag           },
 ];
+
+// Phase 45.1 — sidebar items that only render at certain lifecycle
+// stages. Empty / undefined value means "always visible".
+const STAGE_VISIBILITY: Record<string, ReadonlyArray<string>> = {
+  closeout: ['CLOSEOUT', 'ARCHIVED'],
+};
 
 // Phase 23 — Customizations group. Now contains Custom Fields, Roles
 // (Phase 25), and Templates (Phase 26). NetSuite-only feature surface
@@ -189,7 +201,13 @@ export function WizardSidebar({ engagementId, sectionProgress, licenseComplete, 
 
   // Phase 43.5 — current user's permissions for this engagement.
   // The Project Mgmt section filters items by permission below.
-  const { can: permsCan, isLoading: permsLoading } = usePermissions(engagementId);
+  const { can: permsCan, isLoading: permsLoading, data: permsData } = usePermissions(engagementId);
+
+  // Phase 45.1 — current engagement stage for stage-gated sidebar
+  // items (e.g. the Closeout step only renders during CLOSEOUT or
+  // ARCHIVED). Stage comes from the same /me/permissions payload to
+  // avoid an extra round-trip.
+  const engagementStage = permsData?.stage ?? null;
 
   const adaptorQuery = useQuery({
     queryKey: ['engagement-adaptor', engagementId],
@@ -443,12 +461,20 @@ export function WizardSidebar({ engagementId, sectionProgress, licenseComplete, 
     'migration': 'WIZARD_ANSWERS',
     'auto-fill': 'WIZARD_ANSWERS',
     'activity': 'ACTIVITY_LOG',
+    'closeout': 'ENGAGEMENT_META',
   };
 
   const renderMgmtSection = () => {
+    // Phase 45.1 — apply both permission AND stage gates. Stage gate
+    // hides Closeout outside CLOSEOUT/ARCHIVED so the sidebar is calm
+    // mid-implementation.
     const visibleItems = permsLoading
       ? MGMT_ITEMS
       : MGMT_ITEMS.filter((item) => {
+          const stageAllowed = !STAGE_VISIBILITY[item.key]
+            || !engagementStage
+            || STAGE_VISIBILITY[item.key].includes(engagementStage);
+          if (!stageAllowed) return false;
           const resource = SIDEBAR_RESOURCE_MAP[item.key];
           if (!resource) return true; // unmapped items default to visible
           return permsCan('READ', resource);

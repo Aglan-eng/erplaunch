@@ -23,6 +23,7 @@ import { PendingReviewStep } from './steps/PendingReviewStep';
 import { ThreadsStep } from './steps/ThreadsStep';
 import { ActivityFeedView } from './ActivityFeedView';
 import { BulkAutoFillPanel } from './BulkAutoFillPanel';
+import { CloseoutStep } from './steps/CloseoutStep';
 import { DataCollectionPage } from '@/pages/DataCollectionPage';
 import { AIProfileGenerator } from './AIProfileGenerator';
 import { HelpDrawer } from './HelpDrawer';
@@ -101,7 +102,7 @@ function DeadlineReminderBanner({ daysLeft, contractEndDate, onDismiss }: {
 // All valid flow.section keys
 const ALL_SECTION_KEYS = new Set([
   'overview', 'project', 'ai-profile',
-  'risks', 'issues', 'decisions', 'meetings', 'migration', 'activity', 'auto-fill',
+  'risks', 'issues', 'decisions', 'meetings', 'migration', 'activity', 'auto-fill', 'closeout',
   'r2r.entities', 'r2r.segmentation', 'r2r.accountingPeriods', 'r2r.currencies',
   'r2r.bankTransactions', 'r2r.tax', 'r2r.journalEntries', 'r2r.fiscalClose', 'r2r.reporting',
   'p2p.vendors', 'p2p.purchasing', 'p2p.receiving', 'p2p.bills', 'p2p.payments', 'p2p.expenses',
@@ -316,6 +317,10 @@ export function WizardShell() {
 
     if (currentSection === 'auto-fill') {
       return <BulkAutoFillPanel engagementId={engagementId} />;
+    }
+
+    if (currentSection === 'closeout') {
+      return <CloseoutStep engagementId={engagementId} />;
     }
 
     if (currentSection === 'data-collection') {

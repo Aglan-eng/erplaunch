@@ -607,6 +607,32 @@ export interface RoleAuditEntry {
   createdAt: string;
 }
 
+// Phase 45.1 — Closeout checklist API.
+export type CloseoutChecklistStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'DONE' | 'NA';
+export type CloseoutChecklistKey =
+  | 'KNOWLEDGE_TRANSFER' | 'SYSTEM_CATALOG_REVIEWED' | 'INTEGRATION_LIST_CONFIRMED'
+  | 'SUPPORT_CONTACTS_ASSIGNED' | 'SLA_TERMS_AGREED' | 'FINAL_INVOICE_PAID'
+  | 'PRODUCTION_STABLE' | 'CLIENT_SIGNOFF' | 'SLA_TEAM_ACCEPT';
+
+export interface CloseoutChecklistItem {
+  id: string;
+  engagementId: string;
+  key: CloseoutChecklistKey;
+  status: CloseoutChecklistStatus;
+  completedBy: string | null;
+  completedAt: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const closeoutApi = {
+  list: (engagementId: string): Promise<CloseoutChecklistItem[]> =>
+    api.get(`/engagements/${engagementId}/closeout-checklist`).then((r) => r.data.data),
+  patch: (engagementId: string, key: CloseoutChecklistKey, body: { status?: CloseoutChecklistStatus; notes?: string | null }): Promise<CloseoutChecklistItem> =>
+    api.patch(`/engagements/${engagementId}/closeout-checklist/${key}`, body).then((r) => r.data.data),
+};
+
 export const teamApi = {
   listTeam: (): Promise<TeamMember[]> =>
     api.get('/firm/team').then((r) => r.data.data),
