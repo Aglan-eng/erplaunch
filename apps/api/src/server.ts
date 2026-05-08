@@ -30,6 +30,7 @@ import { renewalRoutes } from './routes/renewal.js';
 import { salesPipelineRoutes } from './routes/salesPipeline.js';
 import { discoveryLiteRoutes } from './routes/discoveryLite.js';
 import { sowSignatureRoutes } from './routes/sowSignature.js';
+import { salesReportsRoutes } from './routes/salesReports.js';
 import { portalRoutes } from './routes/portal.js';
 import { portalAuthRoutes } from './routes/portalAuth.js';
 import { pendingSubmissionsRoutes } from './routes/pendingSubmissions.js';
@@ -183,6 +184,8 @@ export async function buildServer() {
   await fastify.register(discoveryLiteRoutes, { prefix: '/api/v1' });
   // Phase 46.5 — SOW signature flow (DocuSign + manual upload + webhook).
   await fastify.register(sowSignatureRoutes, { prefix: '/api/v1' });
+  // Phase 46.7 — Sales performance reports.
+  await fastify.register(salesReportsRoutes, { prefix: '/api/v1' });
   await fastify.register(portalAuthRoutes, { prefix: '/api/v1' });
   await fastify.register(portalRoutes, { prefix: '/api/v1' });
   // Phase 28 — pending-submission infrastructure (§5.1 foundation). Hosts

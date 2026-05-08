@@ -231,13 +231,69 @@ export async function salesPipelineRoutes(fastify: FastifyInstance): Promise<voi
       }
 
       const updated = await db.updateEngagement(id, { status: body.status });
+      // Phase 46.7 — stamp lostAt when entering the LOST column so
+      // reports can pull "deals lost in the last 30 days" without
+      // joining through ActivityLog.
+      if (body.status === 'LOST') {
+        await db.getDb().execute({
+          sql: `UPDATE Engagement SET lostAt = ?, updatedAt = ? WHERE id = ?`,
+          args: [new Date().toISOString(), new Date().toISOString(), id],
+        });
+      }
       await db.logActivity(
         id,
         request.jwtUser.firmId,
-        'PROSPECT_STAGE_CHANGED',
+        body.status === 'LOST' ? 'PROSPECT_LOST' : 'PROSPECT_STAGE_CHANGED',
         `${currentStatus || 'PROSPECT'} → ${body.status}`,
       );
       return reply.send({ data: updated });
+    },
+  );
+
+  // PATCH /sales/prospects/:id/loss-detail — record categorized loss
+  // reason. Frontend posts this after a card is dropped into LOST and
+  // the operator answers the modal.
+  fastify.patch(
+    '/sales/prospects/:id/loss-detail',
+    { preHandler: requirePermission('WRITE', 'ENGAGEMENT_META') },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const eng = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
+      if (!eng) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+      const body = (request.body ?? {}) as {
+        lossReason?: unknown;
+        competitorName?: unknown;
+        notes?: unknown;
+      };
+      if (typeof body.lossReason !== 'string' || !db.isLossReason(body.lossReason)) {
+        return reply.code(400).send({
+          error: {
+            code: 'VALIDATION_ERROR',
+            message:
+              'lossReason must be PRICE, TIMING, NO_DECISION, LOST_TO_COMPETITOR, INTERNAL_BUILD, or OTHER',
+          },
+        });
+      }
+      const detail = await db.upsertLossDetail({
+        engagementId: id,
+        lossReason: body.lossReason,
+        competitorName:
+          typeof body.competitorName === 'string' && body.competitorName.length > 0
+            ? body.competitorName
+            : null,
+        notes: typeof body.notes === 'string' && body.notes.length > 0 ? body.notes : null,
+        recordedByUserId: request.jwtUser.userId,
+      });
+      // Mirror the lossReason onto the engagement column for the
+      // pipeline list query (which doesn't join EngagementLossDetail).
+      await db.updateEngagement(id, { lostReason: body.lossReason });
+      await db.logActivity(
+        id,
+        request.jwtUser.firmId,
+        'PROSPECT_LOSS_DETAIL_RECORDED',
+        `Loss reason: ${body.lossReason}${detail.competitorName ? ` (${detail.competitorName})` : ''}`,
+      );
+      return reply.send({ data: detail });
     },
   );
 }

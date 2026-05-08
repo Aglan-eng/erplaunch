@@ -92,6 +92,7 @@ export async function dispatchSowSigned(input: SowSignedEventInput): Promise<voi
     clientName: (engRecord.clientName as string | undefined) ?? 'Client',
     signedAt: sig.signedAt ?? new Date().toISOString(),
     signedByEmail: sig.signedByEmail,
+    createdAt: (engRecord.createdAt as string | undefined) ?? null,
   });
 }
 
@@ -101,6 +102,9 @@ interface ConversionInput {
   clientName: string;
   signedAt: string;
   signedByEmail: string | null;
+  /** Optional engagement.createdAt for sales-cycle-days math. When
+   *  absent the cycle-days field stays null on the engagement. */
+  createdAt?: string | null;
 }
 
 /**
@@ -130,11 +134,36 @@ export async function convertProspectToActiveEngagement(input: ConversionInput):
     .toISOString()
     .slice(0, 10);
 
-  // ── Stage transition + date stamps. ──────────────────────────────────
-  await db.updateEngagement(input.engagementId, {
-    status: 'DISCOVERY',
-    startDate,
-    contractEndDate,
+  // ── Stage transition + date stamps. Phase 46.7: stamp wonAt +
+  //    salesCycleDays alongside the DISCOVERY transition so reports
+  //    can identify "deals that closed" without watching a transient
+  //    WON status pass through.
+  let salesCycleDays: number | null = null;
+  if (input.createdAt) {
+    const created = new Date(input.createdAt).getTime();
+    const signed = new Date(input.signedAt).getTime();
+    if (Number.isFinite(created) && Number.isFinite(signed) && signed >= created) {
+      salesCycleDays = Math.floor((signed - created) / 86_400_000);
+    }
+  }
+  const db2 = db.getDb();
+  // Use direct SQL for the won-related columns since updateEngagement
+  // doesn't accept them by design — they're set once at win time and
+  // shouldn't be edited via the generic engagement PATCH route.
+  await db2.execute({
+    sql: `UPDATE Engagement
+          SET status = ?, startDate = ?, contractEndDate = ?, wonAt = ?, salesCycleDays = ?,
+              updatedAt = ?
+          WHERE id = ?`,
+    args: [
+      'DISCOVERY',
+      startDate,
+      contractEndDate,
+      input.signedAt,
+      salesCycleDays,
+      new Date().toISOString(),
+      input.engagementId,
+    ],
   });
 
   // ── Carry-forward Discovery Lite answers into BusinessProfile.answers.
@@ -210,6 +239,14 @@ export async function convertProspectToActiveEngagement(input: ConversionInput):
   void input.signedByEmail;
 
   // ── Activity entries. ────────────────────────────────────────────────
+  try {
+    await db.logActivity(
+      input.engagementId,
+      input.firmId,
+      'PROSPECT_WON',
+      `Deal won. Sales cycle ${salesCycleDays ?? '—'}d.`,
+    );
+  } catch { /* non-fatal */ }
   try {
     await db.logActivity(
       input.engagementId,

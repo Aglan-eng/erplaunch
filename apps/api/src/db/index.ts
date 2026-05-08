@@ -151,6 +151,17 @@ async function createTables(db: Client) {
   // cache the createProspect path populates.
   try { await db.execute(`ALTER TABLE Engagement ADD COLUMN salesRepUserId TEXT`); } catch { /* idempotent */ }
 
+  // Phase 46.7 — win/loss tracking. wonAt is stamped when the SOW is
+  // signed (before the auto-conversion flips status to DISCOVERY) so
+  // reports can identify "deals that closed" without watching the
+  // engagement pass through a transient WON status. lostAt is set
+  // when the operator drags a card into the LOST column. salesCycleDays
+  // is computed at win-time so reports don't have to recalculate
+  // from createdAt.
+  try { await db.execute(`ALTER TABLE Engagement ADD COLUMN wonAt TEXT`); } catch { /* idempotent */ }
+  try { await db.execute(`ALTER TABLE Engagement ADD COLUMN lostAt TEXT`); } catch { /* idempotent */ }
+  try { await db.execute(`ALTER TABLE Engagement ADD COLUMN salesCycleDays INTEGER`); } catch { /* idempotent */ }
+
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS ProjectMember (
@@ -980,6 +991,23 @@ async function createTables(db: Client) {
     )
   `);
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_ticket_status_change_ticket ON TicketStatusChange(ticketId, createdAt)`);
+
+  // ─── Phase 46.7 — Loss detail capture ────────────────────────────────────
+  //
+  // One row per engagement that transitioned to LOST status, with the
+  // categorized reason + competitor name (when applicable) + free
+  // text. Older losses without a row in this table fall back to
+  // engagement.lostReason for the categorization (set in 46.1).
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS EngagementLossDetail (
+      engagementId   TEXT PRIMARY KEY REFERENCES Engagement(id) ON DELETE CASCADE,
+      lossReason     TEXT NOT NULL,
+      competitorName TEXT,
+      notes          TEXT,
+      recordedByUserId TEXT,
+      recordedAt     TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
 
   // ─── Phase 46.5 — SOW signature flow ─────────────────────────────────────
   //
@@ -3123,6 +3151,16 @@ export type {
   FirmRoleUserContact,
   BackfillResult,
 } from './rbac.js';
+
+// ─── Re-exports for Phase 46.7 loss detail ──────────────────────────────────
+export {
+  findLossDetail,
+  upsertLossDetail,
+  listLossDetailsByFirm,
+  isLossReason,
+  LOSS_REASONS,
+} from './lossDetail.js';
+export type { EngagementLossDetail, LossReason } from './lossDetail.js';
 
 // ─── Re-exports for Phase 46.5 SOW signatures ───────────────────────────────
 export {
