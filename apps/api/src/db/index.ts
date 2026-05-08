@@ -981,6 +981,27 @@ async function createTables(db: Client) {
   `);
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_ticket_status_change_ticket ON TicketStatusChange(ticketId, createdAt)`);
 
+  // ─── Phase 46.2 — Discovery Lite questionnaire ───────────────────────────
+  //
+  // One row per engagement. Holds the answers blob (JSON) plus
+  // completion + share-link fields. The shareToken is opaque and
+  // only set when the sales rep generates a self-serve link for the
+  // prospect; nullified when revoked.
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS EngagementDiscoveryLite (
+      engagementId       TEXT PRIMARY KEY REFERENCES Engagement(id) ON DELETE CASCADE,
+      answers            TEXT NOT NULL DEFAULT '{}',
+      completedAt        TEXT,
+      shareToken         TEXT,
+      shareTokenIssuedAt TEXT,
+      shareTokenExpiresAt TEXT,
+      lastEditedBy       TEXT,
+      createdAt          TEXT NOT NULL DEFAULT (datetime('now')),
+      updatedAt          TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_dl_share_token ON EngagementDiscoveryLite(shareToken) WHERE shareToken IS NOT NULL`);
+
   // ─── Phase 45.8 — Renewal + expansion tracker ─────────────────────────────
   //
   // One row per engagement. The ACCOUNT_MANAGER (or APP_ADMIN) edits
@@ -3042,6 +3063,16 @@ export type {
   FirmRoleUserContact,
   BackfillResult,
 } from './rbac.js';
+
+// ─── Re-exports for Phase 46.2 Discovery Lite ───────────────────────────────
+export {
+  findDiscoveryLite,
+  findDiscoveryLiteByShareToken,
+  upsertDiscoveryLite,
+  listDiscoveryLiteByEngagementIds,
+  newShareToken,
+} from './discoveryLite.js';
+export type { EngagementDiscoveryLite } from './discoveryLite.js';
 
 // ─── Re-exports for Phase 45.8 renewal tracker ──────────────────────────────
 export {

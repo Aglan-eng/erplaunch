@@ -95,12 +95,23 @@ export async function salesPipelineRoutes(fastify: FastifyInstance): Promise<voi
     const all = rows.rows as unknown as PipelineRow[];
     const visible = applyVisibilityScope(all, scope);
 
+    // Phase 46.2 — bulk-fetch DiscoveryLite presence/completion so
+    // PROSPECT engagements bucket into NEW vs QUALIFIED vs
+    // DISCOVERY_LITE without N+1 queries.
+    const dlMap = await db.listDiscoveryLiteByEngagementIds(visible.map((v) => v.id));
     const now = new Date();
-    const data = visible.map((e) => ({
-      ...e,
-      column: columnForEngagement({ status: e.status }),
-      daysInStage: daysInStage(e.updatedAt, now),
-    }));
+    const data = visible.map((e) => {
+      const dl = dlMap.get(e.id);
+      return {
+        ...e,
+        column: columnForEngagement({
+          status: e.status,
+          hasDiscoveryLite: dl?.hasAnswers ?? false,
+          discoveryLiteCompleted: dl?.completed ?? false,
+        }),
+        daysInStage: daysInStage(e.updatedAt, now),
+      };
+    });
     return reply.send({ data });
   });
 

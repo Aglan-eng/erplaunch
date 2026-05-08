@@ -28,6 +28,7 @@ import { slaPortfolioRoutes } from './routes/slaPortfolio.js';
 import { ticketRoutes } from './routes/tickets.js';
 import { renewalRoutes } from './routes/renewal.js';
 import { salesPipelineRoutes } from './routes/salesPipeline.js';
+import { discoveryLiteRoutes } from './routes/discoveryLite.js';
 import { portalRoutes } from './routes/portal.js';
 import { portalAuthRoutes } from './routes/portalAuth.js';
 import { pendingSubmissionsRoutes } from './routes/pendingSubmissions.js';
@@ -177,6 +178,8 @@ export async function buildServer() {
   await fastify.register(renewalRoutes, { prefix: '/api/v1' });
   // Phase 46.1 — Sales pipeline + prospect quick-add.
   await fastify.register(salesPipelineRoutes, { prefix: '/api/v1' });
+  // Phase 46.2 — Discovery Lite (consultant + self-serve).
+  await fastify.register(discoveryLiteRoutes, { prefix: '/api/v1' });
   await fastify.register(portalAuthRoutes, { prefix: '/api/v1' });
   await fastify.register(portalRoutes, { prefix: '/api/v1' });
   // Phase 28 — pending-submission infrastructure (§5.1 foundation). Hosts
