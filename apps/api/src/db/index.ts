@@ -132,6 +132,25 @@ async function createTables(db: Client) {
   // Nullable / TEXT — engagements that have never been archived have NULL.
   try { await db.execute(`ALTER TABLE Engagement ADD COLUMN previousStatus TEXT`); } catch { /* swallow — idempotent migration / parse fallback */ }
 
+  // Phase 46.1 — sales-side metadata. All optional; pre-existing
+  // engagements get nulls. leadSource/lostReason are TEXT with the
+  // route layer enforcing the enum (WEBSITE | REFERRAL | OUTBOUND |
+  // EVENT | OTHER for source; PRICE | TIMING | NO_DECISION |
+  // LOST_TO_COMPETITOR | INTERNAL_BUILD | OTHER for loss).
+  // estimatedValue is REAL — monetary values fit fine in a double for
+  // the deal sizes we'd ever see; if a customer had > $9 quadrillion
+  // pipeline they have bigger problems than precision.
+  try { await db.execute(`ALTER TABLE Engagement ADD COLUMN leadSource TEXT`); } catch { /* idempotent */ }
+  try { await db.execute(`ALTER TABLE Engagement ADD COLUMN prospectScore INTEGER`); } catch { /* idempotent */ }
+  try { await db.execute(`ALTER TABLE Engagement ADD COLUMN estimatedValue REAL`); } catch { /* idempotent */ }
+  try { await db.execute(`ALTER TABLE Engagement ADD COLUMN estimatedCloseDate TEXT`); } catch { /* idempotent */ }
+  try { await db.execute(`ALTER TABLE Engagement ADD COLUMN lostReason TEXT`); } catch { /* idempotent */ }
+  // Sales rep ownership — denormalised pointer for fast pipeline
+  // queries without a join through EngagementRole. The
+  // EngagementRole(SALES_REP) row is still authoritative; this is a
+  // cache the createProspect path populates.
+  try { await db.execute(`ALTER TABLE Engagement ADD COLUMN salesRepUserId TEXT`); } catch { /* idempotent */ }
+
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS ProjectMember (
@@ -1175,14 +1194,58 @@ export async function createGoogleUserAndFirm(args: {
 
 // ─── Engagement ───────────────────────────────────────────────────────────────
 
-export async function createEngagement(data: { firmId: string; clientName: string; adaptorId?: string }) {
+export async function createEngagement(data: {
+  firmId: string;
+  clientName: string;
+  adaptorId?: string;
+  // Phase 46.1 — optional sales-side fields. Pass these to seed a
+  // PROSPECT directly; existing call sites pass none and get the
+  // pre-46.1 default DISCOVERY-stage shape.
+  status?: string;
+  leadSource?: string | null;
+  prospectScore?: number | null;
+  estimatedValue?: number | null;
+  estimatedCloseDate?: string | null;
+  salesRepUserId?: string | null;
+}) {
   const db = getDb();
   const id = createId();
   const now = new Date().toISOString();
   const adaptorId = data.adaptorId ?? 'netsuite';
+  // Build the column list dynamically so legacy callers that don't
+  // pass any sales fields keep their current behaviour and the
+  // status column stays NULL (existing tests rely on null-defaulted
+  // status that means "DISCOVERY-equivalent").
+  const cols: string[] = ['id', 'firmId', 'clientName', 'adaptorId', 'updatedAt'];
+  const vals: (string | number | null)[] = [id, data.firmId, data.clientName, adaptorId, now];
+  if (data.status !== undefined) {
+    cols.push('status');
+    vals.push(data.status);
+  }
+  if (data.leadSource !== undefined) {
+    cols.push('leadSource');
+    vals.push(data.leadSource);
+  }
+  if (data.prospectScore !== undefined) {
+    cols.push('prospectScore');
+    vals.push(data.prospectScore);
+  }
+  if (data.estimatedValue !== undefined) {
+    cols.push('estimatedValue');
+    vals.push(data.estimatedValue);
+  }
+  if (data.estimatedCloseDate !== undefined) {
+    cols.push('estimatedCloseDate');
+    vals.push(data.estimatedCloseDate);
+  }
+  if (data.salesRepUserId !== undefined) {
+    cols.push('salesRepUserId');
+    vals.push(data.salesRepUserId);
+  }
+  const placeholders = vals.map(() => '?').join(',');
   await db.execute({
-    sql: `INSERT INTO Engagement (id, firmId, clientName, adaptorId, updatedAt) VALUES (?,?,?,?,?)`,
-    args: [id, data.firmId, data.clientName, adaptorId, now],
+    sql: `INSERT INTO Engagement (${cols.join(', ')}) VALUES (${placeholders})`,
+    args: vals,
   });
   // Create empty profile and license
   await db.execute({
@@ -1345,7 +1408,24 @@ export async function deleteEngagementCascade(id: string): Promise<boolean> {
   }
 }
 
-export async function updateEngagement(id: string, data: Partial<{ clientName: string; status: string; startDate: string | null; contractEndDate: string | null }>) {
+export async function updateEngagement(
+  id: string,
+  data: Partial<{
+    clientName: string;
+    status: string;
+    startDate: string | null;
+    contractEndDate: string | null;
+    // Phase 46.1 — sales-side fields. Each is independently nullable
+    // so the route layer can clear a field by sending null without
+    // having to remember the others.
+    leadSource: string | null;
+    prospectScore: number | null;
+    estimatedValue: number | null;
+    estimatedCloseDate: string | null;
+    lostReason: string | null;
+    salesRepUserId: string | null;
+  }>,
+) {
   const db = getDb();
   const sets: string[] = [];
   const args: unknown[] = [];
@@ -1353,6 +1433,12 @@ export async function updateEngagement(id: string, data: Partial<{ clientName: s
   if (data.status !== undefined) { sets.push('status = ?'); args.push(data.status); }
   if (data.startDate !== undefined) { sets.push('startDate = ?'); args.push(data.startDate); }
   if (data.contractEndDate !== undefined) { sets.push('contractEndDate = ?'); args.push(data.contractEndDate); }
+  if (data.leadSource !== undefined) { sets.push('leadSource = ?'); args.push(data.leadSource); }
+  if (data.prospectScore !== undefined) { sets.push('prospectScore = ?'); args.push(data.prospectScore); }
+  if (data.estimatedValue !== undefined) { sets.push('estimatedValue = ?'); args.push(data.estimatedValue); }
+  if (data.estimatedCloseDate !== undefined) { sets.push('estimatedCloseDate = ?'); args.push(data.estimatedCloseDate); }
+  if (data.lostReason !== undefined) { sets.push('lostReason = ?'); args.push(data.lostReason); }
+  if (data.salesRepUserId !== undefined) { sets.push('salesRepUserId = ?'); args.push(data.salesRepUserId); }
   sets.push("updatedAt = ?"); args.push(new Date().toISOString());
   args.push(id);
   await db.execute({ sql: `UPDATE Engagement SET ${sets.join(', ')} WHERE id = ?`, args: args as (string | number | boolean | null)[] });

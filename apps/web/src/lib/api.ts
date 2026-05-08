@@ -641,6 +641,57 @@ export interface CloseoutChecklistItem {
   updatedAt: string;
 }
 
+// ─── Sales pipeline (Phase 46.1) ─────────────────────────────────────────────
+
+export type PipelineColumn =
+  | 'NEW'
+  | 'QUALIFIED'
+  | 'DISCOVERY_LITE'
+  | 'PROPOSAL_SENT'
+  | 'NEGOTIATION'
+  | 'WON'
+  | 'LOST';
+
+export type LeadSource = 'WEBSITE' | 'REFERRAL' | 'OUTBOUND' | 'EVENT' | 'OTHER';
+
+export type SalesStage = 'PROSPECT' | 'PROPOSED' | 'CONTRACTED' | 'WON' | 'LOST';
+
+export interface PipelineEntry {
+  id: string;
+  clientName: string;
+  status: SalesStage;
+  leadSource: LeadSource | null;
+  prospectScore: number | null;
+  estimatedValue: number | null;
+  estimatedCloseDate: string | null;
+  lostReason: string | null;
+  salesRepUserId: string | null;
+  updatedAt: string;
+  createdAt: string;
+  column: PipelineColumn;
+  daysInStage: number;
+}
+
+export const salesApi = {
+  /** Phase 46.1 — list deals at sales stages, filtered by visibility. */
+  listPipeline: (): Promise<PipelineEntry[]> =>
+    api.get('/sales/pipeline').then((r) => r.data.data),
+
+  /** Phase 46.1 — quick-add a PROSPECT engagement. */
+  createProspect: (input: {
+    clientName: string;
+    leadSource?: LeadSource | null;
+    salesRepUserId?: string | null;
+    estimatedValue?: number | null;
+    estimatedCloseDate?: string | null;
+  }): Promise<PipelineEntry> =>
+    api.post('/sales/prospects', input).then((r) => r.data.data),
+
+  /** Phase 46.1 — drag-drop transition between sales stages. */
+  setProspectStage: (id: string, status: SalesStage): Promise<PipelineEntry> =>
+    api.patch(`/sales/prospects/${id}/stage`, { status }).then((r) => r.data.data),
+};
+
 export const closeoutApi = {
   list: (engagementId: string): Promise<CloseoutChecklistItem[]> =>
     api.get(`/engagements/${engagementId}/closeout-checklist`).then((r) => r.data.data),

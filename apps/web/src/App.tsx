@@ -18,6 +18,7 @@ const EmailDomainPage = lazy(() => import('./pages/EmailDomainPage').then(m => (
 const TeamPage = lazy(() => import('./pages/TeamPage').then(m => ({ default: m.TeamPage })));
 const StatusReportPage = lazy(() => import('./pages/StatusReportPage').then(m => ({ default: m.StatusReportPage })));
 const SlaPortfolioPage = lazy(() => import('./pages/SlaPortfolioPage').then(m => ({ default: m.SlaPortfolioPage })));
+const SalesPipelinePage = lazy(() => import('./pages/SalesPipelinePage').then(m => ({ default: m.SalesPipelinePage })));
 const VerticalWorkspacePage = lazy(() => import('./pages/VerticalWorkspacePage').then(m => ({ default: m.VerticalWorkspacePage })));
 const CustomAdaptorsPage = lazy(() => import('./pages/CustomAdaptorsPage').then(m => ({ default: m.CustomAdaptorsPage })));
 const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage').then(m => ({ default: m.ForgotPasswordPage })));
@@ -143,6 +144,17 @@ function AppRoutes() {
           element={
             <RequireAuth>
               <ErrorBoundary><SlaPortfolioPage /></ErrorBoundary>
+            </RequireAuth>
+          }
+        />
+        {/* Phase 46.1 — Sales pipeline kanban. Restricted at the
+            route layer to sales-role users; the page itself
+            renders a permission-denied notice for everyone else. */}
+        <Route
+          path="/sales/pipeline"
+          element={
+            <RequireAuth>
+              <ErrorBoundary><SalesPipelinePage /></ErrorBoundary>
             </RequireAuth>
           }
         />

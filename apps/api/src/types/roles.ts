@@ -83,10 +83,28 @@ export const LIFECYCLE_STAGES = [
   'ARCHIVED',
 ] as const;
 
-export type Stage = (typeof LIFECYCLE_STAGES)[number];
+/**
+ * Phase 46.1 — terminal sales-side outcomes that branch off the
+ * linear lifecycle rather than sitting on it. WON is set transiently
+ * at SOW-signed time before Phase 46.6 auto-flips the engagement to
+ * DISCOVERY; LOST is the permanent dead-end for prospects that never
+ * close. These don't participate in nextStage/previousStage.
+ */
+export const SALES_OUTCOME_STAGES = ['WON', 'LOST'] as const;
+export type SalesOutcomeStage = (typeof SALES_OUTCOME_STAGES)[number];
+
+export type Stage = (typeof LIFECYCLE_STAGES)[number] | SalesOutcomeStage;
 
 export function isLifecycleStage(s: string): s is Stage {
-  return (LIFECYCLE_STAGES as readonly string[]).includes(s);
+  return (
+    (LIFECYCLE_STAGES as readonly string[]).includes(s) ||
+    (SALES_OUTCOME_STAGES as readonly string[]).includes(s)
+  );
+}
+
+/** True when the stage is a terminal sales outcome (WON or LOST). */
+export function isSalesOutcomeStage(s: string): s is SalesOutcomeStage {
+  return (SALES_OUTCOME_STAGES as readonly string[]).includes(s);
 }
 
 // Old stage names still in the DB. Map them to the new ones so the

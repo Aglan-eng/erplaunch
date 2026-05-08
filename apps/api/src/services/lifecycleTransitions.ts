@@ -23,13 +23,24 @@
  * transition rules.
  */
 
-import { LIFECYCLE_STAGES, type Stage, normaliseStage } from '../types/roles.js';
+import {
+  LIFECYCLE_STAGES,
+  type Stage,
+  normaliseStage,
+  isSalesOutcomeStage,
+} from '../types/roles.js';
 
-const ORDER: ReadonlyArray<Stage> = LIFECYCLE_STAGES;
-const INDEX: Record<Stage, number> = ORDER.reduce((acc, s, i) => {
-  acc[s] = i;
-  return acc;
-}, {} as Record<Stage, number>);
+// nextStage/previousStage walk the LINEAR lifecycle only — WON and
+// LOST are off-flow branches that the sales pipeline routes
+// (Phase 46.x) transition to explicitly, not via the linear advance.
+const ORDER: ReadonlyArray<(typeof LIFECYCLE_STAGES)[number]> = LIFECYCLE_STAGES;
+const INDEX: Record<(typeof LIFECYCLE_STAGES)[number], number> = ORDER.reduce(
+  (acc, s, i) => {
+    acc[s] = i;
+    return acc;
+  },
+  {} as Record<(typeof LIFECYCLE_STAGES)[number], number>,
+);
 
 export type StageOrLegacy = string;
 
@@ -40,6 +51,10 @@ export function toStage(s: StageOrLegacy): Stage {
 
 export function nextStage(current: StageOrLegacy): Stage | null {
   const c = toStage(current);
+  // Sales outcomes don't participate in linear advance — they require
+  // the explicit sales pipeline routes (Phase 46.6 auto-converts WON
+  // to DISCOVERY; LOST is terminal).
+  if (isSalesOutcomeStage(c)) return null;
   const i = INDEX[c];
   if (i === ORDER.length - 1) return null;
   return ORDER[i + 1];
@@ -47,6 +62,7 @@ export function nextStage(current: StageOrLegacy): Stage | null {
 
 export function previousStage(current: StageOrLegacy): Stage | null {
   const c = toStage(current);
+  if (isSalesOutcomeStage(c)) return null;
   const i = INDEX[c];
   if (i === 0) return null;
   return ORDER[i - 1];
@@ -71,7 +87,14 @@ export type HandoffEvent =
 export function handoffEventFor(from: StageOrLegacy, to: StageOrLegacy): HandoffEvent {
   const f = toStage(from);
   const t = toStage(to);
-  if (INDEX[t] < INDEX[f]) return 'ENGAGEMENT_REGRESSED';
+  // Linear regression check requires both stages to be on the linear
+  // ORDER. Sales-outcome stages (WON/LOST) aren't on the index, so
+  // skip the regress detection when either side is off-flow.
+  if (!isSalesOutcomeStage(f) && !isSalesOutcomeStage(t)) {
+    const fi = INDEX[f as (typeof LIFECYCLE_STAGES)[number]];
+    const ti = INDEX[t as (typeof LIFECYCLE_STAGES)[number]];
+    if (ti < fi) return 'ENGAGEMENT_REGRESSED';
+  }
   if (f === 'PROPOSED' && t === 'CONTRACTED') return 'HANDOFF_TO_IMPLEMENTATION';
   if (f === 'CONTRACTED' && t === 'DISCOVERY') return 'HANDOFF_TO_IMPLEMENTATION';
   if (f === 'GOLIVE' && t === 'CLOSEOUT') return 'HANDOFF_TO_CLOSEOUT';

@@ -26,6 +26,16 @@ describe('nextStage', () => {
     expect(nextStage('ARCHIVED')).toBeNull();
   });
 
+  it('Phase 46.1 — sales-outcome stages refuse linear advance', () => {
+    // WON and LOST are off-flow branches handled by the sales pipeline
+    // routes; the linear /advance handler must not pull them onto the
+    // canonical timeline.
+    expect(nextStage('WON')).toBeNull();
+    expect(nextStage('LOST')).toBeNull();
+    expect(previousStage('WON')).toBeNull();
+    expect(previousStage('LOST')).toBeNull();
+  });
+
   it('normalises legacy GO_LIVE to GOLIVE before advancing', () => {
     expect(nextStage('GO_LIVE')).toBe('CLOSEOUT');
   });
