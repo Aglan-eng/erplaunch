@@ -248,6 +248,137 @@ export async function processJob(jobId: string, db: DbModule) {
     const docDir = path.join(rootOutputDir, 'Documentation');
     await fs.mkdir(docDir, { recursive: true });
 
+    // Phase 46.4 — SOW renders a single comprehensive PDF that goes
+    // out for e-signature. Pricing is re-derived from the same
+    // Discovery Lite + firm-defaults inputs as the proposal so the
+    // SOW always agrees with the most recent proposal numbers (until
+    // a future phase lets the firm freeze/lock a specific version).
+    if ((job.type as string) === 'SOW') {
+      const { generateSowPdf } = await import('./generators/sowGenerator.js');
+      const { computeProposalPricing } = await import('./generators/proposalGenerator.js');
+      const dl = await db.findDiscoveryLite(eng.id as string);
+      const dlAnswers = (dl?.answers ?? {}) as Record<string, unknown>;
+      const license = (eng.license ?? {}) as Record<string, any>;
+
+      const dlModules = Array.isArray(dlAnswers['modules.interest'])
+        ? (dlAnswers['modules.interest'] as string[])
+        : (license.modules as string[] | undefined) ?? [];
+      let modulesOfInterest: Array<{ id: string; label: string }> = [];
+      try {
+        const adaptor = (await import('@ofoq/adaptor-registry')).getAdaptorRegistry().find(adaptorId);
+        const catalog = adaptor?.license?.modules ?? [];
+        const labelOf = new Map<string, string>(
+          catalog.map((m: { id: string; label?: string }) => [m.id, m.label ?? m.id]),
+        );
+        modulesOfInterest = dlModules.map((id) => ({
+          id,
+          label: labelOf.get(id) ?? id,
+        }));
+      } catch {
+        modulesOfInterest = dlModules.map((id) => ({ id, label: id }));
+      }
+
+      const firm = await db.findFirmById((eng as Record<string, unknown>).firmId as string);
+      const firmName = (firm as { name?: string } | null)?.name ?? 'Provider';
+
+      // Re-use proposal pricing math so SOW totals agree with the
+      // most-recent proposal generation.
+      const pricingInput = {
+        clientName: eng.clientName as string,
+        adaptorId,
+        adaptorName: isNetSuite ? 'NetSuite' : adaptorId,
+        pains: Array.isArray(dlAnswers['painPoints']) ? (dlAnswers['painPoints'] as string[]) : [],
+        modulesOfInterest,
+        estimatedUsers:
+          typeof dlAnswers['scope.users'] === 'number' ? (dlAnswers['scope.users'] as number) : 25,
+        estimatedLocations:
+          typeof dlAnswers['scope.locations'] === 'number'
+            ? (dlAnswers['scope.locations'] as number)
+            : 1,
+        geographyMultiEntity:
+          (dlAnswers['geography.multiEntity'] as 'single' | 'single-country-multi-entity' | 'multi-country' | undefined) ??
+          'single',
+        targetGoLive:
+          typeof dlAnswers['timeline.targetGoLive'] === 'string'
+            ? (dlAnswers['timeline.targetGoLive'] as string)
+            : 'tbd',
+        perUserPricing: {} as Record<string, number>,
+        defaultPerUserPrice: 1200,
+        firmName,
+        preparedAt: new Date().toISOString().slice(0, 10),
+      };
+      const pricing = computeProposalPricing(pricingInput);
+
+      // Estimated duration from Discovery Lite's targetGoLive code,
+      // falling back to 90 days. The route layer / Phase 46.6 will
+      // supply a proper override.
+      const targetGoLive = pricingInput.targetGoLive;
+      const durationByCode: Record<string, number> = {
+        asap: 90,
+        '3-6m': 150,
+        '6-12m': 270,
+        '12m+': 365,
+        tbd: 180,
+      };
+      const estimatedDurationDays = durationByCode[targetGoLive] ?? 180;
+
+      // Version: next monotonically increasing per engagement.
+      const version = await db.nextSowVersion(eng.id as string);
+      const previousLatest = version > 1 ? version - 1 : null;
+
+      const pdf = await generateSowPdf({
+        clientName: eng.clientName as string,
+        adaptorId,
+        adaptorName: isNetSuite ? 'NetSuite' : adaptorId,
+        firmName,
+        modulesOfInterest,
+        estimatedUsers: pricingInput.estimatedUsers,
+        estimatedLocations: pricingInput.estimatedLocations,
+        geographyMultiEntity: pricingInput.geographyMultiEntity,
+        totalAnnualLicense: pricing.totalAnnualLicense,
+        implementationServices: pricing.implementationServices,
+        totalFirstYear: pricing.totalFirstYear,
+        pricingPhases: pricing.phases,
+        validUntil: pricing.validUntil,
+        effectiveDate: pricingInput.preparedAt,
+        estimatedDurationDays,
+        version,
+        supersedesVersion: previousLatest,
+        preparedAt: pricingInput.preparedAt,
+      });
+
+      const pdfDir = path.join(rootOutputDir, 'SOW');
+      await fs.mkdir(pdfDir, { recursive: true });
+      await fs.writeFile(path.join(pdfDir, `Statement_of_Work_v${version}.pdf`), pdf);
+
+      try {
+        await db.recordSowVersion({
+          engagementId: eng.id as string,
+          jobId,
+          version,
+          supersedesVersion: previousLatest,
+        });
+      } catch (err) {
+        // Non-fatal — the PDF is on disk, the version row can be
+        // reconstructed from the GenerationJob if needed.
+      }
+
+      try {
+        await db.logActivity(
+          eng.id as string,
+          (eng as Record<string, unknown>).firmId as string,
+          previousLatest ? 'SOW_SUPERSEDED' : 'SOW_GENERATED',
+          previousLatest
+            ? `SOW v${version} generated (supersedes v${previousLatest}).`
+            : `SOW v${version} generated for ${eng.clientName as string}.`,
+        );
+      } catch {
+        // Non-fatal.
+      }
+      await db.updateJob(jobId, { status: 'COMPLETE', completedAt: new Date().toISOString() });
+      return;
+    }
+
     // Phase 46.3 — PROPOSAL is the pre-sales 7-doc bundle (cover
     // letter, executive summary, solution overview, implementation
     // approach, pricing schedule, why-us, T&Cs). Inputs are pulled

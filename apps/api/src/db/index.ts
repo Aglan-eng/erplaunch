@@ -981,6 +981,28 @@ async function createTables(db: Client) {
   `);
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_ticket_status_change_ticket ON TicketStatusChange(ticketId, createdAt)`);
 
+  // ─── Phase 46.4 — SOW version tracking ───────────────────────────────────
+  //
+  // One row per generated SOW version per engagement. The
+  // GenerationJob.id is the canonical artifact pointer; this table
+  // adds the version + supersedes chain so the route layer can
+  // enumerate "every SOW we've ever generated for this client" for
+  // the audit trail. signedFileUrl is populated by Phase 46.5 when
+  // the signed PDF lands.
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS EngagementSowVersion (
+      id                TEXT PRIMARY KEY,
+      engagementId      TEXT NOT NULL REFERENCES Engagement(id) ON DELETE CASCADE,
+      jobId             TEXT NOT NULL REFERENCES GenerationJob(id) ON DELETE CASCADE,
+      version           INTEGER NOT NULL,
+      supersedesVersion INTEGER,
+      signedFileUrl     TEXT,
+      generatedAt       TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (engagementId, version)
+    )
+  `);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_sow_engagement_version ON EngagementSowVersion(engagementId, version)`);
+
   // ─── Phase 46.2 — Discovery Lite questionnaire ───────────────────────────
   //
   // One row per engagement. Holds the answers blob (JSON) plus
@@ -3063,6 +3085,16 @@ export type {
   FirmRoleUserContact,
   BackfillResult,
 } from './rbac.js';
+
+// ─── Re-exports for Phase 46.4 SOW versioning ───────────────────────────────
+export {
+  nextSowVersion,
+  recordSowVersion,
+  listSowVersionsByEngagement,
+  findLatestSowVersion,
+  setSowSignedFileUrl,
+} from './sowVersion.js';
+export type { EngagementSowVersion } from './sowVersion.js';
 
 // ─── Re-exports for Phase 46.2 Discovery Lite ───────────────────────────────
 export {

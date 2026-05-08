@@ -98,6 +98,9 @@ export const CreateJobSchema = z.object({
     // + solution overview + implementation approach + pricing + why-us
     // + T&Cs). Phase 46.4 follows with SOW.
     'PROPOSAL',
+    // Phase 46.4 — Statement of Work (single signed PDF). Phase 46.5
+    // wires DocuSign or a manual upload path on top of the artifact.
+    'SOW',
   ]),
 });
 
