@@ -981,6 +981,44 @@ async function createTables(db: Client) {
   `);
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_ticket_status_change_ticket ON TicketStatusChange(ticketId, createdAt)`);
 
+  // ─── Phase 46.5 — SOW signature flow ─────────────────────────────────────
+  //
+  // One row per signature attempt against a specific SOW version.
+  // signaturePath:
+  //   DOCUSIGN  — envelope created via the DocuSign integration;
+  //               webhook updates the status as the signer interacts.
+  //   MANUAL    — sales rep uploaded a signed PDF directly.
+  //
+  // status enum:
+  //   DRAFT | SENT | VIEWED | SIGNED | DECLINED | EXPIRED
+  //
+  // signedFileUrl is the URL/path of the final signed PDF (relative
+  // to the API uploads dir for MANUAL; absolute DocuSign download
+  // URL for DOCUSIGN).
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS EngagementSowSignature (
+      id                  TEXT PRIMARY KEY,
+      engagementId        TEXT NOT NULL REFERENCES Engagement(id) ON DELETE CASCADE,
+      sowVersionId        TEXT NOT NULL REFERENCES EngagementSowVersion(id) ON DELETE CASCADE,
+      signaturePath       TEXT NOT NULL,
+      docusignEnvelopeId  TEXT,
+      signedFileUrl       TEXT,
+      status              TEXT NOT NULL DEFAULT 'DRAFT',
+      sentAt              TEXT,
+      signedAt            TEXT,
+      declinedAt          TEXT,
+      signedByName        TEXT,
+      signedByEmail       TEXT,
+      signedByTitle       TEXT,
+      signerIpHash        TEXT,
+      createdByUserId     TEXT,
+      createdAt           TEXT NOT NULL DEFAULT (datetime('now')),
+      updatedAt           TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_sow_signature_engagement ON EngagementSowSignature(engagementId, status)`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_sow_signature_envelope ON EngagementSowSignature(docusignEnvelopeId) WHERE docusignEnvelopeId IS NOT NULL`);
+
   // ─── Phase 46.4 — SOW version tracking ───────────────────────────────────
   //
   // One row per generated SOW version per engagement. The
@@ -3085,6 +3123,22 @@ export type {
   FirmRoleUserContact,
   BackfillResult,
 } from './rbac.js';
+
+// ─── Re-exports for Phase 46.5 SOW signatures ───────────────────────────────
+export {
+  createSowSignature,
+  findSowSignatureById,
+  findSowSignatureByEnvelopeId,
+  listSowSignaturesByEngagement,
+  updateSowSignature,
+  isSowSignatureStatus,
+  SOW_SIGNATURE_STATUSES,
+} from './sowSignature.js';
+export type {
+  EngagementSowSignature,
+  SowSignaturePath,
+  SowSignatureStatus,
+} from './sowSignature.js';
 
 // ─── Re-exports for Phase 46.4 SOW versioning ───────────────────────────────
 export {
