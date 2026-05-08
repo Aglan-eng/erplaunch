@@ -26,6 +26,7 @@ import {
   type ChecklistKey,
   type ChecklistStatus,
 } from '../services/closeoutChecklist.js';
+import { listFirmRolesForUser } from '../db/index.js';
 
 // Rate-limit cache for the activity-log entry. In-memory; multi-replica
 // dedup not required — same compromise as middleware/rbac.ts.
@@ -77,6 +78,41 @@ export async function closeoutRoutes(fastify: FastifyInstance) {
         return reply.code(400).send({
           error: { code: 'VALIDATION_ERROR', message: `Unknown checklist key '${key}'.` },
         });
+      }
+
+      // Phase 45.4 — the two transition-blocking keys have stricter
+      // ownership rules:
+      //   - SLA_TEAM_ACCEPT may only be flipped by an APP_ADMIN or
+      //     SUPPORT_LEAD (the SLA team lead is the human who formally
+      //     accepts the engagement on behalf of the SLA team).
+      //   - CLIENT_SIGNOFF must come from the portal (a client-member
+      //     signs off via POST /portal/:token/closeout-signoff). The
+      //     consultant-side PATCH refuses to set it so the audit trail
+      //     reflects who actually performed the sign-off.
+      // APP_ADMIN bypasses both gates so a stuck engagement can be
+      // unblocked manually if needed.
+      if (key === 'SLA_TEAM_ACCEPT' || key === 'CLIENT_SIGNOFF') {
+        const firmRoles = await listFirmRolesForUser(request.jwtUser.userId);
+        const isAdmin = firmRoles.includes('APP_ADMIN');
+        const isSupportLead = firmRoles.includes('SUPPORT_LEAD');
+        if (key === 'CLIENT_SIGNOFF' && !isAdmin) {
+          return reply.code(403).send({
+            error: {
+              code: 'CLIENT_SIGNOFF_VIA_PORTAL',
+              message:
+                'Client sign-off must come through the client portal. Only APP_ADMIN can override.',
+            },
+          });
+        }
+        if (key === 'SLA_TEAM_ACCEPT' && !isAdmin && !isSupportLead) {
+          return reply.code(403).send({
+            error: {
+              code: 'SUPPORT_LEAD_REQUIRED',
+              message:
+                'Only the SLA team lead (SUPPORT_LEAD) can accept the handover. Ask your firm admin to grant the role.',
+            },
+          });
+        }
       }
 
       const body = (request.body ?? {}) as { status?: unknown; notes?: unknown };

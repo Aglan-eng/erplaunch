@@ -103,6 +103,14 @@ beforeEach(async () => {
   await db.execute(`DELETE FROM FirmRole`);
   await db.execute(`DELETE FROM CloseoutChecklistItem`);
   await db.execute(`DELETE FROM ActivityLog`);
+  // Phase 45.3 — entering CLOSEOUT now spawns a HANDOFF_PACKAGE job +
+  // a HANDOFF ConversationThread. GenerationJob's engagementId FK is
+  // not CASCADE, so we have to tear those down before the engagement
+  // delete or it errors with SQLITE_CONSTRAINT_FOREIGNKEY. Message +
+  // ConversationThread cascade automatically.
+  await db.execute(`DELETE FROM Message`);
+  await db.execute(`DELETE FROM ConversationThread`);
+  await db.execute(`DELETE FROM GenerationJob`);
   await db.execute(`DELETE FROM Engagement`);
   await db.execute(`DELETE FROM User`);
   await db.execute(`DELETE FROM Firm`);

@@ -141,6 +141,42 @@ export interface FirmUserWithRoles {
   roles: FirmRole[];
 }
 
+/**
+ * Phase 45.3 — return id/name/email for every user in a firm holding
+ * a particular firm-level role. Used by the GOLIVE → CLOSEOUT handoff
+ * flow to find the SUPPORT_LEAD users who should receive the
+ * "engagement entered Closeout" email.
+ *
+ * Joins through User to surface name + email so the caller can format
+ * a friendly notification body without a second round-trip.
+ */
+export interface FirmRoleUserContact {
+  userId: string;
+  email: string;
+  name: string;
+}
+
+export async function listFirmUsersByRole(
+  firmId: string,
+  role: FirmRole,
+): Promise<FirmRoleUserContact[]> {
+  if (!isFirmLevelRole(role)) {
+    throw new Error(
+      `listFirmUsersByRole: '${role}' is not a firm-level role`,
+    );
+  }
+  const db = getDb();
+  const r = await db.execute({
+    sql: `SELECT u.id AS userId, u.email AS email, u.name AS name
+          FROM FirmRole fr
+          JOIN User u ON u.id = fr.userId
+          WHERE fr.firmId = ? AND fr.role = ?
+          ORDER BY u.name ASC, u.id ASC`,
+    args: [firmId, role],
+  });
+  return r.rows.map((row) => row as unknown as FirmRoleUserContact);
+}
+
 export async function listFirmUsersWithRoles(firmId: string): Promise<FirmUserWithRoles[]> {
   const db = getDb();
   const r = await db.execute({
@@ -285,6 +321,34 @@ export async function listEngagementRolesForUser(
 
 export interface EngagementRoleRow extends EngagementRoleAssignment {
   userId: string;
+}
+
+/**
+ * Phase 45.3 — return id/name/email for every user holding a particular
+ * engagement-level role on this engagement. Used by the GOLIVE → CLOSEOUT
+ * handoff flow to find the ACCOUNT_MANAGER who should receive the
+ * "engagement entered Closeout" email + be added to the HANDOFF thread
+ * participants list.
+ */
+export async function listEngagementUsersByRole(
+  engagementId: string,
+  role: EngagementRole,
+): Promise<FirmRoleUserContact[]> {
+  if (!isEngagementLevelRole(role)) {
+    throw new Error(
+      `listEngagementUsersByRole: '${role}' is not an engagement-level role`,
+    );
+  }
+  const db = getDb();
+  const r = await db.execute({
+    sql: `SELECT u.id AS userId, u.email AS email, u.name AS name
+          FROM EngagementRole er
+          JOIN User u ON u.id = er.userId
+          WHERE er.engagementId = ? AND er.role = ?
+          ORDER BY u.name ASC, u.id ASC`,
+    args: [engagementId, role],
+  });
+  return r.rows.map((row) => row as unknown as FirmRoleUserContact);
 }
 
 export async function listEngagementRolesForEngagement(

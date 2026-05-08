@@ -635,6 +635,122 @@ export async function portalRoutes(fastify: FastifyInstance) {
       return reply.send({ data: todo });
     },
   );
+
+  // ─── Phase 45.4 — Client closeout sign-off ────────────────────────────────
+  //
+  // GET returns the current sign-off state so the portal can show
+  // "ready to sign", "already signed by Y", or "not yet ready" (when
+  // the engagement isn't in CLOSEOUT). POST flips CLIENT_SIGNOFF to
+  // DONE on the closeout checklist. Both gated on the same portal
+  // session middleware as the rest of /portal/:token/*.
+  //
+  // The portal member's name is recorded in `notes` so the audit
+  // trail shows which client representative signed off — the
+  // matching CloseoutChecklistItem.completedBy column stores the
+  // portal-member id.
+
+  fastify.get(
+    '/engagements/portal/:token/closeout-signoff',
+    { preHandler: authenticatePortalSession },
+    async (request, reply) => {
+      const { token } = request.params as { token: string };
+      const engagement = await db.findEngagementByPortalToken(token);
+      if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+      const engagementId = (engagement as { id: string }).id;
+      if (request.portalMember.engagementId !== engagementId) {
+        return reply.code(403).send({
+          error: { code: 'FORBIDDEN', message: 'Session does not belong to this engagement' },
+        });
+      }
+      const status = (engagement as { status?: string }).status ?? 'DISCOVERY';
+      // The checklist may not exist yet if the engagement hasn't entered
+      // CLOSEOUT — return a friendly NOT_READY shape instead of 404 so
+      // the portal can render the "your sign-off opens once we wrap up"
+      // empty state.
+      if (status !== 'CLOSEOUT') {
+        return reply.send({
+          data: {
+            ready: false,
+            stage: status,
+            reason: 'Engagement is not yet in Closeout — sign-off opens once your project lead moves us there.',
+          },
+        });
+      }
+      const items = await db.listCloseoutChecklist(engagementId).catch(() => []);
+      const signoff = items.find((i) => i.key === 'CLIENT_SIGNOFF');
+      return reply.send({
+        data: {
+          ready: true,
+          stage: status,
+          status: signoff?.status ?? 'NOT_STARTED',
+          signedBy: signoff?.notes ?? null,
+          signedAt: signoff?.completedAt ?? null,
+        },
+      });
+    },
+  );
+
+  fastify.post(
+    '/engagements/portal/:token/closeout-signoff',
+    { preHandler: authenticatePortalSession },
+    async (request, reply) => {
+      const { token } = request.params as { token: string };
+      const engagement = await db.findEngagementByPortalToken(token);
+      if (!engagement) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+      const engagementId = (engagement as { id: string }).id;
+      if (request.portalMember.engagementId !== engagementId) {
+        return reply.code(403).send({
+          error: { code: 'FORBIDDEN', message: 'Session does not belong to this engagement' },
+        });
+      }
+      const status = (engagement as { status?: string }).status ?? 'DISCOVERY';
+      if (status !== 'CLOSEOUT') {
+        return reply.code(409).send({
+          error: {
+            code: 'NOT_IN_CLOSEOUT',
+            message: 'Sign-off is only available once the engagement is in Closeout.',
+          },
+        });
+      }
+
+      const member = await lookupMemberForAudit(request.portalMember.memberId);
+      const memberName = member?.name ?? 'Client';
+
+      const updated = await db.updateCloseoutChecklistItem({
+        engagementId,
+        key: 'CLIENT_SIGNOFF',
+        status: 'DONE',
+        // Stash the signing client's display name in notes so the
+        // consultant + audit trail know who pressed the button.
+        notes: `Signed off by ${memberName} via portal`,
+        // byUserId is intended for User rows; portal members aren't in
+        // the User table. Use the member id with a 'portal:' prefix so
+        // any downstream audit join knows it's not a real userId.
+        byUserId: `portal:${request.portalMember.memberId}`,
+      });
+      if (!updated) {
+        return reply.code(404).send({
+          error: {
+            code: 'CHECKLIST_NOT_INITIALISED',
+            message: 'Closeout checklist not yet created for this engagement.',
+          },
+        });
+      }
+      await db.logActivity(
+        engagementId,
+        (engagement as { firmId: string }).firmId,
+        'CLOSEOUT_CLIENT_SIGNOFF',
+        `${memberName} signed off via the client portal.`,
+      );
+      return reply.send({
+        data: {
+          status: updated.status,
+          signedBy: memberName,
+          signedAt: updated.completedAt,
+        },
+      });
+    },
+  );
 }
 
 /**

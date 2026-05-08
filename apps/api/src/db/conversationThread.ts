@@ -8,9 +8,12 @@
  *     message)
  *   - A consultant via POST /engagements/:id/threads (immediate; bypasses
  *     pending-review per §5.1)
+ *   - The system, when an engagement enters CLOSEOUT, to spawn the
+ *     cross-team HANDOFF thread between the implementation team and the
+ *     SLA team (Phase 45.3 — kind='HANDOFF', pinned=true).
  *
  * lastMessageAt is touched on every message insert so the thread list
- * orders by most-recent activity.
+ * orders by most-recent activity. Pinned threads always sort first.
  */
 
 import { createId } from '@paralleldrive/cuid2';
@@ -18,11 +21,21 @@ import { getDb } from './index.js';
 
 export type ThreadStatus = 'OPEN' | 'RESOLVED';
 
+/**
+ * Phase 45.3 — `kind` lets the UI distinguish ordinary Q&A threads from
+ * system-created handoff threads (special icon + "Handoff" label) and
+ * lets future kinds (incident, escalation, etc.) be added without
+ * needing another schema migration.
+ */
+export type ThreadKind = 'STANDARD' | 'HANDOFF';
+
 export interface ConversationThread {
   id: string;
   engagementId: string;
   subject: string;
   status: ThreadStatus;
+  kind: ThreadKind;
+  pinned: boolean;
   createdByMemberId: string | null;
   createdByUserId: string | null;
   createdAt: string;
@@ -32,11 +45,17 @@ export interface ConversationThread {
 type Row = Record<string, unknown>;
 
 function toThread(row: Row): ConversationThread {
+  // `kind` and `pinned` defaulted via ALTER — read with fallbacks so
+  // pre-Phase-45.3 rows (if any) still parse cleanly.
+  const kindRaw = (row.kind as string | null | undefined) ?? 'STANDARD';
+  const pinnedRaw = row.pinned;
   return {
     id: row.id as string,
     engagementId: row.engagementId as string,
     subject: row.subject as string,
     status: row.status as ThreadStatus,
+    kind: (kindRaw === 'HANDOFF' ? 'HANDOFF' : 'STANDARD') as ThreadKind,
+    pinned: pinnedRaw === 1 || pinnedRaw === true || pinnedRaw === '1',
     createdByMemberId: (row.createdByMemberId as string | null) ?? null,
     createdByUserId: (row.createdByUserId as string | null) ?? null,
     createdAt: row.createdAt as string,
@@ -49,20 +68,31 @@ export async function createConversationThread(input: {
   subject: string;
   createdByMemberId?: string | null;
   createdByUserId?: string | null;
+  /** Phase 45.3 — defaults to 'STANDARD' for backwards-compat with the
+   *  consultant-side POST /engagements/:id/threads handler and the
+   *  QA_MESSAGE acceptor. */
+  kind?: ThreadKind;
+  /** Phase 45.3 — defaults to false. HANDOFF threads pass true so they
+   *  sort to the top of the engagement's Threads UI. */
+  pinned?: boolean;
 }): Promise<ConversationThread> {
   const db = getDb();
   const id = createId();
   const now = new Date().toISOString();
+  const kind: ThreadKind = input.kind ?? 'STANDARD';
+  const pinnedFlag = input.pinned ? 1 : 0;
   await db.execute({
     sql: `INSERT INTO ConversationThread
-            (id, engagementId, subject, status, createdByMemberId,
-             createdByUserId, createdAt, lastMessageAt)
-            VALUES (?,?,?,?,?,?,?,?)`,
+            (id, engagementId, subject, status, kind, pinned,
+             createdByMemberId, createdByUserId, createdAt, lastMessageAt)
+            VALUES (?,?,?,?,?,?,?,?,?,?)`,
     args: [
       id,
       input.engagementId,
       input.subject,
       'OPEN',
+      kind,
+      pinnedFlag,
       input.createdByMemberId ?? null,
       input.createdByUserId ?? null,
       now,
@@ -83,8 +113,11 @@ export async function listConversationThreadsByEngagement(
   engagementId: string,
 ): Promise<ConversationThread[]> {
   const db = getDb();
+  // Phase 45.3 — pinned threads always sort first, then by recency.
   const r = await db.execute({
-    sql: `SELECT * FROM ConversationThread WHERE engagementId = ? ORDER BY lastMessageAt DESC`,
+    sql: `SELECT * FROM ConversationThread
+          WHERE engagementId = ?
+          ORDER BY pinned DESC, lastMessageAt DESC`,
     args: [engagementId],
   });
   return (r.rows as Row[]).map(toThread);

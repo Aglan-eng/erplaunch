@@ -776,6 +776,17 @@ async function createTables(db: Client) {
       ON ConversationThread(engagementId, lastMessageAt)
   `);
 
+  // ─── Phase 45.3 — ConversationThread kind + pinned (additive) ─────────────
+  //
+  // `kind` distinguishes ordinary client/consultant Q&A threads ('STANDARD')
+  // from system-created cross-team handoff threads ('HANDOFF') auto-spawned
+  // when an engagement enters CLOSEOUT. Pinned threads always sort first in
+  // the Threads UI so the SLA team can find the handoff thread immediately.
+  // These ALTERs are idempotent (column may already exist on a re-run);
+  // SQLite throws and we swallow.
+  try { await db.execute(`ALTER TABLE ConversationThread ADD COLUMN kind TEXT NOT NULL DEFAULT 'STANDARD'`); } catch { /* idempotent */ }
+  try { await db.execute(`ALTER TABLE ConversationThread ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0`); } catch { /* idempotent */ }
+
   await db.execute(`
     CREATE TABLE IF NOT EXISTS Message (
       id                  TEXT PRIMARY KEY,
@@ -2834,6 +2845,8 @@ export {
   revokeFirmRole,
   listFirmRolesForUser,
   listFirmUsersWithRoles,
+  listFirmUsersByRole,
+  listEngagementUsersByRole,
   grantEngagementRole,
   revokeEngagementRole,
   listEngagementRolesForUser,
@@ -2850,6 +2863,7 @@ export type {
   EngagementRoleAssignment,
   EngagementRoleRow,
   FirmUserWithRoles,
+  FirmRoleUserContact,
   BackfillResult,
 } from './rbac.js';
 

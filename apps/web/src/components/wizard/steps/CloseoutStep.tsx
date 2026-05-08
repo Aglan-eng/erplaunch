@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Check, Circle, CircleDashed, MinusCircle,
-  Flag, ChevronDown, ChevronRight,
+  Flag, ChevronDown, ChevronRight, Lock,
 } from 'lucide-react';
 import { closeoutApi, type CloseoutChecklistItem, type CloseoutChecklistKey, type CloseoutChecklistStatus } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -10,6 +10,7 @@ import {
   PermissionDeniedState,
   extractPermissionDenied,
 } from '@/components/rbac/PermissionDeniedState';
+import { usePermissions } from '@/hooks/usePermissions';
 
 /**
  * Phase 45.1 — Closeout step page.
@@ -55,6 +56,13 @@ function StatusIcon({ status }: { status: CloseoutChecklistStatus }) {
 
 export function CloseoutStep({ engagementId }: { engagementId: string }) {
   const qc = useQueryClient();
+  // Phase 45.4 — read firm-level role list so we can disable the
+  // SLA_TEAM_ACCEPT and CLIENT_SIGNOFF "Mark done" buttons for users
+  // without the appropriate role. APP_ADMIN bypasses both.
+  const permissions = usePermissions(engagementId);
+  const firmRoles = permissions.data?.firmRoles ?? [];
+  const isAdmin = firmRoles.includes('APP_ADMIN');
+  const isSupportLead = firmRoles.includes('SUPPORT_LEAD');
   const { data, isLoading, error } = useQuery({
     queryKey: ['closeout-checklist', engagementId],
     queryFn: () => closeoutApi.list(engagementId),
@@ -120,6 +128,7 @@ export function CloseoutStep({ engagementId }: { engagementId: string }) {
             <CloseoutItemRow
               key={item.key}
               item={item}
+              gate={resolveGate(item.key, { isAdmin, isSupportLead })}
               onChange={async (status, notes) => {
                 await closeoutApi.patch(engagementId, item.key, { status, notes });
                 qc.invalidateQueries({ queryKey: ['closeout-checklist', engagementId] });
@@ -132,12 +141,45 @@ export function CloseoutStep({ engagementId }: { engagementId: string }) {
   );
 }
 
+/**
+ * Phase 45.4 — per-key role gating decision. Returns:
+ *   - locked=false when the current user can flip the row.
+ *   - locked=true with a tooltip when the row is reserved (CLIENT_SIGNOFF
+ *     comes from the portal; SLA_TEAM_ACCEPT requires SUPPORT_LEAD).
+ */
+interface RoleGate {
+  locked: boolean;
+  tooltip?: string;
+}
+
+function resolveGate(
+  key: CloseoutChecklistKey,
+  ctx: { isAdmin: boolean; isSupportLead: boolean },
+): RoleGate {
+  if (ctx.isAdmin) return { locked: false };
+  if (key === 'CLIENT_SIGNOFF') {
+    return {
+      locked: true,
+      tooltip: 'Client sign-off must come from the client portal. Only an APP_ADMIN can override.',
+    };
+  }
+  if (key === 'SLA_TEAM_ACCEPT' && !ctx.isSupportLead) {
+    return {
+      locked: true,
+      tooltip: 'Only the SLA team lead (SUPPORT_LEAD) can accept the handover.',
+    };
+  }
+  return { locked: false };
+}
+
 function CloseoutItemRow({
   item,
   onChange,
+  gate,
 }: {
   item: CloseoutChecklistItem;
   onChange: (status: CloseoutChecklistStatus, notes: string | null) => Promise<void>;
+  gate?: RoleGate;
 }) {
   const [open, setOpen] = useState(false);
   const [notesDraft, setNotesDraft] = useState(item.notes ?? '');
@@ -193,28 +235,41 @@ function CloseoutItemRow({
             rows={2}
             className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/50"
             data-testid={`closeout-item-${item.key}-notes`}
+            disabled={gate?.locked}
           />
+          {gate?.locked && (
+            <div
+              className="mt-2 flex items-start gap-2 rounded-lg bg-amber-50/80 border border-amber-200 px-3 py-2 text-xs text-amber-900"
+              data-testid={`closeout-item-${item.key}-gated`}
+            >
+              <Lock className="h-3.5 w-3.5 flex-shrink-0 mt-0.5 text-amber-700" />
+              <p>{gate.tooltip}</p>
+            </div>
+          )}
           <div className="flex items-center justify-end gap-2 mt-3">
             <button
               type="button"
-              disabled={mutation.isPending}
+              disabled={mutation.isPending || gate?.locked}
               onClick={() => mutation.mutate({ status: 'NA', notes: notesDraft })}
+              title={gate?.locked ? gate.tooltip : undefined}
               className="text-xs font-semibold text-slate-500 hover:text-slate-800 disabled:opacity-40"
             >
               Mark N/A
             </button>
             <button
               type="button"
-              disabled={mutation.isPending || item.status === 'IN_PROGRESS'}
+              disabled={mutation.isPending || item.status === 'IN_PROGRESS' || gate?.locked}
               onClick={() => mutation.mutate({ status: 'IN_PROGRESS', notes: notesDraft })}
+              title={gate?.locked ? gate.tooltip : undefined}
               className="rounded-lg text-xs font-semibold px-3 py-1.5 bg-amber-100 text-amber-800 hover:bg-amber-200 disabled:opacity-40"
             >
               In progress
             </button>
             <button
               type="button"
-              disabled={mutation.isPending || item.status === 'DONE'}
+              disabled={mutation.isPending || item.status === 'DONE' || gate?.locked}
               onClick={() => mutation.mutate({ status: 'DONE', notes: notesDraft })}
+              title={gate?.locked ? gate.tooltip : undefined}
               className="rounded-lg text-xs font-semibold px-3 py-1.5 bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40"
               data-testid={`closeout-item-${item.key}-done`}
             >

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { MessageCircle, Plus, Send, ChevronLeft, CircleCheck } from 'lucide-react';
+import { MessageCircle, Plus, Send, ChevronLeft, CircleCheck, Pin, ArrowRightLeft } from 'lucide-react';
 import { engagementsApi } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import {
@@ -34,6 +34,13 @@ interface ThreadRow {
   engagementId: string;
   subject: string;
   status: 'OPEN' | 'RESOLVED';
+  /** Phase 45.3 — 'STANDARD' for ordinary Q&A threads, 'HANDOFF' for
+   *  the system-spawned cross-team thread on entering Closeout. */
+  kind?: 'STANDARD' | 'HANDOFF';
+  /** Phase 45.3 — pinned threads sort first; HANDOFF threads default
+   *  to pinned. The list pane keeps a small "Pinned" divider above
+   *  pinned rows for visual context. */
+  pinned?: boolean;
   createdByMemberId: string | null;
   createdByUserId: string | null;
   createdAt: string;
@@ -254,6 +261,7 @@ function ThreadListRow({
   unread: boolean;
   onClick: () => void;
 }) {
+  const isHandoff = thread.kind === 'HANDOFF';
   return (
     <button
       type="button"
@@ -261,14 +269,25 @@ function ThreadListRow({
       className={cn(
         'w-full text-left rounded-xl border bg-white p-3.5 transition-colors',
         isActive
-          ? 'border-brand-300 bg-brand-50/40 ring-1 ring-brand-200'
-          : 'border-slate-200 hover:border-brand-200'
+          ? isHandoff
+            ? 'border-emerald-300 bg-emerald-50/40 ring-1 ring-emerald-200'
+            : 'border-brand-300 bg-brand-50/40 ring-1 ring-brand-200'
+          : isHandoff
+            ? 'border-emerald-200 hover:border-emerald-300'
+            : 'border-slate-200 hover:border-brand-200'
       )}
       data-testid={`thread-row-${thread.id}`}
+      data-thread-kind={thread.kind ?? 'STANDARD'}
       aria-current={isActive ? 'true' : undefined}
     >
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0 flex-1">
+          {thread.pinned && (
+            <Pin
+              className="h-3 w-3 text-emerald-600 flex-shrink-0"
+              aria-label="Pinned"
+            />
+          )}
           {unread && (
             <span
               className="h-2 w-2 rounded-full bg-brand-500 flex-shrink-0"
@@ -283,7 +302,12 @@ function ThreadListRow({
             {thread.subject}
           </p>
         </div>
-        {thread.status === 'RESOLVED' ? (
+        {isHandoff ? (
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 flex items-center gap-1 flex-shrink-0 uppercase tracking-wider">
+            <ArrowRightLeft className="h-3 w-3" />
+            Handoff
+          </span>
+        ) : thread.status === 'RESOLVED' ? (
           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 flex items-center gap-1 flex-shrink-0">
             <CircleCheck className="h-3 w-3" />
             Resolved

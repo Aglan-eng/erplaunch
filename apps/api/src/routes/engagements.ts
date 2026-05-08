@@ -356,6 +356,41 @@ export async function engagementRoutes(fastify: FastifyInstance) {
         },
       });
     }
+    // Phase 45.4 — refuse CLOSEOUT → SLA_ACTIVE unless both
+    // CLIENT_SIGNOFF and SLA_TEAM_ACCEPT are DONE (or NA). The
+    // checklist exists by virtue of the GOLIVE → CLOSEOUT transition
+    // (Phase 45.1) and is the source of truth for "both parties have
+    // explicitly signed off on the handover".
+    if (toStage(currentStatus) === 'CLOSEOUT' && next === 'SLA_ACTIVE') {
+      try {
+        const items = await db.listCloseoutChecklist(id);
+        const { canTransitionToSlaActive, TRANSITION_BLOCKERS } = await import(
+          '../services/closeoutChecklist.js'
+        );
+        if (!canTransitionToSlaActive(items)) {
+          const blocking = TRANSITION_BLOCKERS.filter((k) => {
+            const item = items.find((i) => i.key === k);
+            return !item || (item.status !== 'DONE' && item.status !== 'NA');
+          });
+          return reply.code(409).send({
+            error: {
+              code: 'DUAL_SIGNOFF_REQUIRED',
+              message:
+                `Cannot move to SLA_ACTIVE — both client sign-off and SLA team acceptance must be complete. Pending: ${blocking.join(', ')}.`,
+              blocking,
+            },
+          });
+        }
+      } catch (err) {
+        // If we can't read the checklist (shouldn't happen for a row in
+        // CLOSEOUT) we err on the side of NOT advancing so a malformed
+        // engagement can't slip through the gate.
+        request.log.error({ err: String(err), engagementId: id }, 'closeout dual sign-off check failed');
+        return reply.code(500).send({
+          error: { code: 'SIGNOFF_CHECK_FAILED', message: 'Could not verify dual sign-off status.' },
+        });
+      }
+    }
     const updated = await db.updateEngagement(id, { status: next });
     const fromStage = toStage(currentStatus);
     const event = handoffEventFor(fromStage, next);
@@ -375,6 +410,26 @@ export async function engagementRoutes(fastify: FastifyInstance) {
         await db.createCloseoutChecklist(id);
       } catch (err) {
         request.log.warn({ err: String(err), engagementId: id }, 'closeout checklist auto-create failed');
+      }
+      // Phase 45.3 — fire the handoff event flow ONLY on the first
+      // entry into CLOSEOUT. We detect re-entry by checking whether
+      // a HANDOFF thread already exists for this engagement — if so,
+      // skip so a regress + re-advance doesn't spawn duplicate
+      // threads, jobs, or emails.
+      try {
+        const existingThreads = await (await import('../db/conversationThread.js'))
+          .listConversationThreadsByEngagement(id);
+        const alreadyHandedOff = existingThreads.some((t) => t.kind === 'HANDOFF');
+        if (!alreadyHandedOff) {
+          const { triggerCloseoutHandoff } = await import('../services/handoffEvents.js');
+          await triggerCloseoutHandoff({
+            engagementId: id,
+            firmId: request.jwtUser.firmId,
+            clientName: ((eng as Record<string, unknown>).clientName as string | undefined) ?? 'Engagement',
+          });
+        }
+      } catch (err) {
+        request.log.warn({ err: String(err), engagementId: id }, 'closeout handoff event flow failed');
       }
     }
     return reply.send({ data: updated, transition: { from: fromStage, to: next, event } });

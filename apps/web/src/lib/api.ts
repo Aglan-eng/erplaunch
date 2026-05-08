@@ -502,6 +502,21 @@ export const portalApi = {
         payload: input,
       })
       .then((r) => r.data.data),
+
+  /** Phase 45.4 — read the current closeout sign-off state. Shape:
+   *    { ready: false, stage, reason }       — engagement not in CLOSEOUT
+   *    { ready: true,  stage, status, signedBy, signedAt }  — in CLOSEOUT */
+  getCloseoutSignoff: (token: string): Promise<
+    | { ready: false; stage: string; reason: string }
+    | { ready: true; stage: string; status: string; signedBy: string | null; signedAt: string | null }
+  > =>
+    api.get(`/engagements/portal/${token}/closeout-signoff`).then((r) => r.data.data),
+
+  /** Phase 45.4 — flip CLIENT_SIGNOFF to DONE. The portal session
+   *  identifies which client member signed off; their name lands in
+   *  the checklist row's notes column. */
+  postCloseoutSignoff: (token: string): Promise<{ status: string; signedBy: string; signedAt: string }> =>
+    api.post(`/engagements/portal/${token}/closeout-signoff`).then((r) => r.data.data),
 };
 
 // ─── Adaptors (platform SPI, Phase 1B) ──────────────────────────────────────

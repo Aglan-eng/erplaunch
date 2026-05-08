@@ -18,6 +18,7 @@ import { PortalSupportFooter } from '@/components/portal/PortalSupportFooter';
 import { PortalClientQuestions } from '@/components/portal/PortalClientQuestions';
 import { PortalMessaging } from '@/components/portal/PortalMessaging';
 import { PortalDecisionSignoffs } from '@/components/portal/PortalDecisionSignoffs';
+import { PortalCloseoutSignoff } from '@/components/portal/PortalCloseoutSignoff';
 
 // Phase 27 — fallback when the API somehow doesn't return a branding block.
 // The DB layer always populates one (DEFAULT_BRANDING in firmBranding.ts),
@@ -633,6 +634,13 @@ export function ClientPortalPage() {
             engagement. Returns null otherwise (no empty section frame). */}
         {!!authenticatedMember && (
           <PortalDecisionSignoffs token={token!} authenticated={!!authenticatedMember} />
+        )}
+
+        {/* Phase 45.4 — Closeout sign-off. Renders only when the
+            engagement is in CLOSEOUT and the member is authenticated.
+            Returns null otherwise. */}
+        {!!authenticatedMember && (
+          <PortalCloseoutSignoff token={token!} authenticated={!!authenticatedMember} />
         )}
 
         {/* Data Collection */}

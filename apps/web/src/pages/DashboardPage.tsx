@@ -411,6 +411,13 @@ export function DashboardPage() {
               Adaptors
             </Link>
             <Link
+              to="/sla/dashboard"
+              className="text-sm text-gray-500 hover:text-gray-900 px-2 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+              title="SLA portfolio dashboard"
+            >
+              SLA
+            </Link>
+            <Link
               to="/dashboard/archived"
               className="text-sm text-gray-500 hover:text-gray-900 px-2 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
               title="View archived engagements"

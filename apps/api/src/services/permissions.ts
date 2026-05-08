@@ -177,7 +177,14 @@ const TECHNICAL_CONSULTANT_POLICY: RolePolicy = CONSULTANT_POLICY;
 
 // Support roles (firm-level SUPPORT_LEAD, engagement-scoped
 // SUPPORT_ENGINEER): full operational rights during SLA_ACTIVE,
-// read-only earlier (visibility for handoff context).
+// read-only earlier (visibility for handoff context). Phase 45.4 —
+// SUPPORT_LEAD also gets WRITE on ENGAGEMENT_META during CLOSEOUT
+// so they can flip the SLA_TEAM_ACCEPT checklist row that gates the
+// CLOSEOUT → SLA_ACTIVE transition. The route layer further restricts
+// the specific key (only APP_ADMIN + SUPPORT_LEAD can touch
+// SLA_TEAM_ACCEPT) so granting WRITE on ENGAGEMENT_META broadly is
+// safe — non-blocker keys are still acceptable for any closeout
+// participant.
 const SUPPORT_LEAD_POLICY: RolePolicy = {
   default: 'READ',
   resources: {
@@ -185,6 +192,11 @@ const SUPPORT_LEAD_POLICY: RolePolicy = {
     ROLES: 'READ',
   },
   stages: {
+    CLOSEOUT: {
+      ENGAGEMENT_META: 'WRITE',
+      ACTIVITY_LOG: 'WRITE',
+      COMMENTS: 'WRITE',
+    },
     SLA_ACTIVE: {
       ISSUES: 'WRITE',
       ACTION_ITEMS: 'WRITE',

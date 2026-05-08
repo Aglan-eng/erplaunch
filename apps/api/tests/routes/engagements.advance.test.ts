@@ -69,8 +69,16 @@ async function seedAt(stage: string): Promise<{ engagementId: string; firmId: st
 
 async function lastActivityAction(engagementId: string): Promise<string | null> {
   const db = getDb();
+  // Phase 45.3 — entering CLOSEOUT now fires both the lifecycle
+  // HANDOFF_TO_CLOSEOUT entry and a follow-up CLOSEOUT_HANDOFF_FIRED
+  // entry. The follow-up isn't a lifecycle event — exclude it so the
+  // existing assertions about "the last LIFECYCLE action was X" still
+  // hold.
   const r = await db.execute({
-    sql: `SELECT action FROM ActivityLog WHERE engagementId = ? ORDER BY createdAt DESC LIMIT 1`,
+    sql: `SELECT action FROM ActivityLog
+          WHERE engagementId = ?
+            AND action != 'CLOSEOUT_HANDOFF_FIRED'
+          ORDER BY createdAt DESC LIMIT 1`,
     args: [engagementId],
   });
   if (r.rows.length === 0) return null;
@@ -91,6 +99,13 @@ beforeEach(async () => {
   await db.execute(`DELETE FROM EngagementRole`);
   await db.execute(`DELETE FROM FirmRole`);
   await db.execute(`DELETE FROM ActivityLog`);
+  // Phase 45.3 — GOLIVE → CLOSEOUT now spawns a HANDOFF_PACKAGE job and
+  // a HANDOFF ConversationThread. GenerationJob's engagementId FK is not
+  // CASCADE; tear those down before the engagement delete.
+  await db.execute(`DELETE FROM Message`);
+  await db.execute(`DELETE FROM ConversationThread`);
+  await db.execute(`DELETE FROM GenerationJob`);
+  await db.execute(`DELETE FROM CloseoutChecklistItem`);
   await db.execute(`DELETE FROM Engagement`);
   await db.execute(`DELETE FROM User`);
   await db.execute(`DELETE FROM Firm`);
@@ -134,6 +149,30 @@ describe('POST /engagements/:id/advance', () => {
 
   it('fires HANDOFF_TO_SLA on CLOSEOUT → SLA_ACTIVE', async () => {
     const { engagementId, token } = await seedAt('CLOSEOUT');
+    // Phase 45.4 — /advance from CLOSEOUT is now gated on the dual
+    // sign-off (CLIENT_SIGNOFF + SLA_TEAM_ACCEPT must be DONE/NA).
+    // Bootstrap the checklist + waive both blockers via direct DB
+    // writes so the lifecycle assertion below isn't blocked by the
+    // sign-off rule (which has its own dedicated coverage in
+    // tests/routes/dualSignoff.test.ts).
+    const db = getDb();
+    const { createCloseoutChecklist, updateCloseoutChecklistItem } = await import(
+      '../../src/db/index.js'
+    );
+    await createCloseoutChecklist(engagementId);
+    await updateCloseoutChecklistItem({
+      engagementId,
+      key: 'CLIENT_SIGNOFF',
+      status: 'NA',
+      byUserId: 'SYSTEM',
+    });
+    await updateCloseoutChecklistItem({
+      engagementId,
+      key: 'SLA_TEAM_ACCEPT',
+      status: 'NA',
+      byUserId: 'SYSTEM',
+    });
+    void db;
     await app.inject({
       method: 'POST',
       url: `/api/v1/engagements/${engagementId}/advance`,

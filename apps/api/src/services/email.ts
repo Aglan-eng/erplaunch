@@ -355,4 +355,75 @@ export async function sendEmailVerificationEmail(to: string, data: EmailVerifica
   });
 }
 
+// ─── Closeout handoff notification (Phase 45.3) ──────────────────────────────
+
+export interface CloseoutHandoffEmailData {
+  /** Recipient's display name — used in the greeting. */
+  recipientName: string;
+  /** Client / engagement name — appears in subject + body. */
+  clientName: string;
+  /** Direct deep-link to the auto-created HANDOFF thread so the
+   *  recipient can jump straight in. */
+  threadUrl: string;
+}
+
+/**
+ * Notify a SUPPORT_LEAD (firm-level) or ACCOUNT_MANAGER (engagement-level)
+ * that an engagement just entered CLOSEOUT and that the handoff package
+ * is being prepared. Plain, transactional template — this is an internal
+ * notification, not a marketing email.
+ */
+export async function sendCloseoutHandoffEmail(
+  to: string,
+  data: CloseoutHandoffEmailData,
+): Promise<void> {
+  const { recipientName, clientName, threadUrl } = data;
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { margin: 0; padding: 0; background: #f9fafb; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    .wrapper { max-width: 520px; margin: 40px auto; background: #fff; border-radius: 16px; overflow: hidden; border: 1px solid #e5e7eb; }
+    .accent { height: 4px; background: linear-gradient(90deg, #10b981, #34d399); }
+    .header { padding: 28px 32px 16px; }
+    .label { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: #059669; text-transform: uppercase; margin-bottom: 6px; }
+    h1 { margin: 0; font-size: 19px; font-weight: 800; color: #111827; line-height: 1.35; }
+    .body { padding: 0 32px 24px; font-size: 14px; color: #374151; line-height: 1.6; }
+    .callout { margin: 18px 0; padding: 14px 16px; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 10px; font-size: 13px; color: #065f46; }
+    .btn { display: inline-block; margin: 16px 0 4px; padding: 11px 22px; background: #059669; color: #fff !important; text-decoration: none; border-radius: 10px; font-size: 14px; font-weight: 700; }
+    .footer { padding: 14px 32px 22px; font-size: 12px; color: #9ca3af; border-top: 1px solid #f3f4f6; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="accent"></div>
+    <div class="header">
+      <p class="label">Closeout handoff</p>
+      <h1>${escapeHtml(clientName)} entered Closeout</h1>
+    </div>
+    <div class="body">
+      <p>Hi ${escapeHtml(recipientName)},</p>
+      <p>The implementation team has just moved <strong>${escapeHtml(clientName)}</strong> into Closeout. The handoff package is being prepared and a cross-team thread has been opened so you can coordinate the transition.</p>
+      <div class="callout">
+        Once the handoff package finishes generating, please review the System Catalog, AAI Map / Account Mapping, Integrations runbooks, Support Escalation Matrix, SLA Terms, Production Readiness checklist, and Knowledge Transfer slides — then accept the handover when you're ready.
+      </div>
+      <a class="btn" href="${threadUrl}">Open Handoff thread →</a>
+    </div>
+    <div class="footer">
+      You're receiving this because you hold a role (SUPPORT_LEAD or ACCOUNT_MANAGER) that is responsible for SLA continuity on this engagement.
+    </div>
+  </div>
+</body>
+</html>`.trim();
+
+  await sendEmail({
+    to,
+    subject: `Handoff: ${clientName} entered Closeout`,
+    html,
+  });
+}
+
 export { APP_URL };
