@@ -248,6 +248,66 @@ export async function processJob(jobId: string, db: DbModule) {
     const docDir = path.join(rootOutputDir, 'Documentation');
     await fs.mkdir(docDir, { recursive: true });
 
+    // Phase 45.2 — HANDOFF_PACKAGE is a focused 7-doc bundle for the
+    // SLA team. Branch early so the BUSINESS_PROFILE 100+-file pipeline
+    // doesn't run for this type. Lazy-imported so the generator
+    // module isn't loaded for every BUSINESS_PROFILE job.
+    if ((job.type as string) === 'HANDOFF_PACKAGE') {
+      const { generateHandoffPackage } = await import('./generators/handoffPackageGenerator.js');
+      const license = (eng.license ?? {}) as Record<string, any>;
+      const profile = (eng.profile ?? {}) as Record<string, any>;
+      const memberRows = await db.getMembers(eng.id as string);
+      const checklistRows = await db.listCloseoutChecklist(eng.id as string).catch(() => []);
+      const handoffOutputs = generateHandoffPackage({
+        clientName: eng.clientName as string,
+        adaptorId,
+        adaptorName: isNetSuite ? 'NetSuite' : adaptorId,
+        license: {
+          edition: license.edition as string | undefined,
+          modules: (license.modules as string[] | undefined) ?? [],
+        },
+        answers: profile.answers ?? {},
+        members: (memberRows as Array<Record<string, unknown>>).map((m) => ({
+          name: String(m.name ?? ''),
+          email: (m.email as string | null | undefined) ?? null,
+          role: (m.role as string | null | undefined) ?? null,
+          team: (m.team as string | null | undefined) ?? null,
+        })),
+        checklist: checklistRows.map((c) => ({
+          key: c.key,
+          status: c.status,
+          notes: c.notes,
+          completedBy: c.completedBy,
+          completedAt: c.completedAt,
+        })),
+        slaTier: 'SILVER',
+        preparedAt: new Date().toISOString().slice(0, 10),
+        integrations: {
+          integrationOwnersByName: profile.answers?.['integrations.catalog.integrationOwners'] as string | undefined,
+          integrationAuthMethods: profile.answers?.['integrations.catalog.authMethods'] as string | undefined,
+        },
+      });
+      for (const [filepath, content] of Object.entries(handoffOutputs)) {
+        const full = path.join(rootOutputDir, filepath);
+        await fs.mkdir(path.dirname(full), { recursive: true });
+        await fs.writeFile(full, content);
+      }
+      // Phase 45.1 auto-detect — flip SYSTEM_CATALOG_REVIEWED to
+      // IN_PROGRESS now that the system catalog has been emitted.
+      try {
+        await db.updateCloseoutChecklistItem({
+          engagementId: eng.id as string,
+          key: 'SYSTEM_CATALOG_REVIEWED',
+          status: 'IN_PROGRESS',
+          byUserId: 'SYSTEM',
+        });
+      } catch {
+        // Non-fatal — engagement may not be in CLOSEOUT yet.
+      }
+      await db.updateJob(jobId, { status: 'COMPLETE', completedAt: new Date().toISOString() });
+      return;
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- license/profile are JSON-blob columns; nested indexing prevents narrower typing without a generator-wide refactor (§6.1).
     const license = (eng.license ?? {}) as Record<string, any>;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see license-cast comment above.
