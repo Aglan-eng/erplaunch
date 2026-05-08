@@ -82,8 +82,9 @@ export const PutLicenseSchema = z.object({
 export const CreateJobSchema = z.object({
   // Phase 45.2 — HANDOFF_PACKAGE adds a closeout-time generator that
   // produces support-team-oriented docs (system catalog, AAI map,
-  // SLA terms, escalation matrix, KT slides). Phase 45.7 will add
-  // QUARTERLY_HEALTH_CHECK on top of this.
+  // SLA terms, escalation matrix, KT slides). Phase 45.7 adds
+  // QUARTERLY_HEALTH_CHECK — a periodic SLA-stage report bundling
+  // ticket KPIs, open-issue rollups, and recommended next actions.
   type: z.enum([
     'BUSINESS_PROFILE',
     'SDF',
@@ -92,6 +93,7 @@ export const CreateJobSchema = z.object({
     'RUNBOOK',
     'UAT_SCRIPTS',
     'HANDOFF_PACKAGE',
+    'QUARTERLY_HEALTH_CHECK',
   ]),
 });
 

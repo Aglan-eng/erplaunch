@@ -248,6 +248,81 @@ export async function processJob(jobId: string, db: DbModule) {
     const docDir = path.join(rootOutputDir, 'Documentation');
     await fs.mkdir(docDir, { recursive: true });
 
+    // Phase 45.7 — QUARTERLY_HEALTH_CHECK is the SLA-stage analogue of
+    // HANDOFF_PACKAGE: a focused 5-doc bundle summarising the past
+    // quarter's ticket performance, open issues, and recommended
+    // next actions.
+    if ((job.type as string) === 'QUARTERLY_HEALTH_CHECK') {
+      const { generateQuarterlyHealthCheck } = await import(
+        './generators/quarterlyHealthCheckGenerator.js'
+      );
+      const { computeTicketSla } = await import('./ticketSla.js');
+      const tickets = await db.listTicketsByEngagement(eng.id as string);
+      const issues = await db.listIssues(eng.id as string).catch(() => [] as Array<Record<string, unknown>>);
+      const activity = await db.listActivity(eng.id as string, 50).catch(() => [] as Array<Record<string, unknown>>);
+      const license = (eng.license ?? {}) as Record<string, any>;
+
+      const resolvedTickets: Array<{ severity: 'CRITICAL'|'HIGH'|'MEDIUM'|'LOW'; createdAt: string; firstResolvedAt: string | null; breached: boolean }> = [];
+      const openTickets: Array<{ severity: 'CRITICAL'|'HIGH'|'MEDIUM'|'LOW'; title: string; daysOpen: number }> = [];
+      const nowMs = Date.now();
+      for (const t of tickets) {
+        const firstSupportReplyAt = await db.findFirstSupportReplyAt(t.id);
+        const sla = computeTicketSla({
+          severity: t.severity,
+          status: t.status,
+          createdAt: t.createdAt,
+          firstSupportReplyAt,
+          firstResolvedAt: t.firstResolvedAt,
+        });
+        const breached = sla.firstResponseBreached || sla.resolutionBreached;
+        if (t.status === 'RESOLVED' || t.status === 'CLOSED') {
+          resolvedTickets.push({
+            severity: t.severity,
+            createdAt: t.createdAt,
+            firstResolvedAt: t.firstResolvedAt,
+            breached,
+          });
+        } else {
+          const daysOpen = Math.floor((nowMs - new Date(t.createdAt).getTime()) / 86_400_000);
+          openTickets.push({
+            severity: t.severity,
+            title: t.title,
+            daysOpen,
+          });
+        }
+      }
+
+      const qhcOutputs = generateQuarterlyHealthCheck({
+        clientName: eng.clientName as string,
+        adaptorId,
+        adaptorName: isNetSuite ? 'NetSuite' : adaptorId,
+        license: {
+          edition: license.edition as string | undefined,
+          modules: (license.modules as string[] | undefined) ?? [],
+        },
+        preparedAt: new Date().toISOString().slice(0, 10),
+        resolvedTickets,
+        openTickets,
+        openIssues: (issues as Array<Record<string, unknown>>).map((i) => ({
+          title: String(i.title ?? ''),
+          priority: String(i.priority ?? 'MEDIUM'),
+          owner: (i.owner as string | null | undefined) ?? null,
+        })),
+        recentActivity: (activity as Array<Record<string, unknown>>).map((a) => ({
+          action: String(a.action ?? ''),
+          details: String(a.details ?? ''),
+          createdAt: String(a.createdAt ?? ''),
+        })),
+      });
+      for (const [filepath, content] of Object.entries(qhcOutputs)) {
+        const full = path.join(rootOutputDir, filepath);
+        await fs.mkdir(path.dirname(full), { recursive: true });
+        await fs.writeFile(full, content);
+      }
+      await db.updateJob(jobId, { status: 'COMPLETE', completedAt: new Date().toISOString() });
+      return;
+    }
+
     // Phase 45.2 — HANDOFF_PACKAGE is a focused 7-doc bundle for the
     // SLA team. Branch early so the BUSINESS_PROFILE 100+-file pipeline
     // doesn't run for this type. Lazy-imported so the generator

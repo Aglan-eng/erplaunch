@@ -25,6 +25,8 @@ import { actionItemRoutes } from './routes/actionItems.js';
 import { teamRoutes } from './routes/team.js';
 import { closeoutRoutes } from './routes/closeout.js';
 import { slaPortfolioRoutes } from './routes/slaPortfolio.js';
+import { ticketRoutes } from './routes/tickets.js';
+import { renewalRoutes } from './routes/renewal.js';
 import { portalRoutes } from './routes/portal.js';
 import { portalAuthRoutes } from './routes/portalAuth.js';
 import { pendingSubmissionsRoutes } from './routes/pendingSubmissions.js';
@@ -168,6 +170,10 @@ export async function buildServer() {
   await fastify.register(closeoutRoutes, { prefix: '/api/v1' });
   // Phase 45.5 — SLA portfolio dashboard.
   await fastify.register(slaPortfolioRoutes, { prefix: '/api/v1' });
+  // Phase 45.6 — In-app ticket queue (consultant side).
+  await fastify.register(ticketRoutes, { prefix: '/api/v1' });
+  // Phase 45.8 — Renewal + expansion tracker.
+  await fastify.register(renewalRoutes, { prefix: '/api/v1' });
   await fastify.register(portalAuthRoutes, { prefix: '/api/v1' });
   await fastify.register(portalRoutes, { prefix: '/api/v1' });
   // Phase 28 — pending-submission infrastructure (§5.1 foundation). Hosts

@@ -892,6 +892,96 @@ async function createTables(db: Client) {
     )
   `);
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_closeout_engagement ON CloseoutChecklistItem(engagementId)`);
+
+  // ─── Phase 45.6 — In-app ticket queue ────────────────────────────────────
+  //
+  // Once an engagement enters SLA_ACTIVE the implementation portal is
+  // largely quiet — clients raise issues by opening a Ticket instead.
+  // The Ticket row is the canonical record (severity, status, owner);
+  // TicketMessage holds the threaded back-and-forth (mirrors the
+  // ConversationThread/Message split for consistency); TicketStatusChange
+  // is a thin audit row written every time status flips so we can graph
+  // resolution times without a window function over messages.
+  //
+  // Status enum: OPEN | IN_PROGRESS | WAITING_CUSTOMER | RESOLVED | CLOSED.
+  // Severity enum: CRITICAL | HIGH | MEDIUM | LOW (mirrors IssueItem so
+  // the SLA portfolio rollup can include tickets later).
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS Ticket (
+      id            TEXT PRIMARY KEY,
+      engagementId  TEXT NOT NULL REFERENCES Engagement(id) ON DELETE CASCADE,
+      firmId        TEXT NOT NULL REFERENCES Firm(id) ON DELETE CASCADE,
+      title         TEXT NOT NULL,
+      description   TEXT,
+      severity      TEXT NOT NULL DEFAULT 'MEDIUM',
+      status        TEXT NOT NULL DEFAULT 'OPEN',
+      /** ProjectMember.id when opened by a client through the portal,
+       *  User.id when opened internally by the SLA team. */
+      openedByUserId   TEXT,
+      openedByMemberId TEXT,
+      /** Currently-assigned User.id (SUPPORT_LEAD or SUPPORT_ENGINEER). */
+      assigneeUserId   TEXT,
+      /** Stamped on first transition to RESOLVED. Null when never resolved. */
+      firstResolvedAt  TEXT,
+      /** Stamped on transition to CLOSED. Distinct from firstResolvedAt
+       *  so a re-opened ticket doesn't lose its original resolution time. */
+      closedAt         TEXT,
+      createdAt     TEXT NOT NULL DEFAULT (datetime('now')),
+      updatedAt     TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_ticket_engagement ON Ticket(engagementId, createdAt)`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_ticket_firm_status ON Ticket(firmId, status)`);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS TicketMessage (
+      id              TEXT PRIMARY KEY,
+      ticketId        TEXT NOT NULL REFERENCES Ticket(id) ON DELETE CASCADE,
+      /** 'CLIENT' for portal members, 'SUPPORT' for firm users. */
+      senderType      TEXT NOT NULL,
+      senderUserId    TEXT,
+      senderMemberId  TEXT,
+      body            TEXT NOT NULL,
+      createdAt       TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_ticket_message_ticket ON TicketMessage(ticketId, createdAt)`);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS TicketStatusChange (
+      id            TEXT PRIMARY KEY,
+      ticketId      TEXT NOT NULL REFERENCES Ticket(id) ON DELETE CASCADE,
+      fromStatus    TEXT NOT NULL,
+      toStatus      TEXT NOT NULL,
+      /** User.id of the SUPPORT user who made the change. NULL for
+       *  system-driven transitions (e.g. auto-close after inactivity
+       *  in a future Phase 45.x sweep). */
+      byUserId      TEXT,
+      createdAt     TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_ticket_status_change_ticket ON TicketStatusChange(ticketId, createdAt)`);
+
+  // ─── Phase 45.8 — Renewal + expansion tracker ─────────────────────────────
+  //
+  // One row per engagement. The ACCOUNT_MANAGER (or APP_ADMIN) edits
+  // contract dates + renewal status + expansion-opportunity bullets;
+  // the SLA portfolio dashboard surfaces upcoming renewals so they
+  // don't slip. expansionOpportunities is JSON ([{title,size,notes}]).
+  //
+  // renewalStatus enum: NOT_STARTED | DISCUSSING | PROPOSAL_OUT |
+  // SIGNED | LOST | NA. NA covers month-to-month or perpetual deals.
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS EngagementRenewalState (
+      engagementId           TEXT PRIMARY KEY REFERENCES Engagement(id) ON DELETE CASCADE,
+      contractStartAt        TEXT,
+      contractEndAt          TEXT,
+      renewalStatus          TEXT NOT NULL DEFAULT 'NOT_STARTED',
+      expansionOpportunities TEXT,
+      notes                  TEXT,
+      updatedAt              TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
 }
 
 // ─── Helper types ─────────────────────────────────────────────────────────────
@@ -2866,6 +2956,30 @@ export type {
   FirmRoleUserContact,
   BackfillResult,
 } from './rbac.js';
+
+// ─── Re-exports for Phase 45.8 renewal tracker ──────────────────────────────
+export {
+  findRenewalState,
+  upsertRenewalState,
+} from './renewalState.js';
+export type {
+  EngagementRenewalState,
+  UpsertRenewalStateArgs,
+} from './renewalState.js';
+
+// ─── Re-exports for Phase 45.6 ticket queue ─────────────────────────────────
+export {
+  createTicket,
+  findTicketById,
+  listTicketsByEngagement,
+  listOpenTicketsByFirm,
+  addTicketMessage,
+  listTicketMessages,
+  findFirstSupportReplyAt,
+  updateTicketStatus,
+  assignTicket,
+} from './tickets.js';
+export type { Ticket, TicketMessage, TicketStatusChange } from './tickets.js';
 
 // ─── Re-exports for Phase 45.1 closeout checklist ───────────────────────────
 export {
