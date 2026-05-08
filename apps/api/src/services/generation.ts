@@ -248,6 +248,100 @@ export async function processJob(jobId: string, db: DbModule) {
     const docDir = path.join(rootOutputDir, 'Documentation');
     await fs.mkdir(docDir, { recursive: true });
 
+    // Phase 46.3 — PROPOSAL is the pre-sales 7-doc bundle (cover
+    // letter, executive summary, solution overview, implementation
+    // approach, pricing schedule, why-us, T&Cs). Inputs are pulled
+    // from EngagementDiscoveryLite + FirmSettings + a small set of
+    // pricing defaults; the generator stays pure.
+    if ((job.type as string) === 'PROPOSAL') {
+      const { generateProposal } = await import('./generators/proposalGenerator.js');
+      const dl = await db.findDiscoveryLite(eng.id as string);
+      const dlAnswers = (dl?.answers ?? {}) as Record<string, unknown>;
+      const license = (eng.license ?? {}) as Record<string, any>;
+
+      // Resolve modules of interest. Discovery Lite's
+      // 'modules.interest' is an array of module ids; if the prospect
+      // skipped DL, fall back to whatever's on the license.
+      const dlModules = Array.isArray(dlAnswers['modules.interest'])
+        ? (dlAnswers['modules.interest'] as string[])
+        : (license.modules as string[] | undefined) ?? [];
+      let modulesOfInterest: Array<{ id: string; label: string }> = [];
+      try {
+        const adaptor = (await import('@ofoq/adaptor-registry')).getAdaptorRegistry().find(adaptorId);
+        const catalog = adaptor?.license?.modules ?? [];
+        const labelOf = new Map<string, string>(
+          catalog.map((m: { id: string; label?: string }) => [m.id, m.label ?? m.id]),
+        );
+        modulesOfInterest = dlModules.map((id) => ({
+          id,
+          label: labelOf.get(id) ?? id,
+        }));
+      } catch {
+        modulesOfInterest = dlModules.map((id) => ({ id, label: id }));
+      }
+
+      const firm = await db.findFirmById((eng as Record<string, unknown>).firmId as string);
+      const firmName = (firm as { name?: string } | null)?.name ?? 'Our firm';
+
+      // Pricing defaults — until Phase 46.3 frontend lets the firm
+      // configure these, every adaptor uses the same per-module price.
+      const defaultPerUserPrice = 1200;
+      const perUserPricing: Record<string, number> = {};
+
+      const proposalOutputs = generateProposal({
+        clientName: eng.clientName as string,
+        decisionMakerName:
+          typeof dlAnswers['decisionMaker.name'] === 'string'
+            ? (dlAnswers['decisionMaker.name'] as string)
+            : null,
+        adaptorId,
+        adaptorName: isNetSuite ? 'NetSuite' : adaptorId,
+        pains: Array.isArray(dlAnswers['painPoints'])
+          ? (dlAnswers['painPoints'] as string[])
+          : [],
+        modulesOfInterest,
+        estimatedUsers:
+          typeof dlAnswers['scope.users'] === 'number' ? (dlAnswers['scope.users'] as number) : 25,
+        estimatedLocations:
+          typeof dlAnswers['scope.locations'] === 'number'
+            ? (dlAnswers['scope.locations'] as number)
+            : 1,
+        geographyMultiEntity:
+          (dlAnswers['geography.multiEntity'] as 'single' | 'single-country-multi-entity' | 'multi-country' | undefined) ??
+          'single',
+        targetGoLive:
+          typeof dlAnswers['timeline.targetGoLive'] === 'string'
+            ? (dlAnswers['timeline.targetGoLive'] as string)
+            : 'tbd',
+        perUserPricing,
+        defaultPerUserPrice,
+        firmName,
+        firmWhyUs: null,
+        firmCoverLetterTemplate: null,
+        firmTermsAndConditions: null,
+        preparedByName: null,
+        preparedByEmail: null,
+        preparedAt: new Date().toISOString().slice(0, 10),
+      });
+      for (const [filepath, content] of Object.entries(proposalOutputs)) {
+        const full = path.join(rootOutputDir, filepath);
+        await fs.mkdir(path.dirname(full), { recursive: true });
+        await fs.writeFile(full, content);
+      }
+      try {
+        await db.logActivity(
+          eng.id as string,
+          (eng as Record<string, unknown>).firmId as string,
+          'PROPOSAL_GENERATED',
+          `Proposal bundle generated for ${eng.clientName as string}.`,
+        );
+      } catch {
+        // Non-fatal — generation already succeeded.
+      }
+      await db.updateJob(jobId, { status: 'COMPLETE', completedAt: new Date().toISOString() });
+      return;
+    }
+
     // Phase 45.7 — QUARTERLY_HEALTH_CHECK is the SLA-stage analogue of
     // HANDOFF_PACKAGE: a focused 5-doc bundle summarising the past
     // quarter's ticket performance, open issues, and recommended

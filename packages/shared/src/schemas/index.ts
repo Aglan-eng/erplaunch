@@ -94,6 +94,10 @@ export const CreateJobSchema = z.object({
     'UAT_SCRIPTS',
     'HANDOFF_PACKAGE',
     'QUARTERLY_HEALTH_CHECK',
+    // Phase 46.3 — pre-sales proposal bundle (cover letter + summary
+    // + solution overview + implementation approach + pricing + why-us
+    // + T&Cs). Phase 46.4 follows with SOW.
+    'PROPOSAL',
   ]),
 });
 

@@ -18,7 +18,7 @@ export type ConflictType =
   | 'CONFIG_CONFLICT'
   | 'DATA_WARNING';
 export type Severity = 'BLOCK' | 'WARN' | 'INFO';
-export type JobType = 'BUSINESS_PROFILE' | 'SDF' | 'SUITESCRIPT' | 'TRAINING_DOCX' | 'RUNBOOK' | 'UAT_SCRIPTS' | 'HANDOFF_PACKAGE' | 'QUARTERLY_HEALTH_CHECK';
+export type JobType = 'BUSINESS_PROFILE' | 'SDF' | 'SUITESCRIPT' | 'TRAINING_DOCX' | 'RUNBOOK' | 'UAT_SCRIPTS' | 'HANDOFF_PACKAGE' | 'QUARTERLY_HEALTH_CHECK' | 'PROPOSAL';
 export type JobStatus = 'QUEUED' | 'RUNNING' | 'COMPLETE' | 'FAILED';
 
 // ─── MODELS ───────────────────────────────────────────────────────────────────
