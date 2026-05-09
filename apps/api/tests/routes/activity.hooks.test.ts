@@ -290,6 +290,20 @@ describe('POST /engagements/:id/activity — manual notes', () => {
     }
   });
 
+  // Phase 46.8.3 — sales lifecycle markers join the manual whitelist.
+  it('accepts PROPOSAL_SENT / PROPOSAL_ACCEPTED / PROPOSAL_DECLINED', async () => {
+    const { engagementId, token } = await seed();
+    for (const action of ['PROPOSAL_SENT', 'PROPOSAL_ACCEPTED', 'PROPOSAL_DECLINED'] as const) {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/v1/engagements/${engagementId}/activity`,
+        cookies: { token },
+        payload: { action, detail: action },
+      });
+      expect(res.statusCode, `${action}`).toBe(201);
+    }
+  });
+
   it('rejects an unknown action with 400', async () => {
     const { engagementId, token } = await seed();
     const res = await app.inject({

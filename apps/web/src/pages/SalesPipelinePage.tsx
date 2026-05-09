@@ -318,6 +318,17 @@ function Card({
               : 'Start Discovery Lite'}
         </Link>
       )}
+      {/* Phase 46.8.3 — Proposal quick-link on PROPOSED/CONTRACTED cards. */}
+      {(entry.status === 'PROPOSED' || entry.status === 'CONTRACTED') && (
+        <Link
+          to={`/sales/prospects/${entry.id}/proposal`}
+          onClick={(e) => e.stopPropagation()}
+          className="mt-2 block text-[11px] font-semibold rounded-md px-2 py-1 bg-indigo-100 text-indigo-700 hover:bg-indigo-200 transition-colors text-center"
+          data-testid={`pipeline-card-${entry.id}-proposal`}
+        >
+          Manage Proposal
+        </Link>
+      )}
     </div>
   );
 }

@@ -7,7 +7,20 @@ import * as db from '../db/index.js';
 // POST /engagements/:id/activity. Kept narrow so manual entries don't pollute
 // the action vocabulary with arbitrary strings; auto-emitted action names
 // (RISK_ADDED, ISSUE_OPENED, etc.) live separately on the resource routes.
-const MANUAL_ACTION_WHITELIST = new Set(['NOTE', 'OBSERVATION', 'TODO', 'DECISION']);
+// Phase 46.8.3 / 46.8.4 — sales lifecycle markers join the manual
+// whitelist so the proposal/SOW UIs can stamp transitions through
+// the standard activity-log surface instead of inventing dedicated
+// routes. These remain audit markers, not state machines — the
+// underlying job + signature rows are the source of truth.
+const MANUAL_ACTION_WHITELIST = new Set([
+  'NOTE',
+  'OBSERVATION',
+  'TODO',
+  'DECISION',
+  'PROPOSAL_SENT',
+  'PROPOSAL_ACCEPTED',
+  'PROPOSAL_DECLINED',
+]);
 
 export async function activityRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', authenticate);

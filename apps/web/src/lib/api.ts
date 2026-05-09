@@ -294,6 +294,29 @@ export const engagementsApi = {
   listActivity: (id: string) =>
     api.get(`/engagements/${id}/activity`).then((r) => r.data.data),
 
+  // Phase 46.8.3 — alias the listActivity surface as getActivity so
+  // sales-side pages reading activity follow the same naming as the
+  // closeoutApi.list / threadsApi.list family. Returns the same array
+  // shape; the alias exists purely for call-site readability.
+  getActivity: (id: string) =>
+    api.get(`/engagements/${id}/activity`).then((r) => r.data.data),
+
+  // Phase 46.8.3 — manual activity-log entry. The server enforces
+  // a whitelist (NOTE/OBSERVATION/TODO/DECISION + PROPOSAL_*); the
+  // sales lifecycle UIs use this to mark proposal SENT/ACCEPTED/
+  // DECLINED transitions.
+  logActivity: (
+    id: string,
+    action: string,
+    detail: string,
+  ) =>
+    api
+      .post(`/engagements/${id}/activity`, {
+        action,
+        detail: detail.trim() || action,
+      })
+      .then((r) => r.data.data),
+
   // Phase 28 — Pending Submissions (consultant side). The client-side
   // POST /portal/submissions hangs off the portal session, not this API
   // surface, and is added in Phase 29 when the first interactive client
