@@ -299,6 +299,50 @@ describe('GET /sales/reports/time-to-close', () => {
   });
 });
 
+// ─── Phase 46.8.7 — Export PDF ─────────────────────────────────────────────
+
+describe('POST /sales/reports/export-pdf', () => {
+  it('streams a PDF with PDF magic bytes', async () => {
+    const f = await seed();
+    await seedEng(f.firmId, { wonAt: '2026-03-01', estimatedValue: 100_000, salesCycleDays: 60 });
+    await seedEng(f.firmId, { status: 'LOST', lostAt: '2026-04-01' });
+    const r = await app.inject({
+      method: 'POST',
+      url: '/api/v1/sales/reports/export-pdf',
+      headers: { authorization: `Bearer ${f.adminToken}` },
+    });
+    expect(r.statusCode).toBe(200);
+    expect(r.headers['content-type']).toBe('application/pdf');
+    const cd = r.headers['content-disposition'] as string;
+    expect(cd).toContain('attachment');
+    expect(cd).toContain('Sales_Performance_');
+    const body = r.rawPayload;
+    expect(body.subarray(0, 5).toString('ascii')).toBe('%PDF-');
+    expect(body.length).toBeGreaterThan(2000);
+  });
+
+  it('still produces a valid PDF for an empty firm', async () => {
+    const f = await seed();
+    const r = await app.inject({
+      method: 'POST',
+      url: '/api/v1/sales/reports/export-pdf',
+      headers: { authorization: `Bearer ${f.adminToken}` },
+    });
+    expect(r.statusCode).toBe(200);
+    expect(r.rawPayload.subarray(0, 5).toString('ascii')).toBe('%PDF-');
+  });
+
+  it('403s a SALES_REP', async () => {
+    const f = await seed();
+    const r = await app.inject({
+      method: 'POST',
+      url: '/api/v1/sales/reports/export-pdf',
+      headers: { authorization: `Bearer ${f.repToken}` },
+    });
+    expect(r.statusCode).toBe(403);
+  });
+});
+
 // ─── Loss-detail capture (PATCH /sales/prospects/:id/loss-detail) ──────────
 
 describe('PATCH /sales/prospects/:id/loss-detail', () => {

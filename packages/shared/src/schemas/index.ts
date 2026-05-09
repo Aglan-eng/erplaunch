@@ -101,6 +101,9 @@ export const CreateJobSchema = z.object({
     // Phase 46.4 — Statement of Work (single signed PDF). Phase 46.5
     // wires DocuSign or a manual upload path on top of the artifact.
     'SOW',
+    // Phase 46.8.7 — quarterly/monthly sales performance report PDF
+    // for board meetings + sales-leadership reviews.
+    'SALES_PERFORMANCE_REPORT',
   ]),
 });
 

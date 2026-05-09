@@ -778,6 +778,21 @@ export const salesReportsApi = {
     api.get('/sales/reports/loss-reasons').then((r) => r.data.data),
   timeToClose: (): Promise<TimeToCloseReport> =>
     api.get('/sales/reports/time-to-close').then((r) => r.data.data),
+
+  /** Phase 46.8.7 — fetch the report as a PDF blob. The route streams
+   *  application/pdf with a Content-Disposition filename; the caller
+   *  is expected to wire the blob into a download anchor. */
+  exportPdf: (): Promise<{ blob: Blob; filename: string }> =>
+    api
+      .post('/sales/reports/export-pdf', undefined, {
+        responseType: 'blob',
+      })
+      .then((r) => {
+        const cd = (r.headers['content-disposition'] as string | undefined) ?? '';
+        const m = cd.match(/filename="?([^"]+)"?/);
+        const filename = m?.[1] ?? 'Sales_Performance.pdf';
+        return { blob: r.data as Blob, filename };
+      }),
 };
 
 // ─── SOW signatures (Phase 46.8.4) ──────────────────────────────────────────

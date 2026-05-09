@@ -5,9 +5,9 @@ import {
   BarChart3, ChevronLeft, Download, Loader2, Trophy, AlertTriangle,
   Clock, TrendingDown, Sparkles,
 } from 'lucide-react';
+import { useMutation } from '@tanstack/react-query';
 import {
   salesReportsApi,
-  engagementsApi,
   type FunnelReport,
   type LeaderboardEntry,
   type LossReasonsReport,
@@ -479,23 +479,51 @@ function Card({ title, Icon, loading, children }: CardProps) {
 }
 
 function ExportPdfButton() {
-  // Phase 46.8.7 wires the SALES_PERFORMANCE_REPORT generator job.
-  // Until then the button surfaces a friendly "coming next phase"
-  // notice — keeping the affordance visible so the dashboard
-  // doesn't ship without the placeholder.
-  const [hint, setHint] = useState<string | null>(null);
+  // Phase 46.8.7 — POSTs to /sales/reports/export-pdf, receives the
+  // PDF as a Blob, and triggers a browser download via a temporary
+  // anchor. The route streams the PDF synchronously (no background
+  // job) so the user gets the download immediately.
+  const [error, setError] = useState<string | null>(null);
+  const exportMutation = useMutation({
+    mutationFn: () => salesReportsApi.exportPdf(),
+    onSuccess: ({ blob, filename }) => {
+      setError(null);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      // Defer revoke so Safari has time to start the download.
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    },
+    onError: (err: unknown) => {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      setError(
+        status === 403
+          ? 'Restricted to APP_ADMIN + SALES_MANAGER.'
+          : 'PDF export failed — try again.',
+      );
+    },
+  });
   return (
-    <div>
+    <div className="text-right">
       <button
         type="button"
-        onClick={() => setHint('PDF export lands in Phase 46.8.7 — coming next.')}
-        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        onClick={() => exportMutation.mutate()}
+        disabled={exportMutation.isPending}
+        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800 disabled:opacity-40"
         data-testid="export-pdf-button"
       >
-        <Download className="h-4 w-4" />
+        {exportMutation.isPending ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Download className="h-4 w-4" />
+        )}
         Export PDF
       </button>
-      {hint && <p className="text-[11px] text-amber-700 mt-1 text-right">{hint}</p>}
+      {error && <p className="text-[11px] text-rose-600 mt-1">{error}</p>}
     </div>
   );
 }
