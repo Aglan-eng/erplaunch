@@ -87,6 +87,19 @@ async function createTables(db: Client) {
   try { await db.execute(`ALTER TABLE Firm ADD COLUMN secondaryColor TEXT`); } catch { /* swallow — idempotent migration / parse fallback */ }
   try { await db.execute(`ALTER TABLE Firm ADD COLUMN supportEmail TEXT`); } catch { /* swallow — idempotent migration / parse fallback */ }
 
+  // Phase 46.8.6 — sales templates + pricing defaults. All columns
+  // are TEXT (markdown / JSON blobs) and optional; the proposal
+  // generator falls back to its own defaults when absent. Storing
+  // pricing as a JSON map keeps the schema flexible — module ids
+  // are catalog-defined and a relational table would add a join
+  // for marginal upside.
+  try { await db.execute(`ALTER TABLE Firm ADD COLUMN salesPerModulePricingJson TEXT`); } catch { /* idempotent */ }
+  try { await db.execute(`ALTER TABLE Firm ADD COLUMN salesDefaultPerUserPrice INTEGER`); } catch { /* idempotent */ }
+  try { await db.execute(`ALTER TABLE Firm ADD COLUMN salesGeographyMultipliersJson TEXT`); } catch { /* idempotent */ }
+  try { await db.execute(`ALTER TABLE Firm ADD COLUMN salesWhyUsTemplate TEXT`); } catch { /* idempotent */ }
+  try { await db.execute(`ALTER TABLE Firm ADD COLUMN salesCoverLetterTemplate TEXT`); } catch { /* idempotent */ }
+  try { await db.execute(`ALTER TABLE Firm ADD COLUMN salesSowTermsTemplate TEXT`); } catch { /* idempotent */ }
+
   await db.execute(`
     CREATE TABLE IF NOT EXISTS User (
       id           TEXT PRIMARY KEY,
@@ -3085,6 +3098,14 @@ export {
   DEFAULT_BRANDING,
 } from './firmBranding.js';
 export type { FirmBranding } from './firmBranding.js';
+
+// ─── Re-exports for Phase 46.8.6 firm sales templates ──────────────────────
+export {
+  getFirmSalesTemplates,
+  updateFirmSalesTemplates,
+  SALES_TEMPLATE_DEFAULTS,
+} from './firmSalesTemplates.js';
+export type { FirmSalesTemplates } from './firmSalesTemplates.js';
 
 // ─── Re-exports for Phase 5.A-2 email + OTP ──────────────────────────────────
 export {

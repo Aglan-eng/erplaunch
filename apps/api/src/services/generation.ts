@@ -414,10 +414,14 @@ export async function processJob(jobId: string, db: DbModule) {
       const firm = await db.findFirmById((eng as Record<string, unknown>).firmId as string);
       const firmName = (firm as { name?: string } | null)?.name ?? 'Our firm';
 
-      // Pricing defaults — until Phase 46.3 frontend lets the firm
-      // configure these, every adaptor uses the same per-module price.
-      const defaultPerUserPrice = 1200;
-      const perUserPricing: Record<string, number> = {};
+      // Phase 46.8.6 — pull firm-level sales templates + per-module
+      // pricing overrides. Falls back to baked-in defaults when the
+      // firm hasn't configured these yet.
+      const salesTemplates = await db.getFirmSalesTemplates(
+        (eng as Record<string, unknown>).firmId as string,
+      );
+      const defaultPerUserPrice = salesTemplates.defaultPerUserPrice ?? 1200;
+      const perUserPricing = salesTemplates.perModulePricing;
 
       const proposalOutputs = generateProposal({
         clientName: eng.clientName as string,
@@ -447,9 +451,9 @@ export async function processJob(jobId: string, db: DbModule) {
         perUserPricing,
         defaultPerUserPrice,
         firmName,
-        firmWhyUs: null,
-        firmCoverLetterTemplate: null,
-        firmTermsAndConditions: null,
+        firmWhyUs: salesTemplates.whyUsTemplate,
+        firmCoverLetterTemplate: salesTemplates.coverLetterTemplate,
+        firmTermsAndConditions: salesTemplates.sowTermsTemplate,
         preparedByName: null,
         preparedByEmail: null,
         preparedAt: new Date().toISOString().slice(0, 10),

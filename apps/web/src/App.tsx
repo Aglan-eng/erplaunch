@@ -24,6 +24,7 @@ const PortalDiscoveryLitePage = lazy(() => import('./pages/PortalDiscoveryLitePa
 const SalesProposalPage = lazy(() => import('./pages/SalesProposalPage').then(m => ({ default: m.SalesProposalPage })));
 const SalesSowPage = lazy(() => import('./pages/SalesSowPage').then(m => ({ default: m.SalesSowPage })));
 const SalesReportsPage = lazy(() => import('./pages/SalesReportsPage').then(m => ({ default: m.SalesReportsPage })));
+const SalesTemplatesPage = lazy(() => import('./pages/SalesTemplatesPage').then(m => ({ default: m.SalesTemplatesPage })));
 const VerticalWorkspacePage = lazy(() => import('./pages/VerticalWorkspacePage').then(m => ({ default: m.VerticalWorkspacePage })));
 const CustomAdaptorsPage = lazy(() => import('./pages/CustomAdaptorsPage').then(m => ({ default: m.CustomAdaptorsPage })));
 const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage').then(m => ({ default: m.ForgotPasswordPage })));
@@ -202,6 +203,15 @@ function AppRoutes() {
           element={
             <RequireAuth>
               <ErrorBoundary><SalesReportsPage /></ErrorBoundary>
+            </RequireAuth>
+          }
+        />
+        {/* Phase 46.8.6 — Firm sales templates editor (APP_ADMIN only). */}
+        <Route
+          path="/settings/sales-templates"
+          element={
+            <RequireAuth>
+              <ErrorBoundary><SalesTemplatesPage /></ErrorBoundary>
             </RequireAuth>
           }
         />

@@ -47,6 +47,7 @@ import { threadsRoutes } from './routes/threads.js';
 // Phase 32 — DECISION_SIGNOFF acceptor + payload schema.
 import './services/decisionSignoffAcceptor.js';
 import { firmBrandingRoutes } from './routes/firmBranding.js';
+import { firmSalesTemplatesRoutes } from './routes/firmSalesTemplates.js';
 import { adaptorRoutes } from './routes/adaptors.js';
 import { customAdaptorRoutes } from './routes/customAdaptors.js';
 import { registerBuiltinAdaptor } from '@ofoq/adaptor-registry';
@@ -197,6 +198,8 @@ export async function buildServer() {
   // Phase 31 — consultant threads + messages (bypasses pending-review).
   await fastify.register(threadsRoutes, { prefix: '/api/v1' });
   await fastify.register(firmBrandingRoutes, { prefix: '/api/v1' });
+  // Phase 46.8.6 — firm sales template + pricing editor routes.
+  await fastify.register(firmSalesTemplatesRoutes, { prefix: '/api/v1' });
   await fastify.register(adaptorRoutes, { prefix: '/api/v1' });
   await fastify.register(customAdaptorRoutes, { prefix: '/api/v1' });
   await fastify.register(verticalsRoutes, { prefix: '/api/v1' });
