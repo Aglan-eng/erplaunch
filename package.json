@@ -23,5 +23,19 @@
     "turbo": "^2.4.4",
     "typescript": "^5.4.0"
   },
-  "packageManager": "pnpm@10.28.0"
+  "packageManager": "pnpm@10.28.0",
+  "pnpm": {
+    "overrides": {
+      "fast-uri": ">=3.1.2",
+      "basic-ftp": ">=5.3.1",
+      "fast-jwt": ">=6.2.4",
+      "axios": ">=1.15.2",
+      "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+    },
+    "auditConfig": {
+      "ignoreGhsas": [
+        "GHSA-jx2c-rxcm-jvmq"
+      ]
+    }
+  }
 }
