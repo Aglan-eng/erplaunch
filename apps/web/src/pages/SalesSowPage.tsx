@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -126,9 +126,10 @@ export function SalesSowPage() {
   const docusignConfigured = sigsQuery.data?.docusignConfigured ?? false;
   const latestSig = signatures[0];
   const isSigned = signatures.some((s) => s.status === 'SIGNED');
-  const sowVersion = useMemo(() => {
-    return jobs.length === 0 ? 0 : jobs.length;
-  }, [jobs.length]);
+  // Inline the trivial derivation rather than useMemo it — Hooks
+  // can't sit after the early returns above (rules-of-hooks). The
+  // computation is O(1) so the memo gave no real benefit.
+  const sowVersion = jobs.length;
 
   const previewUrl =
     latestJob && latestJob.status === 'COMPLETE'

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   BarChart3, ChevronLeft, Download, Loader2, Trophy, AlertTriangle,
-  Clock, TrendingDown, Sparkles,
+  Clock, TrendingDown,
 } from 'lucide-react';
 import { useMutation } from '@tanstack/react-query';
 import {
@@ -146,7 +146,10 @@ export function SalesReportsPage() {
 
 function FunnelCard({ query }: { query: { data?: FunnelReport; isLoading: boolean } }) {
   const data = query.data;
-  const stages = data?.stages ?? [];
+  // Memoise the stages reference so the maxCount useMemo dep is
+  // stable across renders (otherwise the empty-array fallback
+  // creates a fresh `[]` every render).
+  const stages = useMemo(() => data?.stages ?? [], [data?.stages]);
   const maxCount = useMemo(() => Math.max(1, ...stages.map((s) => s.count)), [stages]);
   return (
     <Card title="Pipeline funnel" Icon={TrendingDown} loading={query.isLoading}>
@@ -224,16 +227,18 @@ function LeaderboardCard({
   query: { data?: LeaderboardEntry[]; isLoading: boolean };
 }) {
   const [sortKey, setSortKey] = useState<keyof LeaderboardEntry>('revenueClosed');
-  const rows = query.data ?? [];
+  // Move the empty-array fallback inside the useMemo so the dep
+  // (query.data) is the stable source — otherwise `[]` would be a
+  // fresh reference every render, defeating the memo.
   const sorted = useMemo(() => {
-    const out = [...rows];
+    const out = [...(query.data ?? [])];
     out.sort((a, b) => {
       const av = (a[sortKey] ?? 0) as number;
       const bv = (b[sortKey] ?? 0) as number;
       return bv - av;
     });
     return out;
-  }, [rows, sortKey]);
+  }, [query.data, sortKey]);
   return (
     <Card title="Sales rep leaderboard" Icon={Trophy} loading={query.isLoading}>
       {sorted.length === 0 ? (

@@ -23,7 +23,6 @@ import {
   getDb,
   bootstrapFirmAdmin,
   grantFirmRole,
-  grantEngagementRole,
 } from '../../src/db/index.js';
 
 const JWT_SECRET = 'sales-pipeline-test-secret';

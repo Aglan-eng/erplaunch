@@ -67,7 +67,12 @@ export function SalesDiscoveryLitePage() {
     }
   }, [data?.record.answers]);
 
-  const questions: ReadonlyArray<DiscoveryLiteQuestion> = data?.questions ?? [];
+  // Wrap in useMemo so the array reference is stable across renders —
+  // otherwise downstream useMemo deps recompute every render.
+  const questions: ReadonlyArray<DiscoveryLiteQuestion> = useMemo(
+    () => data?.questions ?? [],
+    [data?.questions],
+  );
   const totalSteps = questions.length;
   const currentQuestion = questions[stepIndex];
   const progressPct = useMemo(

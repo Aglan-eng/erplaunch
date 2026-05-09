@@ -10,7 +10,6 @@ import {
   discoveryLiteProgressPct,
   type DiscoveryLiteQuestion,
 } from '@/lib/api';
-import { cn } from '@/lib/utils';
 import { QuestionInput } from './SalesDiscoveryLitePage';
 
 /**
@@ -71,7 +70,12 @@ export function PortalDiscoveryLitePage() {
     }
   }, [data?.answers, data?.completedAt]);
 
-  const questions: ReadonlyArray<DiscoveryLiteQuestion> = data?.questions ?? [];
+  // Wrap in useMemo so the array reference is stable across renders —
+  // otherwise downstream useMemo deps below recompute every render.
+  const questions: ReadonlyArray<DiscoveryLiteQuestion> = useMemo(
+    () => data?.questions ?? [],
+    [data?.questions],
+  );
   const totalSteps = questions.length;
   const currentQuestion = questions[stepIndex];
   const progressPct = useMemo(
