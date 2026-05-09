@@ -94,25 +94,54 @@ jobs:
             echo "sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Confirm CI, E2E, Security all succeeded on this SHA
+      - name: Wait for + verify CI, E2E, Security on this SHA
         if: github.event_name != 'workflow_dispatch'
+        # Phase 46.8.1.3 — `workflow_run` fires Deploy whenever any ONE
+        # of CI/E2E/Security completes; the other two may still be
+        # in-flight at that point. The previous one-shot lookup flagged
+        # in-progress runs as "missing" and failed the gate spuriously,
+        # so every Deploy run except the third (triggered by the LAST
+        # upstream to complete) went red.
+        #
+        # Now: poll each upstream workflow up to ~10 minutes for it to
+        # reach a terminal state, then check the conclusion. If a
+        # workflow reaches a non-success terminal state, fail fast. If
+        # it never registers (still "missing" after the timeout), fail
+        # too — that means the workflow isn't configured for this push
+        # and we shouldn't deploy without it.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SHA: ${{ steps.resolve.outputs.sha }}
         run: |
           set -euo pipefail
+          POLL_INTERVAL=15
+          MAX_POLLS=40        # 40 × 15s = 10 minutes per workflow
           for wf in CI E2E Security; do
-            status=$(gh run list \
-              --repo "$GITHUB_REPOSITORY" \
-              --workflow "$wf" \
-              --branch main \
-              --commit "$SHA" \
-              --limit 1 \
-              --json conclusion \
-              --jq '.[0].conclusion // "missing"')
-            echo "$wf → $status"
-            if [ "$status" != "success" ]; then
-              echo "::error::Cannot deploy — $wf did not succeed on $SHA (status: $status)"
+            status="missing"
+            conclusion="missing"
+            for i in $(seq 1 "$MAX_POLLS"); do
+              payload=$(gh run list \
+                --repo "$GITHUB_REPOSITORY" \
+                --workflow "$wf" \
+                --branch main \
+                --commit "$SHA" \
+                --limit 1 \
+                --json status,conclusion)
+              status=$(echo "$payload" | jq -r '.[0].status // "missing"')
+              conclusion=$(echo "$payload" | jq -r '.[0].conclusion // "missing"')
+              if [ "$status" = "completed" ]; then
+                break
+              fi
+              echo "[$i/$MAX_POLLS] $wf status=$status — waiting ${POLL_INTERVAL}s..."
+              sleep "$POLL_INTERVAL"
+            done
+            echo "$wf → status=$status conclusion=$conclusion"
+            if [ "$status" != "completed" ]; then
+              echo "::error::Cannot deploy — $wf never reached a terminal state for $SHA (last status: $status). Deploy gate timed out after 10 minutes."
+              exit 1
+            fi
+            if [ "$conclusion" != "success" ]; then
+              echo "::error::Cannot deploy — $wf concluded as '$conclusion' on $SHA"
               exit 1
             fi
           done
