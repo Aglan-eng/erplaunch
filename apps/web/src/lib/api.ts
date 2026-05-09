@@ -715,6 +715,73 @@ export const salesApi = {
     api.patch(`/sales/prospects/${id}/stage`, { status }).then((r) => r.data.data),
 };
 
+// ─── SOW signatures (Phase 46.8.4) ──────────────────────────────────────────
+
+export type SowSignatureStatus =
+  | 'DRAFT'
+  | 'SENT'
+  | 'VIEWED'
+  | 'SIGNED'
+  | 'DECLINED'
+  | 'EXPIRED';
+
+export type SowSignaturePath = 'DOCUSIGN' | 'MANUAL';
+
+export interface SowSignature {
+  id: string;
+  engagementId: string;
+  sowVersionId: string;
+  signaturePath: SowSignaturePath;
+  docusignEnvelopeId: string | null;
+  signedFileUrl: string | null;
+  status: SowSignatureStatus;
+  sentAt: string | null;
+  signedAt: string | null;
+  declinedAt: string | null;
+  signedByName: string | null;
+  signedByEmail: string | null;
+  signedByTitle: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SowSignaturesResponse {
+  signatures: SowSignature[];
+  docusignConfigured: boolean;
+}
+
+export const sowSignatureApi = {
+  /** Phase 46.8.4 — list all signature attempts for an engagement. */
+  list: (engagementId: string): Promise<SowSignaturesResponse> =>
+    api.get(`/engagements/${engagementId}/sow-signatures`).then((r) => r.data.data),
+
+  /** Phase 46.8.4 — send the latest SOW for DocuSign signing. Refused
+   *  with 409 DOCUSIGN_NOT_CONFIGURED when env is missing. */
+  sendDocuSign: (
+    engagementId: string,
+    input: { signerName: string; signerEmail: string; signerTitle?: string; emailSubject?: string },
+  ): Promise<SowSignature> =>
+    api
+      .post(`/engagements/${engagementId}/sow-signatures/docusign`, input)
+      .then((r) => r.data.data),
+
+  /** Phase 46.8.4 — register a manually-signed PDF. fileBase64 is
+   *  the PDF bytes encoded as base64; the route caps at 10MB. */
+  uploadManual: (
+    engagementId: string,
+    input: {
+      fileBase64: string;
+      signedByName: string;
+      signedByEmail?: string;
+      signedByTitle?: string;
+      signedDate?: string;
+    },
+  ): Promise<SowSignature> =>
+    api
+      .post(`/engagements/${engagementId}/sow-signatures/manual-upload`, input)
+      .then((r) => r.data.data),
+};
+
 // ─── Discovery Lite (Phase 46.8.1) ──────────────────────────────────────────
 
 export type DiscoveryLiteQuestionType =

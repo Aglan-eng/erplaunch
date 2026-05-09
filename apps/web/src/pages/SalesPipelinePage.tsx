@@ -329,6 +329,17 @@ function Card({
           Manage Proposal
         </Link>
       )}
+      {/* Phase 46.8.4 — SOW quick-link on CONTRACTED cards. */}
+      {entry.status === 'CONTRACTED' && (
+        <Link
+          to={`/sales/prospects/${entry.id}/sow`}
+          onClick={(e) => e.stopPropagation()}
+          className="mt-1 block text-[11px] font-semibold rounded-md px-2 py-1 bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors text-center"
+          data-testid={`pipeline-card-${entry.id}-sow`}
+        >
+          Manage SOW
+        </Link>
+      )}
     </div>
   );
 }
