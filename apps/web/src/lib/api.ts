@@ -692,6 +692,159 @@ export const salesApi = {
     api.patch(`/sales/prospects/${id}/stage`, { status }).then((r) => r.data.data),
 };
 
+// ─── Discovery Lite (Phase 46.8.1) ──────────────────────────────────────────
+
+export type DiscoveryLiteQuestionType =
+  | 'text'
+  | 'long_text'
+  | 'single_select'
+  | 'multi_select'
+  | 'number';
+
+export interface DiscoveryLiteOption {
+  value: string;
+  label: string;
+}
+
+export interface DiscoveryLiteQuestion {
+  id: string;
+  label: string;
+  helpText?: string;
+  type: DiscoveryLiteQuestionType;
+  required?: boolean;
+  options?: ReadonlyArray<DiscoveryLiteOption>;
+  adaptorAware?: boolean;
+  min?: number;
+  max?: number;
+}
+
+export interface DiscoveryLiteRecord {
+  engagementId: string;
+  answers: Record<string, unknown>;
+  completedAt: string | null;
+  shareToken: string | null;
+  shareTokenIssuedAt: string | null;
+  shareTokenExpiresAt: string | null;
+  lastEditedBy: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface DiscoveryLiteResponse {
+  questions: DiscoveryLiteQuestion[];
+  record: DiscoveryLiteRecord;
+}
+
+export const discoveryLiteApi = {
+  /** Phase 46.8.1 — get the catalog + current record for an engagement. */
+  get: (engagementId: string): Promise<DiscoveryLiteResponse> =>
+    api.get(`/engagements/${engagementId}/discovery-lite`).then((r) => r.data.data),
+
+  /** Phase 46.8.1 — save a partial answer set (debounced auto-save). */
+  put: (engagementId: string, answers: Record<string, unknown>): Promise<DiscoveryLiteRecord> =>
+    api.put(`/engagements/${engagementId}/discovery-lite`, { answers }).then((r) => r.data.data),
+
+  /** Phase 46.8.1 — mark complete; refuses with 409 + missingFields when incomplete. */
+  complete: (engagementId: string): Promise<DiscoveryLiteRecord> =>
+    api.post(`/engagements/${engagementId}/discovery-lite/complete`).then((r) => r.data.data),
+
+  /** Phase 46.8.2 — mint a self-serve token for the prospect's contact. */
+  mintShareToken: (engagementId: string): Promise<{ token: string; expiresAt: string }> =>
+    api.post(`/engagements/${engagementId}/discovery-lite/share-token`).then((r) => r.data.data),
+
+  /** Phase 46.8.2 — revoke an outstanding self-serve link. */
+  revokeShareToken: (engagementId: string): Promise<DiscoveryLiteRecord> =>
+    api.delete(`/engagements/${engagementId}/discovery-lite/share-token`).then((r) => r.data.data),
+
+  /** Phase 46.8.2 — portal-side fetch (no auth, opaque token). */
+  getByToken: (
+    token: string,
+  ): Promise<{
+    questions: DiscoveryLiteQuestion[];
+    clientName: string;
+    answers: Record<string, unknown>;
+    completedAt: string | null;
+  }> => api.get(`/discovery-lite/${token}`).then((r) => r.data.data),
+
+  /** Phase 46.8.2 — portal-side save. */
+  putByToken: (
+    token: string,
+    answers: Record<string, unknown>,
+  ): Promise<{ answers: Record<string, unknown>; completedAt: string | null }> =>
+    api.put(`/discovery-lite/${token}`, { answers }).then((r) => r.data.data),
+
+  /** Phase 46.8.2 — portal-side complete. */
+  completeByToken: (token: string): Promise<{ completedAt: string }> =>
+    api.post(`/discovery-lite/${token}/complete`).then((r) => r.data.data),
+};
+
+/**
+ * Phase 46.8.1 — pure helpers for the Discovery Lite wizard.
+ *
+ * Both consultant + portal flows use the same per-question rendering
+ * + answer-validity rules, so the predicates live here and the
+ * component just consumes them.
+ */
+export function isDiscoveryLiteAnswerEmpty(
+  question: Pick<DiscoveryLiteQuestion, 'type'>,
+  value: unknown,
+): boolean {
+  if (value === undefined || value === null) return true;
+  if (typeof value === 'string') return value.trim().length === 0;
+  if (Array.isArray(value)) return value.length === 0;
+  if (question.type === 'number') {
+    return typeof value !== 'number' || !Number.isFinite(value);
+  }
+  return false;
+}
+
+/**
+ * True when an answer is present + (for selects) a known option value.
+ * Used to disable "Next" until the current step is filled.
+ */
+export function isDiscoveryLiteAnswerValid(
+  question: DiscoveryLiteQuestion,
+  value: unknown,
+): boolean {
+  if (isDiscoveryLiteAnswerEmpty(question, value)) return false;
+  if (question.type === 'single_select') {
+    if (typeof value !== 'string') return false;
+    if (question.adaptorAware) return true;
+    return question.options?.some((o) => o.value === value) ?? false;
+  }
+  if (question.type === 'multi_select') {
+    if (!Array.isArray(value)) return false;
+    if (question.adaptorAware) return value.every((v) => typeof v === 'string');
+    const allowed = new Set((question.options ?? []).map((o) => o.value));
+    return value.every((v) => typeof v === 'string' && allowed.has(v));
+  }
+  if (question.type === 'number') {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return false;
+    if (question.min !== undefined && value < question.min) return false;
+    if (question.max !== undefined && value > question.max) return false;
+    return true;
+  }
+  // text / long_text — non-empty already guaranteed by the empty check.
+  return true;
+}
+
+/**
+ * Whole-number progress out of 100. Counts answers that are present and
+ * type-valid; required questions count the same as optional ones so the
+ * bar moves predictably even when the operator skips around.
+ */
+export function discoveryLiteProgressPct(
+  questions: ReadonlyArray<DiscoveryLiteQuestion>,
+  answers: Record<string, unknown>,
+): number {
+  if (questions.length === 0) return 0;
+  let filled = 0;
+  for (const q of questions) {
+    if (isDiscoveryLiteAnswerValid(q, answers[q.id])) filled++;
+  }
+  return Math.round((filled / questions.length) * 100);
+}
+
 export const closeoutApi = {
   list: (engagementId: string): Promise<CloseoutChecklistItem[]> =>
     api.get(`/engagements/${engagementId}/closeout-checklist`).then((r) => r.data.data),

@@ -296,6 +296,28 @@ function Card({
           ${entry.estimatedValue.toLocaleString()}
         </p>
       )}
+      {/* Phase 46.8.1 — Discovery Lite quick-link on PROSPECT cards. */}
+      {entry.status === 'PROSPECT' && (
+        <Link
+          to={`/sales/prospects/${entry.id}/discovery-lite`}
+          onClick={(e) => e.stopPropagation()}
+          className={cn(
+            'mt-2 block text-[11px] font-semibold rounded-md px-2 py-1 transition-colors text-center',
+            entry.column === 'DISCOVERY_LITE'
+              ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+              : entry.column === 'QUALIFIED'
+                ? 'bg-violet-100 text-violet-700 hover:bg-violet-200'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
+          )}
+          data-testid={`pipeline-card-${entry.id}-discovery-lite`}
+        >
+          {entry.column === 'DISCOVERY_LITE'
+            ? 'Discovery Lite ✓'
+            : entry.column === 'QUALIFIED'
+              ? 'Continue Discovery Lite'
+              : 'Start Discovery Lite'}
+        </Link>
+      )}
     </div>
   );
 }

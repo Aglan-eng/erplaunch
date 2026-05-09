@@ -19,6 +19,7 @@ const TeamPage = lazy(() => import('./pages/TeamPage').then(m => ({ default: m.T
 const StatusReportPage = lazy(() => import('./pages/StatusReportPage').then(m => ({ default: m.StatusReportPage })));
 const SlaPortfolioPage = lazy(() => import('./pages/SlaPortfolioPage').then(m => ({ default: m.SlaPortfolioPage })));
 const SalesPipelinePage = lazy(() => import('./pages/SalesPipelinePage').then(m => ({ default: m.SalesPipelinePage })));
+const SalesDiscoveryLitePage = lazy(() => import('./pages/SalesDiscoveryLitePage').then(m => ({ default: m.SalesDiscoveryLitePage })));
 const VerticalWorkspacePage = lazy(() => import('./pages/VerticalWorkspacePage').then(m => ({ default: m.VerticalWorkspacePage })));
 const CustomAdaptorsPage = lazy(() => import('./pages/CustomAdaptorsPage').then(m => ({ default: m.CustomAdaptorsPage })));
 const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage').then(m => ({ default: m.ForgotPasswordPage })));
@@ -155,6 +156,15 @@ function AppRoutes() {
           element={
             <RequireAuth>
               <ErrorBoundary><SalesPipelinePage /></ErrorBoundary>
+            </RequireAuth>
+          }
+        />
+        {/* Phase 46.8.1 — Discovery Lite consultant wizard. */}
+        <Route
+          path="/sales/prospects/:id/discovery-lite"
+          element={
+            <RequireAuth>
+              <ErrorBoundary><SalesDiscoveryLitePage /></ErrorBoundary>
             </RequireAuth>
           }
         />
