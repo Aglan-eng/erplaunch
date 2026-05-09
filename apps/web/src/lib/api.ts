@@ -715,6 +715,71 @@ export const salesApi = {
     api.patch(`/sales/prospects/${id}/stage`, { status }).then((r) => r.data.data),
 };
 
+// ─── Sales reports (Phase 46.8.5) ───────────────────────────────────────────
+
+export interface FunnelStage {
+  stage: string;
+  count: number;
+  totalEstimatedValue: number;
+}
+
+export interface FunnelReport {
+  stages: FunnelStage[];
+  totalWon: number;
+  totalLost: number;
+  winRate: number;
+}
+
+export interface LeaderboardEntry {
+  salesRepUserId: string;
+  dealsWon: number;
+  dealsLost: number;
+  revenueClosed: number;
+  avgDealSize: number;
+  winRate: number;
+  medianSalesCycleDays: number | null;
+}
+
+export interface LossReasonBreakdownEntry {
+  count: number;
+  pct: number;
+  totalEstimatedValue: number;
+}
+
+export interface LossReasonsReport {
+  breakdown: {
+    total: number;
+    byReason: Record<string, LossReasonBreakdownEntry>;
+  };
+  recentLosses: Array<{
+    engagementId: string;
+    clientName: string;
+    lossReason: string;
+    competitorName: string | null;
+    notes: string | null;
+    estimatedValue: number | null;
+    lostAt: string | null;
+    recordedAt: string;
+  }>;
+}
+
+export interface TimeToCloseReport {
+  median: number | null;
+  p90: number | null;
+  histogram: Array<{ bucket: string; count: number }>;
+}
+
+export const salesReportsApi = {
+  funnel: (): Promise<FunnelReport> =>
+    api.get('/sales/reports/funnel').then((r) => r.data.data),
+  leaderboard: (): Promise<LeaderboardEntry[]> =>
+    api.get('/sales/reports/leaderboard').then((r) => r.data.data),
+  lossReasons: (): Promise<LossReasonsReport> =>
+    api.get('/sales/reports/loss-reasons').then((r) => r.data.data),
+  timeToClose: (): Promise<TimeToCloseReport> =>
+    api.get('/sales/reports/time-to-close').then((r) => r.data.data),
+};
+
 // ─── SOW signatures (Phase 46.8.4) ──────────────────────────────────────────
 
 export type SowSignatureStatus =

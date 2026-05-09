@@ -23,6 +23,7 @@ const SalesDiscoveryLitePage = lazy(() => import('./pages/SalesDiscoveryLitePage
 const PortalDiscoveryLitePage = lazy(() => import('./pages/PortalDiscoveryLitePage').then(m => ({ default: m.PortalDiscoveryLitePage })));
 const SalesProposalPage = lazy(() => import('./pages/SalesProposalPage').then(m => ({ default: m.SalesProposalPage })));
 const SalesSowPage = lazy(() => import('./pages/SalesSowPage').then(m => ({ default: m.SalesSowPage })));
+const SalesReportsPage = lazy(() => import('./pages/SalesReportsPage').then(m => ({ default: m.SalesReportsPage })));
 const VerticalWorkspacePage = lazy(() => import('./pages/VerticalWorkspacePage').then(m => ({ default: m.VerticalWorkspacePage })));
 const CustomAdaptorsPage = lazy(() => import('./pages/CustomAdaptorsPage').then(m => ({ default: m.CustomAdaptorsPage })));
 const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage').then(m => ({ default: m.ForgotPasswordPage })));
@@ -192,6 +193,15 @@ function AppRoutes() {
           element={
             <RequireAuth>
               <ErrorBoundary><SalesSowPage /></ErrorBoundary>
+            </RequireAuth>
+          }
+        />
+        {/* Phase 46.8.5 — Sales reports dashboard. */}
+        <Route
+          path="/sales/reports"
+          element={
+            <RequireAuth>
+              <ErrorBoundary><SalesReportsPage /></ErrorBoundary>
             </RequireAuth>
           }
         />

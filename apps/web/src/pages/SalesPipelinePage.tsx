@@ -140,15 +140,25 @@ export function SalesPipelinePage() {
               engagements once the SOW is signed.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowAdd(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-colors"
-            data-testid="sales-add-prospect"
-          >
-            <Plus className="h-4 w-4" />
-            Add Prospect
-          </button>
+          <div className="flex items-center gap-2">
+            <Link
+              to="/sales/reports"
+              className="text-sm font-semibold text-slate-600 hover:text-slate-900 px-3 py-2 rounded-lg hover:bg-slate-100 transition-colors"
+              title="Sales performance reports"
+              data-testid="sales-reports-link"
+            >
+              Reports
+            </Link>
+            <button
+              type="button"
+              onClick={() => setShowAdd(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-colors"
+              data-testid="sales-add-prospect"
+            >
+              <Plus className="h-4 w-4" />
+              Add Prospect
+            </button>
+          </div>
         </div>
 
         {/* Filter */}
