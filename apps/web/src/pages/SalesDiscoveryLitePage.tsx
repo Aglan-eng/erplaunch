@@ -305,18 +305,14 @@ export function SalesDiscoveryLitePage() {
           </div>
         </div>
 
-        {/* Share link tip */}
+        {/* Share link control */}
         {!completed && (
-          <div className="mt-6 rounded-2xl border border-dashed border-slate-200 bg-white p-4 flex items-start gap-3">
-            <Share2 className="h-4 w-4 text-slate-400 mt-0.5" />
-            <div className="text-sm text-slate-600">
-              <p className="font-semibold text-slate-700">Want the prospect to fill this out?</p>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Generate a self-serve link from the prospect's pipeline card. They'll get a
-                branded form with no login required.
-              </p>
-            </div>
-          </div>
+          <ShareLinkPanel
+            engagementId={engagementId}
+            currentToken={data.record.shareToken}
+            currentExpiresAt={data.record.shareTokenExpiresAt}
+            onChanged={() => qc.invalidateQueries({ queryKey: ['discovery-lite', engagementId] })}
+          />
         )}
       </div>
     </div>
@@ -486,6 +482,136 @@ export function QuestionInput({ question, value, onChange, disabled }: QuestionI
     default:
       return null;
   }
+}
+
+// ─── Self-serve share link panel ────────────────────────────────────────────
+
+interface ShareLinkPanelProps {
+  engagementId: string;
+  currentToken: string | null;
+  currentExpiresAt: string | null;
+  onChanged: () => void;
+}
+
+function ShareLinkPanel({
+  engagementId,
+  currentToken,
+  currentExpiresAt,
+  onChanged,
+}: ShareLinkPanelProps) {
+  const [copied, setCopied] = useState(false);
+  const mintMutation = useMutation({
+    mutationFn: () => discoveryLiteApi.mintShareToken(engagementId),
+    onSuccess: () => onChanged(),
+  });
+  const revokeMutation = useMutation({
+    mutationFn: () => discoveryLiteApi.revokeShareToken(engagementId),
+    onSuccess: () => onChanged(),
+  });
+
+  const shareUrl = useMemo(() => {
+    if (!currentToken) return '';
+    if (typeof window === 'undefined') return `/portal/discovery-lite/${currentToken}`;
+    return `${window.location.origin}/portal/discovery-lite/${currentToken}`;
+  }, [currentToken]);
+
+  async function copyLink(): Promise<void> {
+    if (!shareUrl) return;
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard) {
+        await navigator.clipboard.writeText(shareUrl);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }
+    } catch {
+      // Clipboard write can fail in browsers without permission;
+      // the textarea below still lets the operator copy manually.
+    }
+  }
+
+  if (!currentToken) {
+    return (
+      <div className="mt-6 rounded-2xl border border-dashed border-slate-200 bg-white p-4 flex items-start gap-3">
+        <Share2 className="h-4 w-4 text-slate-400 mt-0.5" />
+        <div className="flex-1">
+          <p className="font-semibold text-slate-700 text-sm">Want the prospect to fill this out?</p>
+          <p className="text-xs text-slate-500 mt-0.5 mb-3">
+            Generate a self-serve link valid for 14 days. The recipient gets a branded form
+            with no login required.
+          </p>
+          <button
+            type="button"
+            onClick={() => mintMutation.mutate()}
+            disabled={mintMutation.isPending}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700 disabled:opacity-40"
+            data-testid="discovery-lite-mint-link"
+          >
+            {mintMutation.isPending ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Share2 className="h-3.5 w-3.5" />
+            )}
+            Generate self-serve link
+          </button>
+          {mintMutation.isError && (
+            <p className="text-xs text-red-600 mt-2">
+              Couldn't generate the link — please try again or contact support.
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-6 rounded-2xl border border-violet-200 bg-violet-50/40 p-4">
+      <div className="flex items-start gap-3 mb-3">
+        <Share2 className="h-4 w-4 text-violet-600 mt-0.5 flex-shrink-0" />
+        <div className="flex-1">
+          <p className="font-semibold text-slate-800 text-sm">Self-serve link is live</p>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Send the prospect this link to fill the questionnaire themselves. Expires{' '}
+            {currentExpiresAt
+              ? new Date(currentExpiresAt).toLocaleDateString('en-GB', {
+                  day: 'numeric',
+                  month: 'short',
+                  year: 'numeric',
+                })
+              : 'in 14 days'}
+            .
+          </p>
+        </div>
+      </div>
+      <div className="flex flex-col sm:flex-row gap-2">
+        <input
+          type="text"
+          readOnly
+          value={shareUrl}
+          className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-mono text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+          data-testid="discovery-lite-share-url"
+          onClick={(e) => (e.currentTarget as HTMLInputElement).select()}
+        />
+        <button
+          type="button"
+          onClick={copyLink}
+          className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700"
+          data-testid="discovery-lite-copy-link"
+        >
+          {copied ? <Check className="h-3.5 w-3.5" /> : <Share2 className="h-3.5 w-3.5" />}
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+        <button
+          type="button"
+          onClick={() => revokeMutation.mutate()}
+          disabled={revokeMutation.isPending}
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 text-slate-700 text-xs font-semibold hover:bg-slate-50 disabled:opacity-40"
+          data-testid="discovery-lite-revoke-link"
+        >
+          Revoke
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function AutoSaveIndicator({ state }: { state: 'idle' | 'saving' | 'saved' | 'error' }) {

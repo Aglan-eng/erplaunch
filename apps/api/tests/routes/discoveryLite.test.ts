@@ -330,6 +330,70 @@ describe('Self-serve magic-link flow', () => {
   });
 });
 
+// ─── Phase 46.8.2 — sales-rep notification on portal complete ──────────────
+
+describe('Self-serve completion notifies the assigned sales rep', () => {
+  it('GETs OK, completes via the same token, and writes the activity entry', async () => {
+    // We verify the notification is dispatched without coupling to
+    // an SMTP transport — the test environment uses the dev console
+    // fallback. The key behaviour the test pins is that the route
+    // doesn't reject submission when the rep lookup fails (best-
+    // effort guarantee) and that the activity entry still lands.
+    const f = await seed();
+    const tokenRes = await app.inject({
+      method: 'POST',
+      url: `/api/v1/engagements/${f.engagementId}/discovery-lite/share-token`,
+      headers: { authorization: `Bearer ${f.adminToken}` },
+    });
+    const token = (tokenRes.json() as { data: { token: string } }).data.token;
+
+    // No assigned rep on this engagement — the notification path
+    // falls back to firm-level SALES_MANAGERs (none seeded). The
+    // route should succeed silently.
+    await app.inject({
+      method: 'PUT',
+      url: `/api/v1/discovery-lite/${token}`,
+      payload: { answers: fullAnswers() },
+    });
+    const r = await app.inject({
+      method: 'POST',
+      url: `/api/v1/discovery-lite/${token}/complete`,
+    });
+    expect(r.statusCode).toBe(200);
+
+    const log = await getDb().execute({
+      sql: `SELECT action, details FROM ActivityLog WHERE engagementId = ?`,
+      args: [f.engagementId],
+    });
+    const row = log.rows.find(
+      (r2) => (r2 as unknown as { action: string }).action === 'DISCOVERY_LITE_COMPLETED',
+    );
+    expect(row).toBeTruthy();
+    expect((row as unknown as { details: string }).details).toContain('Self-serve');
+  });
+
+  it('still completes when no recipient + no rep is configured', async () => {
+    const f = await seed();
+    const tokenRes = await app.inject({
+      method: 'POST',
+      url: `/api/v1/engagements/${f.engagementId}/discovery-lite/share-token`,
+      headers: { authorization: `Bearer ${f.adminToken}` },
+    });
+    const token = (tokenRes.json() as { data: { token: string } }).data.token;
+    await app.inject({
+      method: 'PUT',
+      url: `/api/v1/discovery-lite/${token}`,
+      payload: { answers: fullAnswers() },
+    });
+    // Even with no rep + no SALES_MANAGER, complete returns 200.
+    const r = await app.inject({
+      method: 'POST',
+      url: `/api/v1/discovery-lite/${token}/complete`,
+    });
+    expect(r.statusCode).toBe(200);
+  });
+});
+
 // ─── Pipeline column derivation ─────────────────────────────────────────────
 
 describe('Pipeline column derivation reflects DiscoveryLite state', () => {

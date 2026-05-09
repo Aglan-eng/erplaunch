@@ -335,6 +335,39 @@ export async function discoveryLiteRoutes(fastify: FastifyInstance): Promise<voi
       } catch {
         // Best-effort — activity log failure shouldn't block submission.
       }
+
+      // Phase 46.8.2 — notify the assigned sales rep that answers
+      // landed. Looks up the rep by Engagement.salesRepUserId
+      // (denormalised pointer set at quick-add time) and falls back
+      // to firm-level SALES_MANAGER recipients when no rep is set.
+      // Email failure is non-fatal — the prospect's submit shouldn't
+      // fail because SMTP is down.
+      try {
+        const engRecord = r.engagement as Record<string, unknown>;
+        const salesRepUserId = engRecord.salesRepUserId as string | null | undefined;
+        const clientName = (engRecord.clientName as string | undefined) ?? 'a prospect';
+        let recipients: Array<{ email: string; name: string }> = [];
+        if (salesRepUserId) {
+          const u = await db.findUserById(salesRepUserId);
+          if (u && u.email) recipients.push({ email: u.email, name: u.name ?? '' });
+        } else {
+          const managers = await db.listFirmUsersByRole(firmId, 'SALES_MANAGER');
+          recipients = managers
+            .filter((m) => !!m.email)
+            .map((m) => ({ email: m.email, name: m.name ?? '' }));
+        }
+        const { sendDiscoveryLiteCompletedEmail } = await import('../services/email.js');
+        for (const rcpt of recipients) {
+          if (!rcpt.email) continue;
+          await sendDiscoveryLiteCompletedEmail(rcpt.email, {
+            recipientName: rcpt.name || 'there',
+            clientName,
+            engagementId: r.record.engagementId,
+          });
+        }
+      } catch {
+        // Non-fatal — best-effort notification.
+      }
       return reply.send({ data: { completedAt } });
     });
   });

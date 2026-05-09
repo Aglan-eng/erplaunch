@@ -20,6 +20,7 @@ const StatusReportPage = lazy(() => import('./pages/StatusReportPage').then(m =>
 const SlaPortfolioPage = lazy(() => import('./pages/SlaPortfolioPage').then(m => ({ default: m.SlaPortfolioPage })));
 const SalesPipelinePage = lazy(() => import('./pages/SalesPipelinePage').then(m => ({ default: m.SalesPipelinePage })));
 const SalesDiscoveryLitePage = lazy(() => import('./pages/SalesDiscoveryLitePage').then(m => ({ default: m.SalesDiscoveryLitePage })));
+const PortalDiscoveryLitePage = lazy(() => import('./pages/PortalDiscoveryLitePage').then(m => ({ default: m.PortalDiscoveryLitePage })));
 const VerticalWorkspacePage = lazy(() => import('./pages/VerticalWorkspacePage').then(m => ({ default: m.VerticalWorkspacePage })));
 const CustomAdaptorsPage = lazy(() => import('./pages/CustomAdaptorsPage').then(m => ({ default: m.CustomAdaptorsPage })));
 const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage').then(m => ({ default: m.ForgotPasswordPage })));
@@ -167,6 +168,12 @@ function AppRoutes() {
               <ErrorBoundary><SalesDiscoveryLitePage /></ErrorBoundary>
             </RequireAuth>
           }
+        />
+        {/* Phase 46.8.2 — Discovery Lite client self-serve. Token = auth,
+            so this route is OUTSIDE RequireAuth on purpose. */}
+        <Route
+          path="/portal/discovery-lite/:token"
+          element={<ErrorBoundary><PortalDiscoveryLitePage /></ErrorBoundary>}
         />
         {/* Vertical workspace */}
         <Route

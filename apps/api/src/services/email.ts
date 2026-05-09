@@ -426,4 +426,53 @@ export async function sendCloseoutHandoffEmail(
   });
 }
 
+// ─── Discovery Lite completion notification (Phase 46.8.2) ──────────────────
+
+export interface DiscoveryLiteCompletedEmailData {
+  recipientName: string;
+  clientName: string;
+  engagementId: string;
+}
+
+/**
+ * Notify the assigned sales rep (or SALES_MANAGER fallback) that the
+ * prospect's contact submitted Discovery Lite via the self-serve
+ * portal link. Plain transactional template — internal email,
+ * not marketing.
+ */
+export async function sendDiscoveryLiteCompletedEmail(
+  to: string,
+  data: DiscoveryLiteCompletedEmailData,
+): Promise<void> {
+  const { recipientName, clientName, engagementId } = data;
+  const link = `${APP_URL}/sales/prospects/${engagementId}/discovery-lite`;
+  const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+  <div style="max-width:520px;margin:40px auto;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;">
+    <div style="height:4px;background:linear-gradient(90deg,#7c3aed,#a78bfa,#c4b5fd);"></div>
+    <div style="padding:28px 32px 16px;">
+      <p style="font-size:11px;font-weight:700;letter-spacing:0.08em;color:#6d28d9;text-transform:uppercase;margin:0 0 6px;">Discovery Lite</p>
+      <h1 style="margin:0;font-size:19px;font-weight:800;color:#111827;line-height:1.35;">${escapeHtml(clientName)} just submitted their Discovery Lite</h1>
+    </div>
+    <div style="padding:0 32px 24px;font-size:14px;color:#374151;line-height:1.6;">
+      <p>Hi ${escapeHtml(recipientName)},</p>
+      <p>The prospect's contact filled out the self-serve Discovery Lite questionnaire for <strong>${escapeHtml(clientName)}</strong>. Their answers are ready for you to review and use as the basis for the proposal.</p>
+      <a href="${link}" style="display:inline-block;margin:16px 0 4px;padding:11px 22px;background:#7c3aed;color:#fff;text-decoration:none;border-radius:10px;font-size:14px;font-weight:700;">Review answers →</a>
+    </div>
+    <div style="padding:14px 32px 22px;font-size:12px;color:#9ca3af;border-top:1px solid #f3f4f6;">
+      You're receiving this because you're the assigned sales rep on this prospect.
+    </div>
+  </div>
+</body></html>`.trim();
+
+  await sendEmail({
+    to,
+    subject: `Discovery Lite submitted: ${clientName}`,
+    html,
+  });
+}
+
 export { APP_URL };
