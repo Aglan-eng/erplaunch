@@ -260,6 +260,30 @@ export async function discoveryLiteRoutes(fastify: FastifyInstance): Promise<voi
       const adaptorId =
         ((r.engagement as Record<string, unknown>).adaptorId as string | undefined) ?? null;
       const clientName = ((r.engagement as Record<string, unknown>).clientName as string | undefined) ?? '';
+      const firmId =
+        ((r.engagement as Record<string, unknown>).firmId as string | undefined) ?? '';
+
+      // Phase 48.4 — propagate firm branding + sales-rep name so the
+      // self-serve page can render the firm's logo / colours and the
+      // confirmation screen can name the rep ("<rep> will be in touch").
+      // Both lookups are non-blocking — branding falls back to ERPLaunch
+      // defaults and the rep falls back to the firm's display name.
+      const branding = firmId
+        ? await db.getFirmBranding(firmId).catch(() => null)
+        : null;
+
+      let salesRepName: string | null = null;
+      try {
+        const rep =
+          ((r.engagement as Record<string, unknown>).salesRepUserId as string | null | undefined) ?? null;
+        if (typeof rep === 'string' && rep.length > 0) {
+          const u = await db.findUserById(rep).catch(() => null);
+          salesRepName = (u as { name?: string | null } | null)?.name ?? null;
+        }
+      } catch {
+        // Non-fatal — confirmation screen will fall back to firm name.
+      }
+
       // Strip the share token from the response — the recipient
       // shouldn't see fields that let them re-mint a different link.
       return reply.send({
@@ -268,6 +292,8 @@ export async function discoveryLiteRoutes(fastify: FastifyInstance): Promise<voi
           clientName,
           answers: r.record.answers,
           completedAt: r.record.completedAt,
+          branding,
+          salesRepName,
         },
       });
     });

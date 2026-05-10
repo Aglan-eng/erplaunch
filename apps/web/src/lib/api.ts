@@ -941,7 +941,10 @@ export const discoveryLiteApi = {
   revokeShareToken: (engagementId: string): Promise<DiscoveryLiteRecord> =>
     api.delete(`/engagements/${engagementId}/discovery-lite/share-token`).then((r) => r.data.data),
 
-  /** Phase 46.8.2 — portal-side fetch (no auth, opaque token). */
+  /** Phase 46.8.2 — portal-side fetch (no auth, opaque token).
+   *  Phase 48.4 — extended to include firm branding + sales-rep name
+   *  so the self-serve page can render the firm's brand and the
+   *  confirmation screen can name the rep ("<rep> will be in touch"). */
   getByToken: (
     token: string,
   ): Promise<{
@@ -949,6 +952,14 @@ export const discoveryLiteApi = {
     clientName: string;
     answers: Record<string, unknown>;
     completedAt: string | null;
+    branding: {
+      displayName: string;
+      logoUrl: string | null;
+      primaryColor: string;
+      secondaryColor: string;
+      supportEmail: string | null;
+    } | null;
+    salesRepName: string | null;
   }> => api.get(`/discovery-lite/${token}`).then((r) => r.data.data),
 
   /** Phase 46.8.2 — portal-side save. */

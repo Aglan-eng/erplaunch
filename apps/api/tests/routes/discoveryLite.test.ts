@@ -309,6 +309,36 @@ describe('Self-serve magic-link flow', () => {
     expect(r.statusCode).toBe(404);
   });
 
+  // Phase 48.4 — branding + sales-rep name on the token GET response.
+  // Ensures the portal page can render the firm's logo / colours and
+  // name the assigned rep on the confirmation screen.
+  it('returns branding + salesRepName on the token GET response (Phase 48.4)', async () => {
+    const f = await seed();
+    const tokenRes = await app.inject({
+      method: 'POST',
+      url: `/api/v1/engagements/${f.engagementId}/discovery-lite/share-token`,
+      headers: { authorization: `Bearer ${f.adminToken}` },
+    });
+    const token = (tokenRes.json() as { data: { token: string } }).data.token;
+    const r = await app.inject({
+      method: 'GET',
+      url: `/api/v1/discovery-lite/${token}`,
+    });
+    expect(r.statusCode).toBe(200);
+    const body = r.json() as {
+      data: {
+        branding: { displayName: string; primaryColor: string } | null;
+        salesRepName: string | null;
+      };
+    };
+    expect(body.data.branding).not.toBeNull();
+    expect(body.data.branding?.displayName).toBeTruthy();
+    expect(body.data.branding?.primaryColor).toMatch(/^#[0-9a-fA-F]{6}$/);
+    // No sales rep was assigned in the seed fixture, so this is null —
+    // confirms the field is present in the response shape regardless.
+    expect(body.data.salesRepName).toBeNull();
+  });
+
   it('DELETE share-token revokes the link', async () => {
     const f = await seed();
     const tokenRes = await app.inject({

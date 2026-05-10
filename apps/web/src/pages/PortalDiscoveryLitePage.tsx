@@ -11,6 +11,22 @@ import {
   type DiscoveryLiteQuestion,
 } from '@/lib/api';
 import { QuestionInput } from './SalesDiscoveryLitePage';
+import {
+  PortalBrandedHeader,
+  getPortalBrandingStyle,
+  type FirmBranding,
+} from '@/components/portal/PortalBrandedHeader';
+
+// Phase 48.4 — fall back to ERPLaunch defaults when the firm hasn't
+// configured branding yet. Mirrors ClientPortalPage's pattern so the
+// portal experience is consistent across self-serve flows.
+const DEFAULT_PORTAL_BRANDING: FirmBranding = {
+  displayName: 'ERPLaunch',
+  logoUrl: null,
+  primaryColor: '#7c3aed',
+  secondaryColor: '#a78bfa',
+  supportEmail: null,
+};
 
 /**
  * Phase 46.8.2 — Discovery Lite client self-serve portal.
@@ -175,25 +191,48 @@ export function PortalDiscoveryLitePage() {
   }
 
   if (submittedAt) {
+    // Phase 48.4 — branded confirmation screen. Names the sales rep
+    // when known so the prospect knows who to expect a call from. The
+    // firm display name + colour palette mirrors the wizard so the
+    // post-submit experience doesn't feel like a different product.
+    const branding: FirmBranding = data?.branding ?? DEFAULT_PORTAL_BRANDING;
+    const portalStyle = getPortalBrandingStyle(branding);
+    const repName = data?.salesRepName ?? null;
+    const followUpName = repName ?? branding.displayName;
     return (
-      <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
-        <div className="max-w-xl mx-auto px-6 py-16 text-center">
-          <div className="mx-auto w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center mb-4">
-            <CheckCircle2 className="h-7 w-7 text-emerald-600" />
+      <div
+        className="min-h-screen bg-gradient-to-b from-slate-50 to-white"
+        style={portalStyle}
+        data-testid="portal-discovery-lite-thanks"
+      >
+        <div className="h-1 w-full bg-gradient-to-r from-[var(--portal-primary)] to-[var(--portal-secondary)]" />
+        <div className="max-w-xl mx-auto px-4 sm:px-6 py-10 sm:py-16">
+          <PortalBrandedHeader
+            branding={branding}
+            clientName={data?.clientName ?? null}
+            className="mb-8"
+          />
+          <div className="text-center">
+            <div className="mx-auto w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center mb-4">
+              <CheckCircle2 className="h-7 w-7 text-emerald-600" />
+            </div>
+            <h1 className="text-2xl font-bold text-slate-900 mb-2">
+              Thanks — that's all we needed.
+            </h1>
+            <p className="text-sm text-slate-600 max-w-md mx-auto">
+              {repName
+                ? `${repName} will be in touch within 24 hours with next steps and a tailored proposal.`
+                : `${followUpName} will be in touch within 24 hours with next steps and a tailored proposal.`}
+            </p>
+            <p className="text-xs text-slate-400 mt-6">
+              Submitted{' '}
+              {new Date(submittedAt).toLocaleString('en-GB', {
+                day: 'numeric',
+                month: 'short',
+                year: 'numeric',
+              })}
+            </p>
           </div>
-          <h1 className="text-2xl font-bold text-slate-900 mb-2">Thanks — that's all we needed.</h1>
-          <p className="text-sm text-slate-600 max-w-md mx-auto">
-            Your answers have been sent to the project team. They'll use them to scope the
-            proposal and will be in touch shortly with next steps.
-          </p>
-          <p className="text-xs text-slate-400 mt-6">
-            Submitted{' '}
-            {new Date(submittedAt).toLocaleString('en-GB', {
-              day: 'numeric',
-              month: 'short',
-              year: 'numeric',
-            })}
-          </p>
         </div>
       </div>
     );
@@ -215,20 +254,50 @@ export function PortalDiscoveryLitePage() {
     setStepIndex((i) => Math.min(i + 1, totalSteps - 1));
   }
 
+  // Phase 48.4 — branding propagation. Falls back to ERPLaunch
+  // defaults when the firm hasn't configured colours yet so a fresh
+  // signup still looks coherent. Inline style sets the CSS custom
+  // properties used by Tailwind arbitrary-value classes below.
+  const branding: FirmBranding = data.branding ?? DEFAULT_PORTAL_BRANDING;
+  const portalStyle = getPortalBrandingStyle(branding);
+
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+    <div
+      className="min-h-screen bg-slate-50"
+      style={portalStyle}
+      data-testid="portal-discovery-lite-root"
+    >
+      {/* Phase 48.4 — branded gradient strip + responsive container.
+          max-w-2xl already capped width well; the px-4 padding +
+          py-6 (was py-10) gives mobile a tighter, less-scrolled feel
+          while still breathing on desktop. */}
+      <div className="h-1 w-full bg-gradient-to-r from-[var(--portal-primary)] to-[var(--portal-secondary)]" />
+      <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10">
+        {/* Phase 48.4 — branded header tile + firm name. Sits above
+            both the welcome card and the mini header so the prospect
+            sees who's asking before the questions start. */}
+        <PortalBrandedHeader
+          branding={branding}
+          clientName={data.clientName}
+          className="mb-6"
+        />
+
         {/* Welcome header */}
         {stepIndex === 0 && Object.keys(answers).length === 0 && (
-          <div className="mb-6 rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-white p-6">
+          <div
+            className="mb-6 rounded-2xl border border-slate-200 bg-gradient-to-br from-[var(--portal-primary)]/5 to-white p-5 sm:p-6"
+            data-testid="portal-discovery-lite-welcome"
+          >
             <div className="flex items-center gap-2 mb-2">
-              <Sparkles className="h-5 w-5 text-violet-600" />
-              <h2 className="text-base font-bold text-slate-900">Welcome, {data.clientName}</h2>
+              <Sparkles className="h-5 w-5 text-[var(--portal-primary)]" />
+              <h2 className="text-base font-bold text-slate-900">
+                Hi {data.clientName} — {branding.displayName} wants to learn about your operations.
+              </h2>
             </div>
             <p className="text-sm text-slate-600 leading-relaxed">
-              Take a few minutes to answer 14 quick questions about your business. Your answers
-              help us scope the right solution for you and prepare a tailored proposal. Your
-              progress saves automatically.
+              Take a few minutes to answer {totalSteps} quick questions. This usually takes about
+              ten minutes. Your answers help us scope the right solution and prepare a tailored
+              proposal. Your progress saves automatically.
             </p>
           </div>
         )}
@@ -236,7 +305,7 @@ export function PortalDiscoveryLitePage() {
         {/* Mini header (after first answer) */}
         {!(stepIndex === 0 && Object.keys(answers).length === 0) && (
           <div className="mb-4">
-            <p className="text-xs uppercase tracking-wider font-bold text-violet-700">
+            <p className="text-xs uppercase tracking-wider font-bold text-[var(--portal-primary)]">
               Discovery Lite — for {data.clientName}
             </p>
           </div>
@@ -252,7 +321,7 @@ export function PortalDiscoveryLitePage() {
           </div>
           <div className="h-2 rounded-full bg-slate-100 overflow-hidden mb-1">
             <div
-              className="h-full bg-gradient-to-r from-violet-400 to-violet-600 transition-all"
+              className="h-full bg-gradient-to-r from-[var(--portal-primary)] to-[var(--portal-secondary)] transition-all"
               style={{ width: `${progressPct}%` }}
               data-testid="portal-discovery-lite-progress-bar"
             />
@@ -310,7 +379,7 @@ export function PortalDiscoveryLitePage() {
                 (currentQuestion.required &&
                   !isDiscoveryLiteAnswerValid(currentQuestion, answers[currentQuestion.id]))
               }
-              className="inline-flex items-center gap-1 px-4 py-2 rounded-lg bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 disabled:opacity-40"
+              className="inline-flex items-center gap-1 px-4 py-2 rounded-lg bg-[var(--portal-primary)] text-white text-sm font-semibold hover:opacity-90 disabled:opacity-40"
               data-testid="portal-discovery-lite-next"
             >
               Next
@@ -321,7 +390,7 @@ export function PortalDiscoveryLitePage() {
               type="button"
               onClick={() => completeMutation.mutate()}
               disabled={!allRequiredFilled || completeMutation.isPending}
-              className="inline-flex items-center gap-1 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-40"
+              className="inline-flex items-center gap-1 px-4 py-2 rounded-lg bg-[var(--portal-primary)] text-white text-sm font-semibold hover:opacity-90 disabled:opacity-40"
               data-testid="portal-discovery-lite-submit"
             >
               {completeMutation.isPending ? (
