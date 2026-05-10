@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, TriangleAlert, CircleX, Clock, Layers, Plus, Trash2, Download, Bird, ShoppingCart, Factory, Package, Briefcase, Heart } from 'lucide-react';
+import { ArrowRight, TriangleAlert, CircleX, Clock, Layers, Plus, Trash2, Download, Bird, ShoppingCart, Factory, Package, Briefcase, Heart, CalendarDays, Loader } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { cn } from '@/lib/utils';
@@ -52,6 +52,8 @@ export function EngagementCard({ engagement }: EngagementCardProps) {
   const queryClient = useQueryClient();
   const [showVerticalModal, setShowVerticalModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [planLoading, setPlanLoading] = useState(false);
+  const [planError, setPlanError] = useState<string | null>(null);
 
   const deleteMutation = useMutation({
     mutationFn: () => engagementsApi.delete(engagement.id),
@@ -59,6 +61,65 @@ export function EngagementCard({ engagement }: EngagementCardProps) {
       queryClient.invalidateQueries({ queryKey: ['engagements'] });
     },
   });
+
+  // Phase 47.2 — Quick-download for the Microsoft Project Schedule XML.
+  // Strategy: try the latest-existing endpoint first (instant download
+  // when a recent job is on disk). On 404 / NO_PROJECT_PLAN, fire a
+  // fresh MS_PROJECT_PLAN job and poll until COMPLETE, then trigger the
+  // browser download. We intentionally don't block the kanban click —
+  // generation is fast (<1s for the schedule) and the loading state
+  // sits on the icon itself.
+  async function handleProjectPlanDownload(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (planLoading) return;
+    setPlanError(null);
+    setPlanLoading(true);
+    try {
+      const baseUrl = import.meta.env.VITE_API_URL || '';
+      const latestUrl = `${baseUrl}/api/v1/engagements/${engagement.id}/project-plan/latest.xml`;
+      let downloadUrl: string | null = null;
+      try {
+        const probe = await fetch(latestUrl, { credentials: 'include' });
+        if (probe.ok) {
+          downloadUrl = latestUrl;
+        }
+      } catch {
+        // Fall through to generate path.
+      }
+      if (!downloadUrl) {
+        const job = await engagementsApi.createJob(engagement.id, 'MS_PROJECT_PLAN');
+        const jobId = (job as { id: string }).id;
+        // Poll the job until COMPLETE (or FAILED). Cap at 30s — schedule
+        // generation is sub-second; anything past 30s is a backend issue.
+        const startMs = Date.now();
+        for (;;) {
+          const fresh = (await engagementsApi.getJob(engagement.id, jobId)) as {
+            status: string;
+            errorMessage?: string | null;
+          };
+          if (fresh.status === 'COMPLETE') break;
+          if (fresh.status === 'FAILED') {
+            throw new Error(fresh.errorMessage ?? 'Project plan generation failed.');
+          }
+          if (Date.now() - startMs > 30_000) {
+            throw new Error('Project plan generation timed out after 30s.');
+          }
+          await new Promise((r) => setTimeout(r, 800));
+        }
+        downloadUrl = `${baseUrl}/api/v1/engagements/${engagement.id}/jobs/${jobId}/files/Project_Plan.xml`;
+      }
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = `${engagement.clientName} - Project Plan.xml`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (err) {
+      setPlanError(err instanceof Error ? err.message : 'Project plan download failed.');
+    } finally {
+      setPlanLoading(false);
+    }
+  }
 
   const completeness = engagement.profile?.completeness ?? {};
   const values = Object.values(completeness).filter((v) => typeof v === 'number') as number[];
@@ -114,6 +175,27 @@ export function EngagementCard({ engagement }: EngagementCardProps) {
               </div>
             </div>
             <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
+              {/* Phase 47.2 — quick-download for the Microsoft Project
+                  Schedule XML. Click → either grab the latest existing
+                  /project-plan/latest.xml or kick off a fresh job and
+                  poll until ready. Loading state shows a spinner on the
+                  icon itself so the click target stays in place. */}
+              <button
+                onClick={handleProjectPlanDownload}
+                disabled={planLoading}
+                className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-gray-300 hover:text-brand-500 hover:bg-brand-50 transition-all disabled:opacity-100 disabled:text-brand-500"
+                title={
+                  planLoading
+                    ? 'Generating project plan…'
+                    : 'Download Microsoft Project schedule (XML)'
+                }
+              >
+                {planLoading ? (
+                  <Loader className="h-4 w-4 animate-spin" />
+                ) : (
+                  <CalendarDays className="h-4 w-4" />
+                )}
+              </button>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -149,6 +231,15 @@ export function EngagementCard({ engagement }: EngagementCardProps) {
             </div>
             <ProgressBar value={avgProgress} size="sm" color={avgProgress === 100 ? 'green' : 'brand'} />
           </div>
+
+          {/* Phase 47.2 — Project plan download error surface. Uses <span>
+              not <p> because we're nested inside a <button> and only
+              phrasing content is valid HTML there. */}
+          {planError && (
+            <span className="mt-2 block text-[11px] text-red-600 bg-red-50 border border-red-200 rounded px-2 py-1">
+              {planError}
+            </span>
+          )}
 
           {/* Footer */}
           <div className="mt-3 flex items-center justify-between">

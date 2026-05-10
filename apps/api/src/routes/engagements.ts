@@ -842,6 +842,66 @@ export async function engagementRoutes(fastify: FastifyInstance) {
   });
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Phase 47.2 — Microsoft Project Schedule XML — direct download
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  // GET /engagements/:id/project-plan/latest.xml — convenience endpoint
+  // that streams the latest COMPLETE MS_PROJECT_PLAN job's Project_Plan.xml.
+  // Bookmark-able URL pattern that powers the dashboard kanban quick-download
+  // icon and the engagement page "Open in MS Project" link. Returns 404 when
+  // no completed job exists yet — the UI then prompts the user to generate
+  // one. Content-Disposition uses the engagement's clientName so the file
+  // saves as "<Client> - Project Plan.xml" instead of the opaque jobId path.
+  fastify.get('/engagements/:id/project-plan/latest.xml', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const check = await db.findEngagementByIdAndFirmId(id, request.jwtUser.firmId);
+    if (!check) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+
+    const jobs = (await db.listJobs(id)) as Array<Record<string, unknown>>;
+    const latest = jobs.find(
+      (j) => (j.type as string) === 'MS_PROJECT_PLAN' && (j.status as string) === 'COMPLETE',
+    );
+    if (!latest) {
+      return reply.code(404).send({
+        error: {
+          code: 'NO_PROJECT_PLAN',
+          message:
+            'No completed MS_PROJECT_PLAN job exists for this engagement yet. Generate one via POST /engagements/:id/generate first.',
+        },
+      });
+    }
+    const jobId = latest.id as string;
+    const filePath = path.join(__dirname, '..', '..', 'outputs', jobId, 'Project_Plan.xml');
+    const exists = await fs
+      .access(filePath)
+      .then(() => true)
+      .catch(() => false);
+    if (!exists) {
+      // The job row claims COMPLETE but the file isn't on disk — outputs
+      // dir was wiped or the worker crashed mid-write. Nudge the caller to
+      // regenerate rather than serve a partial / empty file.
+      return reply.code(404).send({
+        error: {
+          code: 'PROJECT_PLAN_MISSING',
+          message: 'The Project_Plan.xml file for the latest completed job is missing. Regenerate the plan.',
+        },
+      });
+    }
+    const buf = await fs.readFile(filePath);
+    const safeClientName = String((check as Record<string, unknown>).clientName ?? 'Project_Plan')
+      .replace(/[^A-Za-z0-9._\- ]+/g, '_')
+      .trim();
+    return reply
+      .header('Content-Type', 'application/xml; charset=utf-8')
+      .header(
+        'Content-Disposition',
+        `attachment; filename="${safeClientName} - Project Plan.xml"`,
+      )
+      .header('Cache-Control', 'no-cache')
+      .send(buf);
+  });
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Project Members
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

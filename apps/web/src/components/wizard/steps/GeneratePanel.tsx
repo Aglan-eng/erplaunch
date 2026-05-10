@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Zap, Download, Loader, CircleCheck, CircleX, Code, Package, Archive, FileText } from 'lucide-react';
+import { Zap, Download, Loader, CircleCheck, CircleX, Code, Package, Archive, FileText, CalendarDays } from 'lucide-react';
 import { engagementsApi } from '@/lib/api';
 import { SectionIntroCard } from '../SectionIntroCard';
 import { Button } from '@/components/ui/Button';
@@ -155,6 +155,28 @@ export function GeneratePanel({ engagementId }: GeneratePanelProps) {
         </Button>
       </div>
 
+      {/* Phase 47.2 — Standalone Microsoft Project Schedule XML download.
+          Sits below the BUSINESS_PROFILE button as a secondary action so
+          consultants who already have the full bundle can grab a fresh
+          schedule without re-running the 147-file pipeline. The XML opens
+          natively in MS Project Desktop; on first save it becomes a real
+          .mpp without us writing the binary format. Conflicts are NOT a
+          blocker here — schedule output is independent of wizard answers. */}
+      <div className="mt-3 flex gap-3">
+        <Button
+          variant="secondary"
+          onClick={() => createJobMutation.mutate('MS_PROJECT_PLAN')}
+          loading={
+            (createJobMutation.isPending || isRunning) && job?.type === 'MS_PROJECT_PLAN'
+          }
+          size="md"
+          className="flex-1"
+        >
+          <CalendarDays className="h-4 w-4" />
+          Generate Project Plan (MS Project XML)
+        </Button>
+      </div>
+
       {/* Active job status */}
       {job && (
         <div className="mt-4">
@@ -209,6 +231,21 @@ function JobStatusCard({ job, compact, engagementId, isNetSuite }: { job: Job; c
 
         {job.status === 'COMPLETE' && job.outputUrl && (
           <div className="flex flex-col items-end gap-1.5">
+            {/* Phase 47.2 — MS_PROJECT_PLAN is a single-file deliverable;
+                surface it as a single direct-download link rather than
+                forcing the user through Browse Files. Other job types
+                still get the multi-link layout below. */}
+            {job.type === 'MS_PROJECT_PLAN' ? (
+              <a
+                href={`${baseUrl}/api/v1/engagements/${engagementId}/jobs/${job.id}/files/Project_Plan.xml`}
+                download="Project_Plan.xml"
+                className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 transition-colors shadow-sm"
+              >
+                <CalendarDays className="h-4 w-4" />
+                Download Project_Plan.xml
+              </a>
+            ) : (
+              <>
             {/* Phase 39.3 — Browse-files page (file tree + per-file preview).
                 Sits above the existing ZIP download so the consultant doesn't
                 need to download-and-unzip just to inspect a single file. */}
@@ -290,6 +327,8 @@ function JobStatusCard({ job, compact, engagementId, isNetSuite }: { job: Job; c
                   <Code className="h-3.5 w-3.5" />
                   SuiteScript
                 </a>
+              </>
+            )}
               </>
             )}
           </div>
