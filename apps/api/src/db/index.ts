@@ -22,6 +22,37 @@ export function getDb(): Client {
   return _client;
 }
 
+/**
+ * Phase 48.6 — explicit teardown hook. Closes the libSQL native client
+ * and clears the module-level singleton so a subsequent initDb() can
+ * mint a fresh handle.
+ *
+ * Why this exists: every `setupTestDb()` call in the vitest suite
+ * re-points DATABASE_URL at a fresh temp file and calls initDb(),
+ * which overwrites `_client` without closing the previous handle. Across
+ * 70+ test files the leaked native handles accumulate; at process exit
+ * Node fires every Neon destructor concurrently and the cleanup race
+ * surfaces as a SIGSEGV in the libSQL native binding. Calling close()
+ * inside each suite's `afterAll` pre-empts the race so the process can
+ * exit cleanly under CI.
+ *
+ * Production code never calls this — the API holds a single client for
+ * its entire lifetime and lets the OS reclaim the handle on shutdown.
+ */
+export async function closeDb(): Promise<void> {
+  if (!_client) return;
+  const handle = _client;
+  _client = null;
+  try {
+    handle.close();
+  } catch {
+    // Defensive — if the underlying handle is already torn down, the
+    // close call may throw. We don't surface that to the caller because
+    // the explicit goal is to clear the singleton + free the binding;
+    // the caller is on their way to exit anyway.
+  }
+}
+
 export async function initDb() {
   const dbFile = process.env.DATABASE_URL?.replace('file:', '') ?? path.join(__dirname, '../../dev.db');
 
