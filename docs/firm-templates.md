@@ -195,3 +195,87 @@ The parser returns a structured 400 error with one of these codes:
 - `apps/web/src/pages/SettingsTemplatesPage.tsx` — editor UI.
 - `apps/web/src/lib/templateThemeLock.ts` — headline-case + hex-strip
   enforcers used on every save.
+
+## Phase 50 — Template token vocabulary
+
+CustomTemplate bodies can include `{{token}}` placeholders that get
+substituted against the engagement + firm context when the document
+is generated. Tokens that don't exist render as `[missing: name]`
+so the author can spot broken references inline. The full
+vocabulary lives at
+`apps/api/src/services/templateRenderer.ts:TOKEN_CATALOG`.
+
+| Group        | Token                          | Description |
+| ------------ | ------------------------------ | --- |
+| Firm         | `firm.name`                    | Display name (falls back to legal name). |
+| Firm         | `firm.tagline`                 | Tagline from the Brand Pack. |
+| Firm         | `firm.contactEmail`            | Firm support email. |
+| Firm         | `firm.logoUrl`                 | Firm logo URL. |
+| Firm         | `firm.primaryColor`            | Primary brand color (hex). |
+| Firm         | `firm.secondaryColor`          | Secondary brand color (hex). |
+| Engagement   | `engagement.client`            | Client / company name. |
+| Engagement   | `engagement.code`              | Internal engagement code. |
+| Engagement   | `engagement.status`            | Current lifecycle stage. |
+| Engagement   | `engagement.startDate`         | Kickoff date (YYYY-MM-DD). |
+| Engagement   | `engagement.targetGoLive`      | Target go-live (YYYY-MM-DD). |
+| Engagement   | `engagement.modules`           | Comma-joined list of licensed modules. |
+| Engagement   | `engagement.cutoverStrategy`   | BIG_BANG \| PHASED. |
+| People       | `client.lead.name`             | Client-side project lead. |
+| People       | `client.sponsor.name`          | Client-side sponsor. |
+| People       | `consultant.lead.name`         | Firm-side implementation lead. |
+| Decisions    | `decisions.signedOff`          | Bullet list of signed-off decisions. |
+| Decisions    | `decisions.pending`            | Bullet list of pending decisions. |
+| Risks        | `risks.top5`                   | Markdown table of top 5 risks by score. |
+| Action Items | `actionItems.open`             | Bullet list of open action items. |
+| System       | `today`                        | Current date (YYYY-MM-DD). |
+
+Empty fields render as the empty string (NOT `[missing]`) so "your
+firm has no tagline yet" reads as configuration rather than author
+error.
+
+### Worked example — Cutover Runbook template
+
+```markdown
+# Cutover Runbook — {{engagement.client}}
+
+Prepared by **{{firm.name}}** on {{today}}.
+Project lead: {{consultant.lead.name}}.
+
+## Decisions still open
+
+{{decisions.pending}}
+
+## Top risks for cutover weekend
+
+{{risks.top5}}
+
+## Open action items
+
+{{actionItems.open}}
+```
+
+Rendered against a Xelerate / Acme engagement, this produces a
+runbook with the actual client name, the signed-off decisions as
+a bullet list, a top-5-by-score risk markdown table, and an open-
+items bullet list — all without the author having to copy/paste
+data manually.
+
+### Round-trip to a downloadable file
+
+The same body, once persisted as a GeneratedDocument, can be
+exported to PDF / DOCX / PPTX via
+`GET /engagements/:eid/documents/:docId/export?format=pdf|docx|pptx`.
+The exporters carry every firm theme token through:
+
+- Cover page in firm.primaryColor with the firm tagline subtitle in
+  themeAccentColor.
+- H1 → section divider in primaryColor.
+- H2 → page heading in primaryColor with themeHeadlineCase
+  enforced.
+- H3 → sub-heading in themeAccentColor.
+- Tables → header row in primaryColor, alternating-row fill.
+- Footer → firm displayName · tagline + page-N-of-total in
+  secondaryColor.
+
+See `docs/engagement-documents.md` for the full lifecycle (author →
+generate → edit → export → delete).
