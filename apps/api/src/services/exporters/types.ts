@@ -51,9 +51,16 @@ export function applyHeadlineCase(text: string, mode: HeadlineCase | null): stri
 export interface ExportMeta {
   /** User-visible document title — used in the cover page / first slide / PDF metadata. */
   title: string;
-  /** Combined branding + template fields. Exporters pull what they need;
-   *  null fields fall back to platform defaults. */
-  firm: FirmBranding & FirmTemplate;
+  /** Combined branding + template fields. Exporters pull what they
+   *  need; null fields fall back to platform defaults. We widen
+   *  primary/secondary to nullable since the firm hasn't always
+   *  configured them — the underlying FirmBranding type defaults
+   *  these to platform values in DEFAULT_BRANDING, but in tests +
+   *  the exporter signature we keep the door open for null. */
+  firm: Omit<FirmBranding, 'primaryColor' | 'secondaryColor'> & {
+    primaryColor: string | null;
+    secondaryColor: string | null;
+  } & FirmTemplate;
   /** Optional engagement context. When present, exporters surface the
    *  client name in the cover page metadata + the footer. */
   engagement?: {

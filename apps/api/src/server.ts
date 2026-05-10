@@ -55,6 +55,7 @@ import './services/supportTicketAcceptor.js';
 import { firmBrandingRoutes } from './routes/firmBranding.js';
 import { firmSalesTemplatesRoutes } from './routes/firmSalesTemplates.js';
 import { firmTemplateRoutes } from './routes/firmTemplate.js';
+import { generatedDocumentsRoutes } from './routes/generatedDocuments.js';
 import { adaptorRoutes } from './routes/adaptors.js';
 import { customAdaptorRoutes } from './routes/customAdaptors.js';
 import { registerBuiltinAdaptor } from '@ofoq/adaptor-registry';
@@ -217,6 +218,9 @@ export async function buildServer() {
   // Phase 49.3 — firm Brand Pack template routes (GET/PATCH /firm/template,
   // POST /firm/template-pack ingest, CustomTemplate CRUD).
   await fastify.register(firmTemplateRoutes, { prefix: '/api/v1' });
+  // Phase 50.4 — generated documents pipeline (render CustomTemplate
+  // against engagement + export to PDF / DOCX / PPTX).
+  await fastify.register(generatedDocumentsRoutes, { prefix: '/api/v1' });
   await fastify.register(adaptorRoutes, { prefix: '/api/v1' });
   await fastify.register(customAdaptorRoutes, { prefix: '/api/v1' });
   await fastify.register(verticalsRoutes, { prefix: '/api/v1' });
