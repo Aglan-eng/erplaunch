@@ -104,6 +104,11 @@ export const CreateJobSchema = z.object({
     // Phase 46.8.7 — quarterly/monthly sales performance report PDF
     // for board meetings + sales-leadership reviews.
     'SALES_PERFORMANCE_REPORT',
+    // Phase 47.1 — Microsoft Project Schedule XML output. Generated
+    // from engagement metadata (stages, action items, decisions,
+    // members) and opens natively in Microsoft Project Desktop via
+    // File → Open → "MS Project Schedule (*.xml)".
+    'MS_PROJECT_PLAN',
   ]),
 });
 

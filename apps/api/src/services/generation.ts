@@ -107,6 +107,17 @@ import { generateIntegrationReconciliationProcedures } from './generators/integr
 import { generateIntegrationVendorEscalationMatrix } from './generators/integrationVendorEscalationMatrixGenerator.js';
 import { generateIntegrationTestPlan } from './generators/integrationTestPlanGenerator.js';
 import { generateIntegrationsIndex } from './generators/integrationsIndexGenerator.js';
+// Phase 47.1 — Microsoft Project Schedule XML generator. Emits a single
+// /Project_Plan.xml that opens natively in MS Project Desktop. Used by:
+//   - the standalone MS_PROJECT_PLAN job type (Phase 47.2 download UI)
+//   - the BUSINESS_PROFILE bundle (Project_Plan.xml lands at the ZIP root
+//     alongside manifest.json so the consultant has the schedule + the
+//     full deliverable pack from the same generation run).
+import {
+  generateMsProjectPlan,
+  type MsProjectPlanInput,
+  type LifecycleStage,
+} from './generators/msProjectPlanGenerator.js';
 // Phase 39.2 — switched BRD.pdf to convertMarkdownToPdf so we never depend
 // on Chromium for the legitimate-looking PDF output. The HTML path
 // (convertHtmlToPdf) still exists for future generators that need true
@@ -207,6 +218,74 @@ function buildAdaptorContext(adaptorId: string, editionId: string): AdaptorConte
 
 function capitalize(s: string): string {
   return s.length === 0 ? s : s[0].toUpperCase() + s.slice(1);
+}
+
+/**
+ * Phase 47.1 — assemble the MsProjectPlanInput from raw DB rows.
+ * Pulled into its own helper so both the standalone MS_PROJECT_PLAN
+ * dispatch and the BUSINESS_PROFILE branch can reuse it. The caller
+ * supplies already-loaded engagement / member rows so we don't re-fetch.
+ *
+ * Mapping notes:
+ *   - ActionItem.status: OPEN/IN_PROGRESS map straight through; the
+ *     terminal DONE/CANCELLED states map to 'CLOSED' so the generator
+ *     treats them as completed work that doesn't need to land in the
+ *     schedule.
+ *   - DecisionItem doesn't carry an explicit needsAction column —
+ *     decidedAt being null is the de-facto signal that the decision
+ *     is still open. We pass needsAction=true in that case so it
+ *     becomes a sub-task in the schedule.
+ *   - Stage on both ActionItem and DecisionItem is a future addition
+ *     (Phase 47.x). For now we let the generator default-bucket
+ *     everything to DISCOVERY by passing stage=null.
+ *   - assignedModules from ProjectMember isn't tracked in the DB
+ *     (only EngagementRole has it). We pass null so consultants
+ *     are treated as module-agnostic and assigned across all phases.
+ */
+async function buildMsProjectPlanInput(args: {
+  eng: Record<string, unknown>;
+  memberRows: ReadonlyArray<Record<string, unknown>>;
+  actionItemRows: ReadonlyArray<Record<string, unknown>>;
+  decisionRows: ReadonlyArray<Record<string, unknown>>;
+  projectManagerName: string | null;
+}): Promise<MsProjectPlanInput> {
+  const { eng, memberRows, actionItemRows, decisionRows, projectManagerName } = args;
+
+  const members = memberRows.map((m) => ({
+    name: String(m.name ?? ''),
+    role: m.role == null ? null : String(m.role),
+    team: m.team == null ? null : String(m.team),
+    assignedModules: null,
+  }));
+
+  const actionItems = actionItemRows.map((a) => {
+    const rawStatus = String(a.status ?? 'OPEN').toUpperCase();
+    const normalizedStatus =
+      rawStatus === 'DONE' || rawStatus === 'CANCELLED' ? 'CLOSED' : rawStatus;
+    return {
+      title: String(a.title ?? ''),
+      priority: String(a.priority ?? 'MEDIUM'),
+      dueDate: a.dueDate == null ? null : String(a.dueDate).slice(0, 10),
+      status: normalizedStatus,
+      stage: null as LifecycleStage | null,
+    };
+  });
+
+  const decisions = decisionRows.map((d) => ({
+    title: String(d.title ?? ''),
+    stage: null as LifecycleStage | null,
+    needsAction: d.decidedAt == null,
+  }));
+
+  return {
+    clientName: String(eng.clientName ?? ''),
+    startDate: (eng.startDate as string | null | undefined) ?? null,
+    contractEndDate: (eng.contractEndDate as string | null | undefined) ?? null,
+    projectManagerName,
+    members,
+    actionItems,
+    decisions,
+  };
 }
 
 /**
@@ -609,6 +688,68 @@ export async function processJob(jobId: string, db: DbModule) {
         // Non-fatal — engagement may not be in CLOSEOUT yet.
       }
       await db.updateJob(jobId, { status: 'COMPLETE', completedAt: new Date().toISOString() });
+      return;
+    }
+
+    // Phase 47.1 — MS_PROJECT_PLAN is a single-file deliverable: a
+    // Microsoft Project 2003 XML schedule that the consultant opens
+    // in MS Project Desktop. Branches early so we never run the
+    // BUSINESS_PROFILE pipeline for this lightweight ask. The same
+    // file is also emitted alongside the BUSINESS_PROFILE bundle
+    // (see Section 2.5 below) so the consultant always has the
+    // schedule available — this branch just produces the standalone
+    // download.
+    if ((job.type as string) === 'MS_PROJECT_PLAN') {
+      const memberRowsMpp = await db.getMembers(eng.id as string);
+      const actionItemRowsMpp = await db
+        .listActionItems(eng.id as string)
+        .catch(() => [] as Array<Record<string, unknown>>);
+      const decisionRowsMpp = await db
+        .listDecisions(eng.id as string)
+        .catch(() => [] as Array<Record<string, unknown>>);
+      let pmName: string | null = null;
+      try {
+        const pms = await db.listEngagementUsersByRole(eng.id as string, 'PROJECT_MANAGER');
+        pmName = pms[0]?.name ?? null;
+      } catch {
+        // Fallback below — listEngagementUsersByRole throws when the
+        // engagement has no rbac rows; the project member list is the
+        // alternative source of a PM name.
+      }
+      if (!pmName) {
+        const pmMember = (memberRowsMpp as Array<Record<string, unknown>>).find(
+          (m) => String(m.role ?? '').toLowerCase().includes('project manager'),
+        );
+        pmName = pmMember ? String(pmMember.name ?? '') : null;
+      }
+      const mppInput = await buildMsProjectPlanInput({
+        eng,
+        memberRows: memberRowsMpp as Array<Record<string, unknown>>,
+        actionItemRows: actionItemRowsMpp as Array<Record<string, unknown>>,
+        decisionRows: decisionRowsMpp as Array<Record<string, unknown>>,
+        projectManagerName: pmName,
+      });
+      const mppFiles = generateMsProjectPlan(mppInput);
+      for (const [filepath, content] of Object.entries(mppFiles)) {
+        const full = path.join(rootOutputDir, filepath);
+        await fs.mkdir(path.dirname(full), { recursive: true });
+        await fs.writeFile(full, content);
+      }
+      try {
+        await db.logActivity(
+          eng.id as string,
+          (eng as Record<string, unknown>).firmId as string,
+          'MS_PROJECT_PLAN_GENERATED',
+          `Project plan XML generated for ${eng.clientName as string}.`,
+        );
+      } catch {
+        // Non-fatal — file is on disk regardless of activity log status.
+      }
+      await db.updateJob(jobId, {
+        status: 'COMPLETE',
+        outputUrl: `/outputs/${jobId}`,
+        completedAt: new Date().toISOString(),
+      });
       return;
     }
 
@@ -2002,6 +2143,45 @@ export async function processJob(jobId: string, db: DbModule) {
       );
     }
 
+    // ── 2.5. Project Plan XML (Phase 47.1 — cross-platform) ────────────────
+    // Single-file Microsoft Project 2003 XML Schedule that opens in
+    // MS Project Desktop. Lands at the bundle root next to manifest.json
+    // because the consultant treats it as a top-level deliverable, not a
+    // documentation artifact. Reuses the same input shape as the
+    // standalone MS_PROJECT_PLAN job type so behavior stays consistent.
+    const actionItemRowsBp = await db
+      .listActionItems(eng.id as string)
+      .catch(() => [] as Array<Record<string, unknown>>);
+    const decisionRowsBp = await db
+      .listDecisions(eng.id as string)
+      .catch(() => [] as Array<Record<string, unknown>>);
+    let pmNameBp: string | null = null;
+    try {
+      const pms = await db.listEngagementUsersByRole(eng.id as string, 'PROJECT_MANAGER');
+      pmNameBp = pms[0]?.name ?? null;
+    } catch {
+      // Non-fatal — fall back to project member list below.
+    }
+    if (!pmNameBp) {
+      const pmMember = (memberRows as Array<Record<string, unknown>>).find(
+        (m) => String(m.role ?? '').toLowerCase().includes('project manager'),
+      );
+      pmNameBp = pmMember ? String(pmMember.name ?? '') : null;
+    }
+    const projectPlanInput = await buildMsProjectPlanInput({
+      eng,
+      memberRows: memberRows as Array<Record<string, unknown>>,
+      actionItemRows: actionItemRowsBp as Array<Record<string, unknown>>,
+      decisionRows: decisionRowsBp as Array<Record<string, unknown>>,
+      projectManagerName: pmNameBp,
+    });
+    const projectPlanFiles = generateMsProjectPlan(projectPlanInput);
+    for (const [filepath, content] of Object.entries(projectPlanFiles)) {
+      const full = path.join(rootOutputDir, filepath);
+      await fs.mkdir(path.dirname(full), { recursive: true });
+      await fs.writeFile(full, content);
+    }
+
     // ── 3. Manifest: record which artifacts actually landed ─────────────────
     const manifest = {
       jobId,
@@ -2074,6 +2254,10 @@ export async function processJob(jobId: string, db: DbModule) {
           path: 'Documentation/Integrations/',
           runbooksPath: 'Documentation/Integrations/Runbooks/',
         },
+        // Phase 47.1 — Microsoft Project Schedule XML lives at the bundle
+        // root (not under Documentation/) so MS Project Desktop's File →
+        // Open dialog finds it without the consultant having to drill in.
+        projectPlan: 'Project_Plan.xml',
         ...(isNetSuite ? { sdf: 'SDF/', suiteScript: 'SuiteScript/' } : {}),
       },
     };
