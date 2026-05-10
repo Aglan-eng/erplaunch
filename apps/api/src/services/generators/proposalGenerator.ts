@@ -76,6 +76,30 @@ export interface ProposalInput {
   preparedByName?: string | null;
   preparedByEmail?: string | null;
 
+  // Phase 49.2 — Brand-pack template fields. Each is optional; when
+  // present, the generator swaps the corresponding hardcoded section
+  // for the firm's voice. When absent, the prior platform default
+  // renders unchanged so existing tests + non-Xelerate firms still
+  // produce a sensible proposal.
+  firmTagline?: string | null;
+  firmCompanyDescription?: string | null;
+  firmMethodology?: ReadonlyArray<{ step: number; title: string; body: string }>;
+  firmRoadmap?: ReadonlyArray<{ phase: number; title: string; body: string }>;
+  firmIndustryVerticals?: ReadonlyArray<{
+    name: string;
+    outcome: string;
+    strategicContext: string;
+    approach: string;
+  }>;
+  firmCtaOptions?: ReadonlyArray<{ label: string; description: string }>;
+  /**
+   * Optional industry name to match against firmIndustryVerticals. When
+   * a match is found, that vertical's outcome/strategicContext/approach
+   * are surfaced in the Solution_Overview. Pulled from Discovery Lite's
+   * `industry` answer when the dispatch wires it up.
+   */
+  industry?: string | null;
+
   // ISO date — anchors "valid until" math.
   preparedAt: string;
 }
@@ -221,6 +245,15 @@ We're ready to start as soon as you give the go-ahead.
 Sincerely,
 {{preparedBy}}
 {{firmName}}{{contactLine}}`;
+  // Phase 49.2 — when the firm has configured a list of CTAs in their
+  // Brand Pack, the first one becomes the trailing call-to-action so
+  // the cover letter ends in firm voice rather than the platform's
+  // generic "We're ready to start" line. The {{cta}} token is the
+  // injection point; templates that explicitly opt out can omit it.
+  const ctaLine =
+    input.firmCtaOptions && input.firmCtaOptions.length > 0
+      ? input.firmCtaOptions[0].label
+      : '';
   const cover = coverTemplate
     .replace(/\{\{decisionMaker\}\}/g, decisionMaker)
     .replace(/\{\{firmName\}\}/g, input.firmName)
@@ -229,6 +262,7 @@ Sincerely,
     .replace(/\{\{goLiveLabel\}\}/g, goLiveLabel)
     .replace(/\{\{validUntil\}\}/g, pricing.validUntil)
     .replace(/\{\{preparedBy\}\}/g, preparedBy)
+    .replace(/\{\{cta\}\}/g, ctaLine)
     .replace(/\{\{contactLine\}\}/g, contactEmail ? `\n${contactEmail}` : '');
   out['Proposal/Cover_Letter.docx'] = fmt(cover);
 
@@ -252,10 +286,28 @@ Sincerely,
 </body></html>`);
 
   // ── Solution_Overview ──────────────────────────────────────────────────
+  // Phase 49.2 — when the prospect's industry matches a configured
+  // industry vertical, surface that vertical's outcome / strategic
+  // context / approach BEFORE the generic module table. Match is
+  // case-insensitive prefix to absorb minor wording differences
+  // ("retail" matches "Retail & Wholesale Distribution").
+  const matchedVertical =
+    input.industry && input.firmIndustryVerticals
+      ? input.firmIndustryVerticals.find((v) =>
+          v.name.toLowerCase().startsWith(input.industry!.toLowerCase()),
+        )
+      : undefined;
+  const verticalSection = matchedVertical
+    ? `\n<h2>For ${matchedVertical.name}</h2>\n` +
+      `<p><strong>Outcome:</strong> ${matchedVertical.outcome}</p>\n` +
+      `<p><strong>Strategic context:</strong> ${matchedVertical.strategicContext}</p>\n` +
+      `<p><strong>Our approach:</strong> ${matchedVertical.approach}</p>\n`
+    : '';
   out['Proposal/Solution_Overview.html'] = fmt(`
 <!DOCTYPE html><html><head><meta charset="utf-8"><title>Solution Overview — ${input.clientName}</title></head>
 <body style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:760px;margin:auto;padding:32px;color:#111;">
 <h1>Solution Overview</h1>
+${verticalSection}
 <p>The proposed ${input.adaptorName} configuration covers the following modules:</p>
 <table style="width:100%;border-collapse:collapse;margin-top:16px;">
 <thead><tr style="background:#f4f4f5;"><th style="text-align:left;padding:8px;border-bottom:1px solid #ddd;">Module</th><th style="text-align:left;padding:8px;border-bottom:1px solid #ddd;">Per-user (annual)</th><th style="text-align:left;padding:8px;border-bottom:1px solid #ddd;">Extended (${input.estimatedUsers}× users)</th></tr></thead>
@@ -273,20 +325,36 @@ ${pricing.lineItems
 </body></html>`);
 
   // ── Implementation_Approach ───────────────────────────────────────────
+  // Phase 49.2 — when the firm has supplied a structured methodology
+  // (Brand Pack section #5) we render that instead of the platform
+  // default 5-phase list. The default still applies for firms that
+  // haven't configured a Brand Pack.
+  const methodologySteps =
+    input.firmMethodology && input.firmMethodology.length > 0
+      ? input.firmMethodology
+      : [
+          { step: 1, title: 'Discovery', body: 'finalise scope, configure user roles, build the project plan.' },
+          { step: 2, title: 'Configure', body: 'system build-out, data migration design, integration scaffolding.' },
+          { step: 3, title: 'UAT', body: 'user acceptance testing, training, defect triage.' },
+          { step: 4, title: 'Go-Live', body: 'cutover orchestration, hypercare standby, day-one support.' },
+          { step: 5, title: 'Hypercare', body: '30-day stabilisation window before SLA handover.' },
+        ];
+  const roadmapSection =
+    input.firmRoadmap && input.firmRoadmap.length > 0
+      ? `\n<h2>Roadmap</h2>\n<ol>${input.firmRoadmap
+          .map((p) => `<li><strong>${p.title}</strong> — ${p.body}</li>`)
+          .join('')}</ol>\n`
+      : '';
   out['Proposal/Implementation_Approach.html'] = fmt(`
 <!DOCTYPE html><html><head><meta charset="utf-8"><title>Implementation Approach — ${input.clientName}</title></head>
 <body style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:760px;margin:auto;padding:32px;color:#111;">
 <h1>Implementation Approach</h1>
-<p>${input.firmName} delivers ${input.adaptorName} engagements through a five-phase methodology that's been refined over hundreds of implementations:</p>
+<p>${input.firmName} delivers ${input.adaptorName} engagements through a ${methodologySteps.length}-phase methodology that's been refined over hundreds of implementations:</p>
 
 <ol>
-<li><strong>Discovery</strong> — finalise scope, configure user roles, build the project plan.</li>
-<li><strong>Configure</strong> — system build-out, data migration design, integration scaffolding.</li>
-<li><strong>UAT</strong> — user acceptance testing, training, defect triage.</li>
-<li><strong>Go-Live</strong> — cutover orchestration, hypercare standby, day-one support.</li>
-<li><strong>Hypercare</strong> — 30-day stabilisation window before SLA handover.</li>
+${methodologySteps.map((s) => `<li><strong>${s.title}</strong> — ${s.body}</li>`).join('\n')}
 </ol>
-
+${roadmapSection}
 <h2>Team structure</h2>
 <ul>
 <li>Project Manager (single point of accountability)</li>
@@ -341,7 +409,27 @@ require board-level sign-off and a Statement of Work amendment.
   out['Proposal/Pricing_Schedule.docx'] = fmt(pricingMd);
 
   // ── Why_Us ─────────────────────────────────────────────────────────────
-  const whyUs = input.firmWhyUs ?? `# Why ${input.firmName}
+  // Phase 49.2 — precedence: firmWhyUs (Phase 46.8.6 sales template) →
+  // firmCompanyDescription + firmTagline (Phase 49.1 brand pack) →
+  // platform default. The brand-pack path composes a fuller Why Us
+  // section (tagline as a header, company description as the lead
+  // paragraph, then the platform's bullet list of guarantees).
+  const whyUs = (() => {
+    if (input.firmWhyUs) return input.firmWhyUs;
+    if (input.firmCompanyDescription || input.firmTagline) {
+      const tagline = input.firmTagline ? `## ${input.firmTagline}\n\n` : '';
+      const desc = input.firmCompanyDescription ? `${input.firmCompanyDescription}\n\n` : '';
+      return `# Why ${input.firmName}
+
+${tagline}${desc}When you choose ${input.firmName}, you get:
+
+- A named Project Manager with a track record on engagements like yours
+- Daily transparency into progress through our client portal
+- A complete, auditable trail of decisions and configuration changes
+- A clean SLA-ready handover with documentation that doesn't require
+  us to be in the room to be useful`;
+    }
+    return `# Why ${input.firmName}
 
 We focus exclusively on ${input.adaptorName} implementations. Our team
 has delivered hundreds of engagements at firms ranging from
@@ -359,6 +447,7 @@ When you choose ${input.firmName}, you get:
   us to be in the room to be useful
 
 You can edit this section in **Settings → Proposal Templates → Why Us**.`;
+  })();
   out['Proposal/Why_Us.docx'] = fmt(whyUs);
 
   // ── Terms_and_Conditions ──────────────────────────────────────────────

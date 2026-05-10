@@ -502,6 +502,17 @@ export async function processJob(jobId: string, db: DbModule) {
       const defaultPerUserPrice = salesTemplates.defaultPerUserPrice ?? 1200;
       const perUserPricing = salesTemplates.perModulePricing;
 
+      // Phase 49.2 — Brand Pack template fields. When the firm has
+      // ingested a Brand Pack the proposal generator picks up the
+      // tagline, company description, methodology, roadmap, industry
+      // verticals, and CTA options for firm-voice output. Lookup is
+      // best-effort — a NULL row → EMPTY_FIRM_TEMPLATE shape → the
+      // generator falls back to platform defaults section-by-section.
+      const firmTemplate =
+        (await db
+          .getFirmTemplate((eng as Record<string, unknown>).firmId as string)
+          .catch(() => null)) ?? null;
+
       const proposalOutputs = generateProposal({
         clientName: eng.clientName as string,
         decisionMakerName:
@@ -533,6 +544,17 @@ export async function processJob(jobId: string, db: DbModule) {
         firmWhyUs: salesTemplates.whyUsTemplate,
         firmCoverLetterTemplate: salesTemplates.coverLetterTemplate,
         firmTermsAndConditions: salesTemplates.sowTermsTemplate,
+        // Phase 49.2 — Brand Pack pass-through.
+        firmTagline: firmTemplate?.tagline ?? null,
+        firmCompanyDescription: firmTemplate?.companyDescription ?? null,
+        firmMethodology: firmTemplate?.methodology,
+        firmRoadmap: firmTemplate?.roadmap,
+        firmIndustryVerticals: firmTemplate?.industryVerticals,
+        firmCtaOptions: firmTemplate?.ctaOptions,
+        industry:
+          typeof dlAnswers['industry'] === 'string'
+            ? (dlAnswers['industry'] as string)
+            : null,
         preparedByName: null,
         preparedByEmail: null,
         preparedAt: new Date().toISOString().slice(0, 10),

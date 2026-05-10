@@ -180,3 +180,188 @@ describe('Edge cases', () => {
     expect(p.baseAnnualLicense).toBe(50 * 1000 * 2);
   });
 });
+
+// ─── Phase 49.2 — Brand Pack template field consumption ──────────────────
+
+describe('Phase 49.2 — firm Brand Pack overrides', () => {
+  it('uses firmMethodology when supplied (overrides default 5-phase list)', () => {
+    const md = generateProposal(
+      baseInput({
+        firmMethodology: [
+          { step: 1, title: 'Frame', body: 'baseline the operating model.' },
+          { step: 2, title: 'Build', body: 'cut the new system.' },
+          { step: 3, title: 'Land', body: 'go live with confidence.' },
+        ],
+      }),
+    )['Proposal/Implementation_Approach.html'];
+    expect(md).toContain('<strong>Frame</strong>');
+    expect(md).toContain('<strong>Build</strong>');
+    expect(md).toContain('<strong>Land</strong>');
+    // The default platform phases shouldn't appear when firmMethodology
+    // is supplied — Configure is the platform default phase 2 label.
+    expect(md).not.toContain('<strong>Configure</strong>');
+    expect(md).toContain('a 3-phase methodology');
+  });
+
+  it('falls back to the 5-phase platform default when no firmMethodology supplied', () => {
+    const md = generateProposal(baseInput())['Proposal/Implementation_Approach.html'];
+    expect(md).toContain('<strong>Discovery</strong>');
+    expect(md).toContain('<strong>Configure</strong>');
+    expect(md).toContain('<strong>UAT</strong>');
+    expect(md).toContain('<strong>Go-Live</strong>');
+    expect(md).toContain('<strong>Hypercare</strong>');
+    expect(md).toContain('a 5-phase methodology');
+  });
+
+  it('appends a Roadmap section when firmRoadmap is supplied', () => {
+    const md = generateProposal(
+      baseInput({
+        firmRoadmap: [
+          { phase: 1, title: 'Quick wins', body: 'first 90 days.' },
+          { phase: 2, title: 'Scale', body: 'next 6 months.' },
+        ],
+      }),
+    )['Proposal/Implementation_Approach.html'];
+    expect(md).toContain('<h2>Roadmap</h2>');
+    expect(md).toContain('<strong>Quick wins</strong>');
+    expect(md).toContain('<strong>Scale</strong>');
+  });
+
+  it('omits the Roadmap section when firmRoadmap is empty/absent', () => {
+    const md = generateProposal(baseInput())['Proposal/Implementation_Approach.html'];
+    expect(md).not.toContain('<h2>Roadmap</h2>');
+  });
+
+  it('renders firmTagline + firmCompanyDescription in Why_Us when firmWhyUs is absent', () => {
+    const md = generateProposal(
+      baseInput({
+        firmTagline: 'Outcome-first ERP delivery.',
+        firmCompanyDescription:
+          'Our team has shipped 200+ implementations across the GCC and the UK.',
+      }),
+    )['Proposal/Why_Us.docx'];
+    expect(md).toContain('Outcome-first ERP delivery.');
+    expect(md).toContain('200+ implementations');
+  });
+
+  it('firmWhyUs takes precedence over firmTagline + firmCompanyDescription', () => {
+    const md = generateProposal(
+      baseInput({
+        firmWhyUs: '# Why Us\n\nCustom override copy.',
+        firmTagline: 'Should not appear',
+        firmCompanyDescription: 'Should also not appear',
+      }),
+    )['Proposal/Why_Us.docx'];
+    expect(md).toContain('Custom override copy');
+    expect(md).not.toContain('Should not appear');
+    expect(md).not.toContain('Should also not appear');
+  });
+
+  it('surfaces a matched industry vertical in Solution_Overview', () => {
+    const md = generateProposal(
+      baseInput({
+        industry: 'retail',
+        firmIndustryVerticals: [
+          {
+            name: 'Retail and Wholesale Distribution',
+            outcome: 'Single source of truth for SKU-level margin.',
+            strategicContext: 'Omnichannel operators consolidating ERP.',
+            approach: 'Phase 1 GL + AR/AP, Phase 2 inventory + fulfilment.',
+          },
+          {
+            name: 'Manufacturing',
+            outcome: 'Should not appear',
+            strategicContext: 'Should not appear',
+            approach: 'Should not appear',
+          },
+        ],
+      }),
+    )['Proposal/Solution_Overview.html'];
+    expect(md).toContain('For Retail and Wholesale Distribution');
+    expect(md).toContain('SKU-level margin');
+    expect(md).not.toContain('Should not appear');
+  });
+
+  it('industry-vertical match is case-insensitive prefix', () => {
+    const md = generateProposal(
+      baseInput({
+        industry: 'MANUFACTURING',
+        firmIndustryVerticals: [
+          {
+            name: 'Manufacturing and Light Assembly',
+            outcome: 'Cycle-time reduction',
+            strategicContext: 'Discrete + process MFG',
+            approach: 'BOM + WO modules first',
+          },
+        ],
+      }),
+    )['Proposal/Solution_Overview.html'];
+    expect(md).toContain('Manufacturing and Light Assembly');
+  });
+
+  it('omits the vertical section when no industry is supplied', () => {
+    const md = generateProposal(
+      baseInput({
+        firmIndustryVerticals: [
+          {
+            name: 'Retail',
+            outcome: 'x',
+            strategicContext: 'y',
+            approach: 'z',
+          },
+        ],
+      }),
+    )['Proposal/Solution_Overview.html'];
+    // Heading appears only when a vertical actually matches.
+    expect(md).not.toContain('<h2>For ');
+  });
+
+  it('injects a CTA from firmCtaOptions into the cover letter when {{cta}} is present', () => {
+    const md = generateProposal(
+      baseInput({
+        firmCoverLetterTemplate:
+          'Hi {{decisionMaker}}, {{firmName}} for {{adaptorName}}. {{cta}}',
+        firmCtaOptions: [
+          { label: 'Lock in your kickoff date this week.', description: 'urgency' },
+        ],
+      }),
+    )['Proposal/Cover_Letter.docx'];
+    expect(md).toContain('Lock in your kickoff date this week.');
+  });
+
+  it('renders empty CTA when firmCtaOptions is absent (no `{{cta}}` artifact)', () => {
+    const md = generateProposal(
+      baseInput({
+        firmCoverLetterTemplate: 'Body text. {{cta}}',
+      }),
+    )['Proposal/Cover_Letter.docx'];
+    // {{cta}} token is replaced with empty string — no literal token leaks.
+    expect(md).not.toContain('{{cta}}');
+  });
+
+  it('NULL-fields firm produces the exact same output as a baseline call', () => {
+    // Pin the spec acceptance: a firm with all template fields NULL
+    // must still produce a valid proposal. The output must match the
+    // baseline (no firm fields supplied) exactly so we can prove no
+    // firm-specific drift sneaks in via the new code paths.
+    const baseline = generateProposal(baseInput());
+    const nullFields = generateProposal(
+      baseInput({
+        firmTagline: null,
+        firmCompanyDescription: null,
+        firmMethodology: undefined,
+        firmRoadmap: undefined,
+        firmIndustryVerticals: undefined,
+        firmCtaOptions: undefined,
+        industry: null,
+      }),
+    );
+    expect(nullFields['Proposal/Implementation_Approach.html']).toBe(
+      baseline['Proposal/Implementation_Approach.html'],
+    );
+    expect(nullFields['Proposal/Why_Us.docx']).toBe(baseline['Proposal/Why_Us.docx']);
+    expect(nullFields['Proposal/Solution_Overview.html']).toBe(
+      baseline['Proposal/Solution_Overview.html'],
+    );
+  });
+});
