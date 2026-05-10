@@ -26,6 +26,7 @@ import { teamRoutes } from './routes/team.js';
 import { closeoutRoutes } from './routes/closeout.js';
 import { slaPortfolioRoutes } from './routes/slaPortfolio.js';
 import { slaTicketsRoutes } from './routes/slaTickets.js';
+import { slaRenewalsRoutes } from './routes/slaRenewals.js';
 import { ticketRoutes } from './routes/tickets.js';
 import { renewalRoutes } from './routes/renewal.js';
 import { salesPipelineRoutes } from './routes/salesPipeline.js';
@@ -186,6 +187,9 @@ export async function buildServer() {
   // Powers /sla/tickets — separate route file so the per-engagement
   // CRUD in tickets.ts stays focused.
   await fastify.register(slaTicketsRoutes, { prefix: '/api/v1' });
+  // Phase 48.2 — Firm-wide renewal pipeline rollup with urgency tier.
+  // Powers the Renewal Pipeline widget on the SLA dashboard.
+  await fastify.register(slaRenewalsRoutes, { prefix: '/api/v1' });
   // Phase 45.8 — Renewal + expansion tracker.
   await fastify.register(renewalRoutes, { prefix: '/api/v1' });
   // Phase 46.1 — Sales pipeline + prospect quick-add.

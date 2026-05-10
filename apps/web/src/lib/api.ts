@@ -1056,6 +1056,74 @@ export const teamApi = {
     api.get('/firm/role-audit-log').then((r) => r.data.data),
 };
 
+// ─── Renewal API (Phase 45.8 + Phase 48.2 firm-wide rollup) ──────────────────
+
+export type RenewalStatus =
+  | 'NOT_STARTED'
+  | 'DISCUSSING'
+  | 'PROPOSAL_OUT'
+  | 'SIGNED'
+  | 'LOST'
+  | 'NA';
+
+export type RenewalUrgency = 'GREEN' | 'AMBER' | 'RED';
+
+export interface ExpansionOpportunity {
+  title: string;
+  size?: string;
+  notes?: string;
+}
+
+export interface RenewalRow {
+  engagementId: string;
+  clientName: string;
+  contractStartAt: string | null;
+  contractEndAt: string | null;
+  renewalStatus: RenewalStatus;
+  expansionOpportunities: ExpansionOpportunity[];
+  notes: string | null;
+  updatedAt: string;
+  urgency: RenewalUrgency;
+  daysToExpiry: number | null;
+  expired: boolean;
+}
+
+export interface RenewalState {
+  engagementId: string;
+  contractStartAt: string | null;
+  contractEndAt: string | null;
+  renewalStatus: RenewalStatus;
+  expansionOpportunities: ExpansionOpportunity[];
+  notes: string | null;
+  updatedAt: string;
+  urgency: RenewalUrgency;
+  daysToExpiry: number | null;
+  expired: boolean;
+}
+
+export const renewalApi = {
+  /** Phase 48.2 — firm-wide pipeline view. */
+  listFirm: (): Promise<RenewalRow[]> =>
+    api.get('/sla/renewals').then((r) => r.data.data as RenewalRow[]),
+
+  /** Phase 45.8 — per-engagement renewal record. */
+  get: (engagementId: string): Promise<RenewalState> =>
+    api.get(`/engagements/${engagementId}/renewal-state`).then((r) => r.data.data),
+
+  /** Phase 45.8 — partial update; only fields present are written. */
+  patch: (
+    engagementId: string,
+    body: Partial<{
+      contractStartAt: string | null;
+      contractEndAt: string | null;
+      renewalStatus: RenewalStatus;
+      expansionOpportunities: ExpansionOpportunity[];
+      notes: string | null;
+    }>,
+  ): Promise<RenewalState> =>
+    api.patch(`/engagements/${engagementId}/renewal-state`, body).then((r) => r.data.data),
+};
+
 // ─── Tickets API (Phase 45.6 + Phase 48.1 firm-wide rollup) ──────────────────
 
 export type TicketSeverity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';

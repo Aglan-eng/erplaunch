@@ -4,6 +4,10 @@ import { useQuery } from '@tanstack/react-query';
 import { ShieldCheck, AlertTriangle, AlertCircle, ArrowUpRight, Activity } from 'lucide-react';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
+// Phase 48.2 — Renewal pipeline widget. Lives below the portfolio
+// table on the same SLA dashboard so the AM has both health + renewal
+// context in one place.
+import { RenewalPipelineWidget } from '@/components/sla/RenewalPipelineWidget';
 
 /**
  * Phase 45.5 — SLA portfolio dashboard.
@@ -62,6 +66,11 @@ export function SlaPortfolioPage() {
         ) : (
           <PortfolioTable entries={entries} />
         )}
+
+        {/* Phase 48.2 — Renewal pipeline widget. Renders even when the
+            portfolio is empty so a firm onboarding its first SLA
+            engagement still sees the renewal scaffolding. */}
+        <RenewalPipelineWidget />
       </div>
     </div>
   );
