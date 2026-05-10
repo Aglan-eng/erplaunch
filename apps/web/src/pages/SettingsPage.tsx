@@ -216,6 +216,44 @@ export function SettingsPage() {
             </div>
           </div>
 
+          {/* Phase 49.7 — Brand Pack template editor. Linked from
+              Settings so firm admins can find it without knowing the
+              URL. The card mentions the worked-example pack so a
+              first-time visitor can copy and adapt rather than starting
+              from a blank page. */}
+          <div
+            className="bg-white rounded-2xl border border-slate-200 p-6"
+            data-testid="settings-templates-card"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <h2 className="text-base font-semibold text-slate-900">Templates (Brand Pack)</h2>
+                <p className="text-sm text-slate-500 mt-1">
+                  Tagline, why-us, methodology, industry verticals, voice guide, theme
+                  tokens. Edit individually or paste a 12-section markdown pack to populate
+                  everything at once. See the worked example at{' '}
+                  <a
+                    href="https://github.com/Aglan-eng/erplaunch/blob/main/XELERATE_BRAND_PACK.md"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline text-violet-700 hover:text-violet-900"
+                    data-testid="brand-pack-example-link"
+                  >
+                    XELERATE_BRAND_PACK.md
+                  </a>
+                  .
+                </p>
+              </div>
+              <Link
+                to="/settings/templates"
+                className="rounded-lg bg-violet-700 text-white text-sm font-medium px-4 py-2 hover:bg-violet-800 flex-shrink-0"
+                data-testid="settings-templates-link"
+              >
+                Open
+              </Link>
+            </div>
+          </div>
+
           {/* Phase 43.4 — Team / role management. Only useful to App
                Admins; the page itself guards on permission and shows
                a friendly "admins only" panel for everyone else. */}
