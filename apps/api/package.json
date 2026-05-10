@@ -7,6 +7,7 @@
     "start": "tsx src/server.ts",
     "seed": "tsx src/seed.ts",
     "seed:odoo": "tsx src/seed-odoo.ts",
+    "seed:xelerate-brand-pack": "tsx src/db/seeds/049-xelerate-brand-pack.ts",
     "test": "rimraf tsconfig.tsbuildinfo && tsc --noEmit && vitest run",
     "test:notypecheck": "vitest run"
   },
