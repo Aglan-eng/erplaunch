@@ -26,6 +26,7 @@ const SalesProposalPage = lazy(() => import('./pages/SalesProposalPage').then(m 
 const SalesSowPage = lazy(() => import('./pages/SalesSowPage').then(m => ({ default: m.SalesSowPage })));
 const SalesReportsPage = lazy(() => import('./pages/SalesReportsPage').then(m => ({ default: m.SalesReportsPage })));
 const SalesTemplatesPage = lazy(() => import('./pages/SalesTemplatesPage').then(m => ({ default: m.SalesTemplatesPage })));
+const SettingsTemplatesPage = lazy(() => import('./pages/SettingsTemplatesPage').then(m => ({ default: m.SettingsTemplatesPage })));
 const VerticalWorkspacePage = lazy(() => import('./pages/VerticalWorkspacePage').then(m => ({ default: m.VerticalWorkspacePage })));
 const CustomAdaptorsPage = lazy(() => import('./pages/CustomAdaptorsPage').then(m => ({ default: m.CustomAdaptorsPage })));
 const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage').then(m => ({ default: m.ForgotPasswordPage })));
@@ -223,6 +224,15 @@ function AppRoutes() {
           element={
             <RequireAuth>
               <ErrorBoundary><SalesTemplatesPage /></ErrorBoundary>
+            </RequireAuth>
+          }
+        />
+        {/* Phase 49.4 — Theme-locked Brand Pack template editor. */}
+        <Route
+          path="/settings/templates"
+          element={
+            <RequireAuth>
+              <ErrorBoundary><SettingsTemplatesPage /></ErrorBoundary>
             </RequireAuth>
           }
         />

@@ -1067,6 +1067,104 @@ export const teamApi = {
     api.get('/firm/role-audit-log').then((r) => r.data.data),
 };
 
+// ─── Firm Template API (Phase 49.3 — Brand Pack ingest + editor) ────────────
+
+export type HeadlineCase = 'sentence' | 'title' | 'upper';
+
+export interface MethodologyStep {
+  step: number;
+  title: string;
+  body: string;
+}
+
+export interface RoadmapPhase {
+  phase: number;
+  title: string;
+  body: string;
+}
+
+export interface ProposalSection {
+  section: number;
+  title: string;
+  bullets: string[];
+}
+
+export interface PricingItem {
+  sku: string;
+  description: string;
+  annual: number;
+}
+
+export interface IndustryVertical {
+  name: string;
+  outcome: string;
+  strategicContext: string;
+  approach: string;
+}
+
+export interface CtaOption {
+  label: string;
+  description: string;
+}
+
+export interface FirmTemplate {
+  tagline: string | null;
+  subtitle: string | null;
+  companyDescription: string | null;
+  whyUs: string | null;
+  methodology: MethodologyStep[];
+  roadmap: RoadmapPhase[];
+  proposalStructure: ProposalSection[];
+  pricingTemplate: PricingItem[];
+  industryVerticals: IndustryVertical[];
+  voiceGuide: string | null;
+  ctaOptions: CtaOption[];
+  themeFontFamily: string | null;
+  themeHeadlineCase: HeadlineCase | null;
+  themeAccentColor: string | null;
+  templateVersion: number;
+}
+
+export interface CustomTemplate {
+  id: string;
+  firmId: string;
+  name: string;
+  type: string;
+  body: string;
+  themeLocked: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const firmTemplateApi = {
+  /** Read current firm template fields. */
+  get: (): Promise<FirmTemplate> =>
+    api.get('/firm/template').then((r) => r.data.data),
+
+  /** Partial update — undefined fields untouched, null clears, scalar
+   *  + structured fields all accepted. */
+  patch: (patch: Partial<FirmTemplate>): Promise<FirmTemplate> =>
+    api.patch('/firm/template', patch).then((r) => r.data.data),
+
+  /** Strict Brand Pack ingest. Server returns 400 with missingSections
+   *  / malformedSection if the pack doesn't satisfy the 12-section
+   *  contract. */
+  ingestPack: (markdownPack: string): Promise<FirmTemplate> =>
+    api.post('/firm/template-pack', { markdownPack }).then((r) => r.data.data),
+
+  // CustomTemplate CRUD
+  listCustom: (): Promise<CustomTemplate[]> =>
+    api.get('/firm/custom-templates').then((r) => r.data.data),
+  createCustom: (input: { name: string; type: string; body: string; themeLocked?: boolean }): Promise<CustomTemplate> =>
+    api.post('/firm/custom-templates', input).then((r) => r.data.data),
+  getCustom: (id: string): Promise<CustomTemplate> =>
+    api.get(`/firm/custom-templates/${id}`).then((r) => r.data.data),
+  updateCustom: (id: string, patch: Partial<{ name: string; body: string; themeLocked: boolean }>): Promise<CustomTemplate> =>
+    api.patch(`/firm/custom-templates/${id}`, patch).then((r) => r.data.data),
+  deleteCustom: (id: string): Promise<void> =>
+    api.delete(`/firm/custom-templates/${id}`).then(() => undefined),
+};
+
 // ─── Renewal API (Phase 45.8 + Phase 48.2 firm-wide rollup) ──────────────────
 
 export type RenewalStatus =
