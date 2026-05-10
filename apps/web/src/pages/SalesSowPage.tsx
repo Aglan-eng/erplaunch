@@ -106,6 +106,20 @@ export function SalesSowPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sow-jobs', engagementId] }),
   });
 
+  // Phase 48.3 — derive the actual PDF filename from the latest job's
+  // file tree instead of guessing `Statement_of_Work_v${jobs.length}`.
+  // Phase 49 — moved above the early returns to satisfy
+  // react-hooks/rules-of-hooks; the `enabled` guard means it stays
+  // idle until the latest job is COMPLETE, same as before.
+  const jobs = jobsQuery.data ?? [];
+  const latestJob = jobs[0];
+  const previewQuery = useQuery({
+    queryKey: ['sow-preview-tree', engagementId, latestJob?.id, latestJob?.status],
+    queryFn: () => engagementsApi.listJobFiles(engagementId, latestJob!.id),
+    enabled: !!latestJob && latestJob.status === 'COMPLETE',
+    staleTime: 30_000,
+  });
+
   const denied = extractPermissionDenied(jobsQuery.error);
   if (denied) {
     return (
@@ -120,25 +134,10 @@ export function SalesSowPage() {
     return <p className="p-8 text-sm text-slate-500">Missing prospect id.</p>;
   }
 
-  const jobs = jobsQuery.data ?? [];
-  const latestJob = jobs[0];
   const signatures = sigsQuery.data?.signatures ?? [];
   const docusignConfigured = sigsQuery.data?.docusignConfigured ?? false;
   const latestSig = signatures[0];
   const isSigned = signatures.some((s) => s.status === 'SIGNED');
-
-  // Phase 48.3 — derive the actual PDF filename from the latest job's
-  // file tree instead of guessing `Statement_of_Work_v${jobs.length}`.
-  // The earlier guess broke whenever a SOW row was deleted or the
-  // version counter on EngagementSowVersion diverged from the job
-  // count. Reading the tree means we always serve the file that
-  // actually exists on disk.
-  const previewQuery = useQuery({
-    queryKey: ['sow-preview-tree', engagementId, latestJob?.id, latestJob?.status],
-    queryFn: () => engagementsApi.listJobFiles(engagementId, latestJob!.id),
-    enabled: !!latestJob && latestJob.status === 'COMPLETE',
-    staleTime: 30_000,
-  });
   const sowFilename = previewQuery.data
     ? findLatestSowFilename(previewQuery.data as { children?: unknown[] })
     : null;

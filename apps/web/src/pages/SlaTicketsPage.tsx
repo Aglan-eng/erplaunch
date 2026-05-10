@@ -87,10 +87,18 @@ export function SlaTicketsPage() {
     refetchInterval: 30_000,
   });
 
-  const allTickets = ticketsQuery.data ?? [];
+  // Phase 49 — depend on the raw query data so React's identity check
+  // settles correctly. Computing `allTickets` outside useMemo broke
+  // the dependency array because every render allocated a new
+  // empty-array fallback, busting the memo. Using the data ref
+  // directly + falling back inside the callback keeps deps stable.
+  const ticketsData = ticketsQuery.data;
   const filteredTickets = useMemo(
-    () => sortTicketsByBreachProximity(filterBySeverity(allTickets, severityFilter)),
-    [allTickets, severityFilter],
+    () =>
+      sortTicketsByBreachProximity(
+        filterBySeverity(ticketsData ?? [], severityFilter),
+      ),
+    [ticketsData, severityFilter],
   );
 
   const selectedRow = filteredTickets.find((t) => t.id === selectedId) ?? null;
