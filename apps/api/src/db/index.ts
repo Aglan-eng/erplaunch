@@ -131,6 +131,53 @@ async function createTables(db: Client) {
   try { await db.execute(`ALTER TABLE Firm ADD COLUMN salesCoverLetterTemplate TEXT`); } catch { /* idempotent */ }
   try { await db.execute(`ALTER TABLE Firm ADD COLUMN salesSowTermsTemplate TEXT`); } catch { /* idempotent */ }
 
+  // ─── Phase 49.1 — firm template / brand-pack fields ─────────────────────
+  // 14 NULL-able columns extending Firm with the rich template content
+  // generators consume: tagline + descriptions for cover letters,
+  // structured methodology / roadmap / proposal-structure / pricing
+  // scaffolds for the proposal generator (Phase 49.2), industry verticals
+  // for tailored outcomes, voice guide for headline tone, CTA options
+  // for closing copy, and theme-lock fields (font, headline case,
+  // accent colour) for the theme-locked template editor (Phase 49.4).
+  // templateVersion bumps on every Brand Pack ingest so the seed (49.5)
+  // can stay idempotent without re-importing on every deploy.
+  try { await db.execute(`ALTER TABLE Firm ADD COLUMN tagline TEXT`); } catch { /* idempotent */ }
+  try { await db.execute(`ALTER TABLE Firm ADD COLUMN subtitle TEXT`); } catch { /* idempotent */ }
+  try { await db.execute(`ALTER TABLE Firm ADD COLUMN companyDescription TEXT`); } catch { /* idempotent */ }
+  try { await db.execute(`ALTER TABLE Firm ADD COLUMN whyUs TEXT`); } catch { /* idempotent */ }
+  try { await db.execute(`ALTER TABLE Firm ADD COLUMN methodology TEXT`); } catch { /* idempotent */ }
+  try { await db.execute(`ALTER TABLE Firm ADD COLUMN roadmap TEXT`); } catch { /* idempotent */ }
+  try { await db.execute(`ALTER TABLE Firm ADD COLUMN proposalStructure TEXT`); } catch { /* idempotent */ }
+  try { await db.execute(`ALTER TABLE Firm ADD COLUMN pricingTemplate TEXT`); } catch { /* idempotent */ }
+  try { await db.execute(`ALTER TABLE Firm ADD COLUMN industryVerticals TEXT`); } catch { /* idempotent */ }
+  try { await db.execute(`ALTER TABLE Firm ADD COLUMN voiceGuide TEXT`); } catch { /* idempotent */ }
+  try { await db.execute(`ALTER TABLE Firm ADD COLUMN ctaOptions TEXT`); } catch { /* idempotent */ }
+  try { await db.execute(`ALTER TABLE Firm ADD COLUMN themeFontFamily TEXT`); } catch { /* idempotent */ }
+  try { await db.execute(`ALTER TABLE Firm ADD COLUMN themeHeadlineCase TEXT`); } catch { /* idempotent */ }
+  try { await db.execute(`ALTER TABLE Firm ADD COLUMN themeAccentColor TEXT`); } catch { /* idempotent */ }
+  try { await db.execute(`ALTER TABLE Firm ADD COLUMN templateVersion INTEGER DEFAULT 1`); } catch { /* idempotent */ }
+
+  // ─── Phase 49.4 — CustomTemplate table ─────────────────────────────────
+  // Firm-authored templates created via the editor's "Create new template"
+  // wizard. type matches a generator id (BRD, SOLUTION_DOC, PROPOSAL, etc.)
+  // OR is the literal 'CUSTOM' for free-form templates not tied to a
+  // built-in generator. body is markdown rendered at generation time.
+  // themeLocked is always 1 in v1 — kept as a column for forward-compat
+  // when Phase 50 adds firm-admin override.
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS CustomTemplate (
+      id            TEXT PRIMARY KEY,
+      firmId        TEXT NOT NULL REFERENCES Firm(id) ON DELETE CASCADE,
+      name          TEXT NOT NULL,
+      type          TEXT NOT NULL,
+      body          TEXT NOT NULL,
+      themeLocked   INTEGER NOT NULL DEFAULT 1,
+      createdAt     TEXT NOT NULL DEFAULT (datetime('now')),
+      updatedAt     TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_custom_template_firm ON CustomTemplate(firmId)`);
+
   await db.execute(`
     CREATE TABLE IF NOT EXISTS User (
       id           TEXT PRIMARY KEY,
@@ -3284,3 +3331,33 @@ export type {
   CloseoutChecklistRow,
   UpdateCloseoutChecklistItemArgs,
 } from './closeoutChecklist.js';
+
+// ─── Re-exports for Phase 49.1 firm template fields ─────────────────────────
+export {
+  getFirmTemplate,
+  updateFirmTemplate,
+  EMPTY_FIRM_TEMPLATE,
+  HEADLINE_CASES,
+  isHeadlineCase,
+} from './firmTemplate.js';
+export type {
+  FirmTemplate,
+  FirmTemplatePatch,
+  MethodologyStep,
+  RoadmapPhase,
+  ProposalSection,
+  PricingItem,
+  IndustryVertical,
+  CtaOption,
+  HeadlineCase,
+} from './firmTemplate.js';
+
+// ─── Re-exports for Phase 49.4 custom templates ─────────────────────────────
+export {
+  createCustomTemplate,
+  listCustomTemplatesByFirm,
+  findCustomTemplateById,
+  updateCustomTemplate,
+  deleteCustomTemplate,
+} from './customTemplate.js';
+export type { CustomTemplate } from './customTemplate.js';
