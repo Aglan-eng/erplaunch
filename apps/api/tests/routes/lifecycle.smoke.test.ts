@@ -39,6 +39,9 @@ import { slaRenewalsRoutes } from '../../src/routes/slaRenewals.js';
 import { ticketRoutes } from '../../src/routes/tickets.js';
 import { renewalRoutes } from '../../src/routes/renewal.js';
 import { discoveryLiteRoutes } from '../../src/routes/discoveryLite.js';
+import { firmTemplateRoutes } from '../../src/routes/firmTemplate.js';
+import { generateProposal } from '../../src/services/generators/proposalGenerator.js';
+import { getFirmTemplate } from '../../src/db/index.js';
 import {
   getDb,
   bootstrapFirmAdmin,
@@ -68,6 +71,7 @@ async function buildApp(): Promise<FastifyInstance> {
   await f.register(ticketRoutes, { prefix: '/api/v1' });
   await f.register(renewalRoutes, { prefix: '/api/v1' });
   await f.register(discoveryLiteRoutes, { prefix: '/api/v1' });
+  await f.register(firmTemplateRoutes, { prefix: '/api/v1' });
   await f.ready();
   return f;
 }
@@ -306,5 +310,168 @@ describe('Phase 48.5 — full lifecycle smoke test', () => {
     const ourRenewal = renewalRows.find((r) => r.engagementId === f.engagementId);
     expect(ourRenewal).toBeDefined();
     expect(ourRenewal!.renewalStatus).toBe('SIGNED');
+  });
+
+  // ─── Phase 49.6 — Brand Pack ingest → firm-voice proposal ───────────────
+  // Pinned acceptance: a firm that has ingested a Brand Pack produces
+  // proposal copy in firm voice (methodology, vertical, CTA, etc.) on
+  // every engagement. We don't run the full lifecycle here — the
+  // earlier test already exercises the pipeline. This focuses on the
+  // Phase 49 contract end-to-end: ingest → firmTemplate → generator
+  // → output contains firm-specific strings.
+  it('Phase 49 contract: ingest a Brand Pack and the proposal generator emits firm voice', async () => {
+    const f = await seedAtProspect();
+
+    const PACK = `# Test Pack
+
+## 1. Tagline
+
+Outcome-first ERP delivery — no buzzwords.
+
+## 2. Subtitle
+
+Sub.
+
+## 3. Company Description
+
+Test firm has shipped 100+ engagements across the GCC.
+
+## 4. Why Us
+
+We're outcome-first.
+
+## 5. Methodology
+
+### 5.1 Frame
+
+Baseline the operating model in two weeks.
+
+### 5.2 Build
+
+Cut the new system in 2-week increments.
+
+### 5.3 Land
+
+Go live with confidence; hypercare included.
+
+## 6. Roadmap
+
+### 6.1 Foundation
+
+Core modules live in 90 days.
+
+## 7. Proposal Structure
+
+### 7.1 Introduction
+
+- Anchor the pain
+
+## 8. Pricing Template
+
+### 8.1 Discovery
+
+**SKU:** TST-DISC-001
+**Description:** scoping
+**Annual:** $25,000
+
+## 9. Industry Verticals
+
+### 9.1 Retail and Wholesale Distribution
+
+**Outcome:** Single source of truth for SKU-level margin.
+**Strategic context:** Omnichannel operators consolidating ERP.
+**Approach:** Phase 1 GL + AR/AP, Phase 2 inventory.
+
+## 10. Voice Guide
+
+Sentence case. No buzzwords.
+
+## 11. CTA Options
+
+### 11.1 Lock in your kickoff date this week.
+
+cta body
+
+## 12. Theme
+
+**Font family:** Inter, sans-serif
+**Headline case:** sentence
+**Accent color:** #1a8754
+`;
+
+    // 1. Ingest the pack via the route — same path the seed + UI
+    // both use. Confirms the round-trip works under auth.
+    const ingestRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/firm/template-pack',
+      cookies: { token: f.token },
+      payload: { markdownPack: PACK },
+    });
+    expect(ingestRes.statusCode).toBe(200);
+
+    // 2. Read back via getFirmTemplate to confirm the row landed.
+    const template = await getFirmTemplate(f.firmId);
+    expect(template?.tagline).toContain('Outcome-first ERP delivery');
+    expect(template?.methodology.map((m) => m.title)).toEqual([
+      'Frame',
+      'Build',
+      'Land',
+    ]);
+
+    // 3. Call the upgraded proposal generator with the firm template
+    // pass-through. The Phase 49.2 changes mean the output should
+    // contain Frame/Build/Land (not the platform default Discovery /
+    // Configure / UAT / Go-Live / Hypercare list), the matched
+    // industry vertical's outcome, and the firm's CTA.
+    const proposal = generateProposal({
+      clientName: 'Test Client',
+      decisionMakerName: 'Jane',
+      adaptorId: 'netsuite',
+      adaptorName: 'NetSuite',
+      pains: ['reporting-lag'],
+      modulesOfInterest: [{ id: 'gl-ar-ap', label: 'GL / AR / AP' }],
+      estimatedUsers: 50,
+      estimatedLocations: 1,
+      geographyMultiEntity: 'single',
+      targetGoLive: '6-12m',
+      perUserPricing: {},
+      defaultPerUserPrice: 1000,
+      firmName: 'Test Firm',
+      preparedAt: '2026-05-10',
+      firmTagline: template?.tagline ?? null,
+      firmCompanyDescription: template?.companyDescription ?? null,
+      firmMethodology: template?.methodology,
+      firmRoadmap: template?.roadmap,
+      firmIndustryVerticals: template?.industryVerticals,
+      firmCtaOptions: template?.ctaOptions,
+      industry: 'retail',
+      firmCoverLetterTemplate: 'Hi {{decisionMaker}}, body. {{cta}}',
+    });
+
+    // Methodology was applied — Frame/Build/Land replace platform default.
+    const impl = proposal['Proposal/Implementation_Approach.html'];
+    expect(impl).toContain('<strong>Frame</strong>');
+    expect(impl).toContain('<strong>Build</strong>');
+    expect(impl).toContain('<strong>Land</strong>');
+    expect(impl).not.toContain('<strong>Configure</strong>');
+    expect(impl).toContain('a 3-phase methodology');
+
+    // Roadmap section appended.
+    expect(impl).toContain('<h2>Roadmap</h2>');
+    expect(impl).toContain('<strong>Foundation</strong>');
+
+    // Vertical match surfaced in Solution_Overview.
+    const so = proposal['Proposal/Solution_Overview.html'];
+    expect(so).toContain('For Retail and Wholesale Distribution');
+    expect(so).toContain('SKU-level margin');
+
+    // CTA injected into the cover letter.
+    const cover = proposal['Proposal/Cover_Letter.docx'];
+    expect(cover).toContain('Lock in your kickoff date this week');
+
+    // Why Us picks up the tagline + description from the pack.
+    const why = proposal['Proposal/Why_Us.docx'];
+    expect(why).toContain('Outcome-first ERP delivery');
+    expect(why).toContain('100+ engagements');
   });
 });
