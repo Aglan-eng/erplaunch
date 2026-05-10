@@ -40,8 +40,12 @@ import { ticketRoutes } from '../../src/routes/tickets.js';
 import { renewalRoutes } from '../../src/routes/renewal.js';
 import { discoveryLiteRoutes } from '../../src/routes/discoveryLite.js';
 import { firmTemplateRoutes } from '../../src/routes/firmTemplate.js';
+import { generatedDocumentsRoutes } from '../../src/routes/generatedDocuments.js';
 import { generateProposal } from '../../src/services/generators/proposalGenerator.js';
-import { getFirmTemplate } from '../../src/db/index.js';
+import {
+  getFirmTemplate,
+  createCustomTemplate,
+} from '../../src/db/index.js';
 import {
   getDb,
   bootstrapFirmAdmin,
@@ -72,6 +76,7 @@ async function buildApp(): Promise<FastifyInstance> {
   await f.register(renewalRoutes, { prefix: '/api/v1' });
   await f.register(discoveryLiteRoutes, { prefix: '/api/v1' });
   await f.register(firmTemplateRoutes, { prefix: '/api/v1' });
+  await f.register(generatedDocumentsRoutes, { prefix: '/api/v1' });
   await f.ready();
   return f;
 }
@@ -473,5 +478,108 @@ cta body
     const why = proposal['Proposal/Why_Us.docx'];
     expect(why).toContain('Outcome-first ERP delivery');
     expect(why).toContain('100+ engagements');
+  });
+
+  // ─── Phase 50.6 — Templates → Documents → multi-format export ────────────
+  // Pinned acceptance: a firm with a CustomTemplate can render it
+  // against an engagement, persist a GeneratedDocument, export to
+  // PDF / DOCX / PPTX (each returning the right magic bytes + mime),
+  // and delete it cleanly. This is the end-to-end Phase 50 contract.
+  it('Phase 50 contract: render template, persist document, export to 3 formats, delete', async () => {
+    const f = await seedAtProspect();
+
+    // 1. Author a CustomTemplate that exercises 5 tokens spanning
+    //    the firm / engagement / decisions / risks / system groups.
+    const tpl = await createCustomTemplate({
+      firmId: f.firmId,
+      name: 'Cutover Runbook',
+      type: 'CUSTOM',
+      body:
+        '# Cutover for {{engagement.client}}\n\n' +
+        'Prepared by **{{firm.name}}** on {{today}}.\n\n' +
+        '## Risks to watch\n\n{{risks.top5}}\n\n' +
+        '## Decisions still open\n\n{{decisions.pending}}\n',
+    });
+
+    // 2. POST /from-template/:templateId — renders + persists.
+    const created = await app.inject({
+      method: 'POST',
+      url: `/api/v1/engagements/${f.engagementId}/documents/from-template/${tpl.id}`,
+      cookies: { token: f.token },
+      payload: { name: 'Cutover v1' },
+    });
+    expect(created.statusCode).toBe(201);
+    const createBody = created.json() as {
+      data: {
+        document: { id: string; name: string; body: string };
+        missingTokens: string[];
+      };
+    };
+    expect(createBody.data.document.name).toBe('Cutover v1');
+    // Engagement seed used client name "Smoke Client" (see
+    // seedAtProspect above).
+    expect(createBody.data.document.body).toContain('Cutover for Smoke Client');
+    expect(createBody.data.document.body).toContain('Smoke Firm');
+    expect(createBody.data.missingTokens).toEqual([]);
+    const docId = createBody.data.document.id;
+
+    // 3. List documents for the engagement — the new row appears.
+    const listed = await app.inject({
+      method: 'GET',
+      url: `/api/v1/engagements/${f.engagementId}/documents`,
+      cookies: { token: f.token },
+    });
+    expect(listed.statusCode).toBe(200);
+    const listBody = listed.json() as { data: Array<{ id: string }> };
+    expect(listBody.data.find((d) => d.id === docId)).toBeDefined();
+
+    // 4. Export to PDF — magic bytes + right mime.
+    const pdfRes = await app.inject({
+      method: 'GET',
+      url: `/api/v1/engagements/${f.engagementId}/documents/${docId}/export?format=pdf`,
+      cookies: { token: f.token },
+    });
+    expect(pdfRes.statusCode).toBe(200);
+    expect(pdfRes.headers['content-type']).toContain('application/pdf');
+    const pdfBuf = pdfRes.rawPayload as Buffer;
+    expect(pdfBuf.toString('ascii', 0, 5)).toBe('%PDF-');
+
+    // 5. Export to DOCX — PK magic.
+    const docxRes = await app.inject({
+      method: 'GET',
+      url: `/api/v1/engagements/${f.engagementId}/documents/${docId}/export?format=docx`,
+      cookies: { token: f.token },
+    });
+    expect(docxRes.statusCode).toBe(200);
+    expect(docxRes.headers['content-type']).toContain('wordprocessingml');
+    const docxBuf = docxRes.rawPayload as Buffer;
+    expect(docxBuf[0]).toBe(0x50);
+    expect(docxBuf[1]).toBe(0x4b);
+
+    // 6. Export to PPTX — PK magic.
+    const pptxRes = await app.inject({
+      method: 'GET',
+      url: `/api/v1/engagements/${f.engagementId}/documents/${docId}/export?format=pptx`,
+      cookies: { token: f.token },
+    });
+    expect(pptxRes.statusCode).toBe(200);
+    expect(pptxRes.headers['content-type']).toContain('presentationml');
+    const pptxBuf = pptxRes.rawPayload as Buffer;
+    expect(pptxBuf[0]).toBe(0x50);
+    expect(pptxBuf[1]).toBe(0x4b);
+
+    // 7. DELETE → row gone. Subsequent GET 404s.
+    const del = await app.inject({
+      method: 'DELETE',
+      url: `/api/v1/engagements/${f.engagementId}/documents/${docId}`,
+      cookies: { token: f.token },
+    });
+    expect(del.statusCode).toBe(200);
+    const after = await app.inject({
+      method: 'GET',
+      url: `/api/v1/engagements/${f.engagementId}/documents/${docId}`,
+      cookies: { token: f.token },
+    });
+    expect(after.statusCode).toBe(404);
   });
 });
