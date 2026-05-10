@@ -178,6 +178,34 @@ async function createTables(db: Client) {
   `);
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_custom_template_firm ON CustomTemplate(firmId)`);
 
+  // ─── Phase 50.1 — GeneratedDocument table ─────────────────────────────
+  // Persists rendered template output per engagement. sourceTemplateId is
+  // NULL when the document came from a built-in generator (audit
+  // forward-compat — Phase 51 may wire built-ins through the same
+  // surface). sourceGeneratorId is NULL when it came from a
+  // CustomTemplate. Both NULL would mean a free-form authored doc
+  // (also future-phase). The canonical storage form is markdown; the
+  // exporters render to pdf/docx/pptx on demand. ON DELETE for the
+  // CustomTemplate FK is SET NULL deliberately — a firm admin deleting
+  // a template shouldn't cascade-wipe every doc generated from it.
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS GeneratedDocument (
+      id                TEXT PRIMARY KEY,
+      firmId            TEXT NOT NULL REFERENCES Firm(id),
+      engagementId      TEXT NOT NULL REFERENCES Engagement(id) ON DELETE CASCADE,
+      sourceTemplateId  TEXT REFERENCES CustomTemplate(id) ON DELETE SET NULL,
+      sourceGeneratorId TEXT,
+      name              TEXT NOT NULL,
+      body              TEXT NOT NULL,
+      format            TEXT NOT NULL DEFAULT 'markdown',
+      generatedBy       TEXT NOT NULL,
+      createdAt         TEXT NOT NULL,
+      updatedAt         TEXT NOT NULL
+    )
+  `);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_GeneratedDocument_engagementId ON GeneratedDocument(engagementId)`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_GeneratedDocument_firmId ON GeneratedDocument(firmId)`);
+
   await db.execute(`
     CREATE TABLE IF NOT EXISTS User (
       id           TEXT PRIMARY KEY,
@@ -3361,3 +3389,17 @@ export {
   deleteCustomTemplate,
 } from './customTemplate.js';
 export type { CustomTemplate } from './customTemplate.js';
+
+// ─── Re-exports for Phase 50.1 generated documents ──────────────────────────
+export {
+  createGeneratedDocument,
+  listGeneratedDocumentsByEngagement,
+  getGeneratedDocument,
+  updateGeneratedDocument,
+  deleteGeneratedDocument,
+} from './generatedDocument.js';
+export type {
+  GeneratedDocument,
+  DocumentFormat,
+  CreateGeneratedDocumentInput,
+} from './generatedDocument.js';
