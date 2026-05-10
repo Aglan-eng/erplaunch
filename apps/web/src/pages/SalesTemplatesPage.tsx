@@ -52,20 +52,18 @@ Sincerely,
 
 export function SalesTemplatesPage() {
   const qc = useQueryClient();
-  const [permissionDenied, setPermissionDenied] = useState(false);
+  // Phase 48.3 — derive permission-denied from the query error directly
+  // instead of mutating React state inside queryFn (the previous
+  // implementation called setPermissionDenied inside the catch block,
+  // which is an anti-pattern under React strict mode and inconsistent
+  // with the rest of the codebase). The retry callback below still
+  // skips retries on 403 so a forbidden response settles as a single
+  // error event the render path observes.
   const query = useQuery({
     queryKey: ['firm-sales-templates'],
     queryFn: async (): Promise<SalesTemplates> => {
-      try {
-        const { data } = await api.get('/firm/sales-templates');
-        return data.data as SalesTemplates;
-      } catch (err) {
-        const status = (err as { response?: { status?: number } })?.response?.status;
-        if (status === 403) {
-          setPermissionDenied(true);
-        }
-        throw err;
-      }
+      const { data } = await api.get('/firm/sales-templates');
+      return data.data as SalesTemplates;
     },
     retry: (count, err) => {
       const status = (err as { response?: { status?: number } })?.response?.status;
@@ -73,6 +71,8 @@ export function SalesTemplatesPage() {
       return count < 3;
     },
   });
+  const permissionDenied =
+    (query.error as { response?: { status?: number } } | undefined)?.response?.status === 403;
 
   const [form, setForm] = useState<SalesTemplates | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);

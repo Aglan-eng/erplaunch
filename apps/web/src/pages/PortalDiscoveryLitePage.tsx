@@ -102,7 +102,19 @@ export function PortalDiscoveryLitePage() {
   });
 
   const completeMutation = useMutation({
-    mutationFn: () => discoveryLiteApi.completeByToken(safeToken),
+    // Phase 48.3 — flush any pending autosave BEFORE marking complete
+    // so the very last answer the prospect typed isn't lost.
+    // completeByToken on the backend resolves against whatever was
+    // last saved, not the in-memory React state, so this PUT must
+    // succeed before the POST fires.
+    mutationFn: async () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (!shallowEqual(answers, lastSavedAnswers.current)) {
+        await discoveryLiteApi.putByToken(safeToken, answers);
+        lastSavedAnswers.current = answers;
+      }
+      return discoveryLiteApi.completeByToken(safeToken);
+    },
     onSuccess: (resp) => setSubmittedAt(resp.completedAt),
   });
 
@@ -189,6 +201,18 @@ export function PortalDiscoveryLitePage() {
 
   function setAnswer(qid: string, value: unknown): void {
     setAnswers((a) => ({ ...a, [qid]: value }));
+  }
+
+  // Phase 48.3 — flush the autosave debounce BEFORE advancing the
+  // step. Without this, a prospect who types an answer and clicks
+  // "Next" within the 600ms debounce window can lose their answer:
+  // the timer fires after the navigation but the closure captures
+  // the stale `answers` map. Mirrors the consultant-side
+  // SalesDiscoveryLitePage.flushAndAdvance fix from Phase 46.8.1.
+  function flushAndAdvance(): void {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    putMutation.mutate(answers);
+    setStepIndex((i) => Math.min(i + 1, totalSteps - 1));
   }
 
   return (
@@ -280,7 +304,7 @@ export function PortalDiscoveryLitePage() {
           {stepIndex < totalSteps - 1 ? (
             <button
               type="button"
-              onClick={() => setStepIndex((i) => Math.min(i + 1, totalSteps - 1))}
+              onClick={flushAndAdvance}
               disabled={
                 !currentQuestion ||
                 (currentQuestion.required &&

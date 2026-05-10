@@ -126,18 +126,26 @@ export function SalesSowPage() {
   const docusignConfigured = sigsQuery.data?.docusignConfigured ?? false;
   const latestSig = signatures[0];
   const isSigned = signatures.some((s) => s.status === 'SIGNED');
-  // Inline the trivial derivation rather than useMemo it — Hooks
-  // can't sit after the early returns above (rules-of-hooks). The
-  // computation is O(1) so the memo gave no real benefit.
-  const sowVersion = jobs.length;
 
+  // Phase 48.3 — derive the actual PDF filename from the latest job's
+  // file tree instead of guessing `Statement_of_Work_v${jobs.length}`.
+  // The earlier guess broke whenever a SOW row was deleted or the
+  // version counter on EngagementSowVersion diverged from the job
+  // count. Reading the tree means we always serve the file that
+  // actually exists on disk.
+  const previewQuery = useQuery({
+    queryKey: ['sow-preview-tree', engagementId, latestJob?.id, latestJob?.status],
+    queryFn: () => engagementsApi.listJobFiles(engagementId, latestJob!.id),
+    enabled: !!latestJob && latestJob.status === 'COMPLETE',
+    staleTime: 30_000,
+  });
+  const sowFilename = previewQuery.data
+    ? findLatestSowFilename(previewQuery.data as { children?: unknown[] })
+    : null;
+  const sowVersion = sowFilename ? extractVersionFromFilename(sowFilename) : jobs.length;
   const previewUrl =
-    latestJob && latestJob.status === 'COMPLETE'
-      ? engagementsApi.jobFileUrl(
-          engagementId,
-          latestJob.id,
-          `SOW/Statement_of_Work_v${sowVersion}.pdf`,
-        )
+    latestJob && latestJob.status === 'COMPLETE' && sowFilename
+      ? engagementsApi.jobFileUrl(engagementId, latestJob.id, `SOW/${sowFilename}`)
       : null;
 
   return (
@@ -759,4 +767,40 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 // "File ready" indicator above.
 export function approxBase64Bytes(b64: string): number {
   return Math.round(b64.length * 0.75);
+}
+
+// Phase 48.3 — locate the canonical SOW PDF inside the latest job's
+// file tree. The generator writes one PDF per job under SOW/. We pick
+// the highest-versioned one in case the user-facing tree ever shows
+// historical PDFs alongside the current version. Returns null when
+// the SOW folder is missing or empty (e.g. partial generation).
+type FileTreeNode = {
+  name: string;
+  type: 'dir' | 'file';
+  size?: number;
+  children?: FileTreeNode[];
+};
+
+export function findLatestSowFilename(root: { children?: unknown[] } | null | undefined): string | null {
+  if (!root || !Array.isArray(root.children)) return null;
+  const sowDir = (root.children as FileTreeNode[]).find(
+    (c) => c.type === 'dir' && c.name === 'SOW',
+  );
+  if (!sowDir || !Array.isArray(sowDir.children)) return null;
+  const pdfs = (sowDir.children as FileTreeNode[]).filter(
+    (c) => c.type === 'file' && c.name.toLowerCase().endsWith('.pdf'),
+  );
+  if (pdfs.length === 0) return null;
+  // Prefer the file whose version number is highest. Falls back to
+  // alphabetical order so an unversioned legacy file still surfaces.
+  pdfs.sort((a, b) => extractVersionFromFilename(b.name) - extractVersionFromFilename(a.name));
+  return pdfs[0].name;
+}
+
+// Pull the trailing version integer out of "Statement_of_Work_v3.pdf".
+// Returns 0 when no version is present so the alphabetical fallback
+// in findLatestSowFilename still produces a deterministic order.
+export function extractVersionFromFilename(name: string): number {
+  const m = name.match(/_v(\d+)\.pdf$/i);
+  return m ? Number(m[1]) : 0;
 }

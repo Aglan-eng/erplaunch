@@ -171,7 +171,7 @@ export function SalesProposalPage() {
             </div>
             <div className="flex items-center gap-2">
               <Link
-                to="/settings"
+                to="/settings/sales-templates"
                 className="text-xs font-semibold text-slate-500 hover:text-slate-800 inline-flex items-center gap-1"
               >
                 <Sparkles className="h-3.5 w-3.5" />

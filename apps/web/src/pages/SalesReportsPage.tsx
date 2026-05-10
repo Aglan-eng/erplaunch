@@ -1,11 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import {
   BarChart3, ChevronLeft, Download, Loader2, Trophy, AlertTriangle,
   Clock, TrendingDown,
 } from 'lucide-react';
-import { useMutation } from '@tanstack/react-query';
 import {
   salesReportsApi,
   type FunnelReport,
