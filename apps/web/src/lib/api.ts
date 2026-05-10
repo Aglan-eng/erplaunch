@@ -1165,6 +1165,79 @@ export const firmTemplateApi = {
     api.delete(`/firm/custom-templates/${id}`).then(() => undefined),
 };
 
+// ─── Generated Documents API (Phase 50) ─────────────────────────────────────
+
+export type DocumentFormat = 'markdown' | 'pdf' | 'docx' | 'pptx';
+
+export interface GeneratedDocument {
+  id: string;
+  firmId: string;
+  engagementId: string;
+  sourceTemplateId: string | null;
+  sourceGeneratorId: string | null;
+  name: string;
+  body: string;
+  format: DocumentFormat;
+  generatedBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const generatedDocumentsApi = {
+  /** Phase 50.4 — render a CustomTemplate against an engagement and
+   *  persist a GeneratedDocument. Returns the new document + the list
+   *  of unknown tokens the template referenced (so the modal can warn
+   *  the user). */
+  fromTemplate: (
+    engagementId: string,
+    templateId: string,
+    opts?: { name?: string },
+  ): Promise<{ document: GeneratedDocument; missingTokens: string[] }> =>
+    api
+      .post(
+        `/engagements/${engagementId}/documents/from-template/${templateId}`,
+        opts ?? {},
+      )
+      .then((r) => r.data.data),
+
+  list: (engagementId: string): Promise<GeneratedDocument[]> =>
+    api
+      .get(`/engagements/${engagementId}/documents`)
+      .then((r) => r.data.data as GeneratedDocument[]),
+
+  get: (engagementId: string, docId: string): Promise<GeneratedDocument> =>
+    api
+      .get(`/engagements/${engagementId}/documents/${docId}`)
+      .then((r) => r.data.data),
+
+  patch: (
+    engagementId: string,
+    docId: string,
+    patch: Partial<{ name: string; body: string }>,
+  ): Promise<GeneratedDocument> =>
+    api
+      .patch(`/engagements/${engagementId}/documents/${docId}`, patch)
+      .then((r) => r.data.data),
+
+  remove: (engagementId: string, docId: string): Promise<{ ok: boolean }> =>
+    api
+      .delete(`/engagements/${engagementId}/documents/${docId}`)
+      .then((r) => r.data.data),
+
+  /** Returns the absolute URL the browser can hit directly to download
+   *  the export. Authenticated via the existing cookie — we never POST
+   *  to download endpoints because browsers can't follow the response
+   *  through axios into a save-as dialog. */
+  exportUrl: (
+    engagementId: string,
+    docId: string,
+    format: 'pdf' | 'docx' | 'pptx',
+  ): string => {
+    const base = api.defaults.baseURL ?? '/api/v1';
+    return `${base}/engagements/${engagementId}/documents/${docId}/export?format=${format}`;
+  },
+};
+
 // ─── Renewal API (Phase 45.8 + Phase 48.2 firm-wide rollup) ──────────────────
 
 export type RenewalStatus =

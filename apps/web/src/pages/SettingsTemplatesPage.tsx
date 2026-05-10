@@ -26,6 +26,9 @@ import {
   stripNonThemeHexLiterals,
 } from '@/lib/templateThemeLock';
 import { cn } from '@/lib/utils';
+// Phase 50.5 — variable palette so authors don't have to memorise
+// the {{token}} vocabulary while writing templates.
+import { TemplateVariablePalette } from '@/components/TemplateVariablePalette';
 
 /**
  * Phase 49.4 — Settings → Templates editor.
@@ -206,25 +209,38 @@ export function SettingsTemplatesPage() {
           setTimeout(() => setSavedFlash(null), 3000);
         }} />
 
-        <h2 className="mt-8 mb-3 text-base font-bold text-slate-900">Firm voice</h2>
-        <ul className="space-y-2">
-          {FIELD_DEFINITIONS.map((f) => (
-            <FieldRow
-              key={String(f.key)}
-              label={f.label}
-              description={f.description}
-              value={tpl ? (tpl[f.key] as string | null) : null}
-              isEditing={editingKey === f.key}
-              onEdit={() => startEditing(f.key, tpl?.[f.key])}
-              onCancel={() => setEditingKey(null)}
-              editorBody={editorBody}
-              setEditorBody={setEditorBody}
-              onSave={saveEditor}
-              isSaving={patchMutation.isPending}
-              testIdSuffix={String(f.key)}
-            />
-          ))}
-        </ul>
+        {/* Phase 50.5 — variable palette + firm voice fields side-by-side
+            on wide screens, stacked on narrow ones. The palette lets
+            template authors copy `{{token}}` strings into the firm-voice
+            and custom-template editors without memorising the
+            vocabulary. */}
+        <div className="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="lg:col-span-2">
+            <h2 className="mb-3 text-base font-bold text-slate-900">Firm voice</h2>
+            <ul className="space-y-2">
+              {FIELD_DEFINITIONS.map((f) => (
+                <FieldRow
+                  key={String(f.key)}
+                  label={f.label}
+                  description={f.description}
+                  value={tpl ? (tpl[f.key] as string | null) : null}
+                  isEditing={editingKey === f.key}
+                  onEdit={() => startEditing(f.key, tpl?.[f.key])}
+                  onCancel={() => setEditingKey(null)}
+                  editorBody={editorBody}
+                  setEditorBody={setEditorBody}
+                  onSave={saveEditor}
+                  isSaving={patchMutation.isPending}
+                  testIdSuffix={String(f.key)}
+                />
+              ))}
+            </ul>
+          </div>
+          <div>
+            <h2 className="mb-3 text-base font-bold text-slate-900">Tokens</h2>
+            <TemplateVariablePalette />
+          </div>
+        </div>
 
         <h2 className="mt-8 mb-3 text-base font-bold text-slate-900">Custom templates</h2>
         <CustomTemplateList templates={customs} />

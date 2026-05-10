@@ -27,6 +27,7 @@ const SalesSowPage = lazy(() => import('./pages/SalesSowPage').then(m => ({ defa
 const SalesReportsPage = lazy(() => import('./pages/SalesReportsPage').then(m => ({ default: m.SalesReportsPage })));
 const SalesTemplatesPage = lazy(() => import('./pages/SalesTemplatesPage').then(m => ({ default: m.SalesTemplatesPage })));
 const SettingsTemplatesPage = lazy(() => import('./pages/SettingsTemplatesPage').then(m => ({ default: m.SettingsTemplatesPage })));
+const EngagementDocumentsPage = lazy(() => import('./pages/EngagementDocumentsPage').then(m => ({ default: m.EngagementDocumentsPage })));
 const VerticalWorkspacePage = lazy(() => import('./pages/VerticalWorkspacePage').then(m => ({ default: m.VerticalWorkspacePage })));
 const CustomAdaptorsPage = lazy(() => import('./pages/CustomAdaptorsPage').then(m => ({ default: m.CustomAdaptorsPage })));
 const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage').then(m => ({ default: m.ForgotPasswordPage })));
@@ -233,6 +234,15 @@ function AppRoutes() {
           element={
             <RequireAuth>
               <ErrorBoundary><SettingsTemplatesPage /></ErrorBoundary>
+            </RequireAuth>
+          }
+        />
+        {/* Phase 50.5 — engagement documents (generated from templates). */}
+        <Route
+          path="/engagements/:id/documents"
+          element={
+            <RequireAuth>
+              <ErrorBoundary><EngagementDocumentsPage /></ErrorBoundary>
             </RequireAuth>
           }
         />
