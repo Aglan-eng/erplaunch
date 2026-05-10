@@ -25,6 +25,7 @@ import { actionItemRoutes } from './routes/actionItems.js';
 import { teamRoutes } from './routes/team.js';
 import { closeoutRoutes } from './routes/closeout.js';
 import { slaPortfolioRoutes } from './routes/slaPortfolio.js';
+import { slaTicketsRoutes } from './routes/slaTickets.js';
 import { ticketRoutes } from './routes/tickets.js';
 import { renewalRoutes } from './routes/renewal.js';
 import { salesPipelineRoutes } from './routes/salesPipeline.js';
@@ -46,6 +47,10 @@ import './services/qaMessageAcceptor.js';
 import { threadsRoutes } from './routes/threads.js';
 // Phase 32 — DECISION_SIGNOFF acceptor + payload schema.
 import './services/decisionSignoffAcceptor.js';
+// Phase 48.1 — SUPPORT_TICKET acceptor + payload schema. Side-effect import
+// registers the acceptor that converts a portal "Open ticket" submission
+// into a real Phase 45.6 Ticket row when the SLA team accepts.
+import './services/supportTicketAcceptor.js';
 import { firmBrandingRoutes } from './routes/firmBranding.js';
 import { firmSalesTemplatesRoutes } from './routes/firmSalesTemplates.js';
 import { adaptorRoutes } from './routes/adaptors.js';
@@ -177,6 +182,10 @@ export async function buildServer() {
   await fastify.register(slaPortfolioRoutes, { prefix: '/api/v1' });
   // Phase 45.6 — In-app ticket queue (consultant side).
   await fastify.register(ticketRoutes, { prefix: '/api/v1' });
+  // Phase 48.1 — Firm-wide ticket queue rollup with SLA breach state.
+  // Powers /sla/tickets — separate route file so the per-engagement
+  // CRUD in tickets.ts stays focused.
+  await fastify.register(slaTicketsRoutes, { prefix: '/api/v1' });
   // Phase 45.8 — Renewal + expansion tracker.
   await fastify.register(renewalRoutes, { prefix: '/api/v1' });
   // Phase 46.1 — Sales pipeline + prospect quick-add.

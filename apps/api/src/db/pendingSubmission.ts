@@ -32,6 +32,7 @@ export type PendingSubmissionTargetType =
   | 'DATA_FILE'
   | 'QA_MESSAGE'
   | 'DECISION_SIGNOFF'
+  | 'SUPPORT_TICKET'
   | 'TEST';
 
 export type PendingSubmissionStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED';

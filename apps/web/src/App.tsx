@@ -18,6 +18,7 @@ const EmailDomainPage = lazy(() => import('./pages/EmailDomainPage').then(m => (
 const TeamPage = lazy(() => import('./pages/TeamPage').then(m => ({ default: m.TeamPage })));
 const StatusReportPage = lazy(() => import('./pages/StatusReportPage').then(m => ({ default: m.StatusReportPage })));
 const SlaPortfolioPage = lazy(() => import('./pages/SlaPortfolioPage').then(m => ({ default: m.SlaPortfolioPage })));
+const SlaTicketsPage = lazy(() => import('./pages/SlaTicketsPage').then(m => ({ default: m.SlaTicketsPage })));
 const SalesPipelinePage = lazy(() => import('./pages/SalesPipelinePage').then(m => ({ default: m.SalesPipelinePage })));
 const SalesDiscoveryLitePage = lazy(() => import('./pages/SalesDiscoveryLitePage').then(m => ({ default: m.SalesDiscoveryLitePage })));
 const PortalDiscoveryLitePage = lazy(() => import('./pages/PortalDiscoveryLitePage').then(m => ({ default: m.PortalDiscoveryLitePage })));
@@ -150,6 +151,16 @@ function AppRoutes() {
           element={
             <RequireAuth>
               <ErrorBoundary><SlaPortfolioPage /></ErrorBoundary>
+            </RequireAuth>
+          }
+        />
+        {/* Phase 48.1 — SLA Engineer's ticket queue. Firm-wide list +
+            two-pane detail with status / assignee / message thread. */}
+        <Route
+          path="/sla/tickets"
+          element={
+            <RequireAuth>
+              <ErrorBoundary><SlaTicketsPage /></ErrorBoundary>
             </RequireAuth>
           }
         />

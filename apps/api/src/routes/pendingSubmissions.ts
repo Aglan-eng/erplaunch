@@ -54,6 +54,7 @@ const ALLOWED_TARGET_TYPES: ReadonlySet<PendingSubmissionTargetType> = new Set([
   'DATA_FILE',
   'QA_MESSAGE',
   'DECISION_SIGNOFF',
+  'SUPPORT_TICKET',
   'TEST',
 ]);
 
@@ -123,7 +124,7 @@ export async function pendingSubmissionsRoutes(fastify: FastifyInstance) {
         return reply.code(400).send({
           error: {
             code: 'VALIDATION_ERROR',
-            message: 'targetType must be one of WIZARD_ANSWER / DATA_FILE / QA_MESSAGE / DECISION_SIGNOFF / TEST',
+            message: 'targetType must be one of WIZARD_ANSWER / DATA_FILE / QA_MESSAGE / DECISION_SIGNOFF / SUPPORT_TICKET / TEST',
           },
         });
       }

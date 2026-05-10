@@ -424,6 +424,14 @@ export function DashboardPage() {
             >
               SLA
             </Link>
+            {/* Phase 48.1 — quick access to the firm-wide ticket queue. */}
+            <Link
+              to="/sla/tickets"
+              className="text-sm text-gray-500 hover:text-gray-900 px-2 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+              title="Support ticket queue"
+            >
+              Tickets
+            </Link>
             <Link
               to="/dashboard/archived"
               className="text-sm text-gray-500 hover:text-gray-900 px-2 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"

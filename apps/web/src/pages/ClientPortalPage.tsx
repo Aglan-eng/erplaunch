@@ -18,6 +18,10 @@ import { PortalSupportFooter } from '@/components/portal/PortalSupportFooter';
 import { PortalClientQuestions } from '@/components/portal/PortalClientQuestions';
 import { PortalMessaging } from '@/components/portal/PortalMessaging';
 import { PortalDecisionSignoffs } from '@/components/portal/PortalDecisionSignoffs';
+// Phase 48.1 — portal "Open a ticket" form. Lives below the decisions
+// + closeout cards so support requests sit alongside the other
+// authenticated-member actions.
+import { PortalOpenTicket } from '@/components/portal/PortalOpenTicket';
 import { PortalCloseoutSignoff } from '@/components/portal/PortalCloseoutSignoff';
 
 // Phase 27 — fallback when the API somehow doesn't return a branding block.
@@ -641,6 +645,14 @@ export function ClientPortalPage() {
             Returns null otherwise. */}
         {!!authenticatedMember && (
           <PortalCloseoutSignoff token={token!} authenticated={!!authenticatedMember} />
+        )}
+
+        {/* Phase 48.1 — Open a support ticket. Available to every
+            authenticated client member regardless of stage; useful
+            during implementation (issues, blockers) and the SLA phase
+            (post-go-live questions). */}
+        {!!authenticatedMember && (
+          <PortalOpenTicket authenticated={!!authenticatedMember} />
         )}
 
         {/* Data Collection */}

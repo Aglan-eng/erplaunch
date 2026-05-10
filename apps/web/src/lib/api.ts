@@ -526,6 +526,21 @@ export const portalApi = {
       })
       .then((r) => r.data.data),
 
+  /** Phase 48.1 — submit a support ticket from the portal. Lands as a
+   *  PENDING SUPPORT_TICKET submission; SLA team accept creates a real
+   *  Ticket row. */
+  submitSupportTicket: (input: {
+    title: string;
+    severity: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+    description?: string;
+  }) =>
+    api
+      .post('/portal/submissions', {
+        targetType: 'SUPPORT_TICKET',
+        payload: input,
+      })
+      .then((r) => r.data.data),
+
   /** Phase 45.4 — read the current closeout sign-off state. Shape:
    *    { ready: false, stage, reason }       — engagement not in CLOSEOUT
    *    { ready: true,  stage, status, signedBy, signedAt }  — in CLOSEOUT */
@@ -1039,4 +1054,101 @@ export const teamApi = {
 
   listAuditLog: (): Promise<RoleAuditEntry[]> =>
     api.get('/firm/role-audit-log').then((r) => r.data.data),
+};
+
+// ─── Tickets API (Phase 45.6 + Phase 48.1 firm-wide rollup) ──────────────────
+
+export type TicketSeverity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+export type TicketStatus =
+  | 'OPEN'
+  | 'IN_PROGRESS'
+  | 'WAITING_CUSTOMER'
+  | 'RESOLVED'
+  | 'CLOSED';
+
+export interface Ticket {
+  id: string;
+  engagementId: string;
+  firmId: string;
+  title: string;
+  description: string | null;
+  severity: TicketSeverity;
+  status: TicketStatus;
+  openedByUserId: string | null;
+  openedByMemberId: string | null;
+  assigneeUserId: string | null;
+  firstResolvedAt: string | null;
+  closedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TicketSlaState {
+  firstResponseTargetHours: number;
+  resolutionTargetHours: number;
+  firstResponseBreached: boolean;
+  resolutionBreached: boolean;
+  firstResponseMinutesRemaining: number | null;
+  resolutionMinutesRemaining: number | null;
+}
+
+export interface FirmTicketRow extends Ticket {
+  clientName: string;
+  sla: TicketSlaState;
+}
+
+export interface TicketMessage {
+  id: string;
+  ticketId: string;
+  senderType: 'CLIENT' | 'SUPPORT';
+  senderUserId: string | null;
+  senderMemberId: string | null;
+  body: string;
+  createdAt: string;
+}
+
+export interface TicketDetail {
+  ticket: Ticket;
+  messages: TicketMessage[];
+  sla: TicketSlaState;
+  firstSupportReplyAt: string | null;
+}
+
+export const ticketsApi = {
+  /** Phase 48.1 — firm-wide tickets queue, with SLA breach state per row. */
+  listFirmTickets: (params?: { status?: TicketStatus | 'ALL'; assignee?: string }): Promise<FirmTicketRow[]> =>
+    api
+      .get('/sla/tickets', { params })
+      .then((r) => r.data.data as FirmTicketRow[]),
+
+  /** Phase 45.6 — engagement-scoped list. */
+  listForEngagement: (engagementId: string, status?: TicketStatus | 'ALL'): Promise<Ticket[]> =>
+    api
+      .get(`/engagements/${engagementId}/tickets`, { params: status ? { status } : undefined })
+      .then((r) => r.data.data),
+
+  /** Phase 45.6 — open a new ticket (consultant side). */
+  create: (
+    engagementId: string,
+    payload: { title: string; severity: TicketSeverity; description?: string },
+  ): Promise<Ticket> =>
+    api.post(`/engagements/${engagementId}/tickets`, payload).then((r) => r.data.data),
+
+  /** Phase 45.6 — fetch ticket detail (ticket + messages + sla state). */
+  detail: (engagementId: string, ticketId: string): Promise<TicketDetail> =>
+    api.get(`/engagements/${engagementId}/tickets/${ticketId}`).then((r) => r.data.data),
+
+  /** Phase 45.6 — append a SUPPORT-side message to the thread. */
+  addMessage: (engagementId: string, ticketId: string, body: string): Promise<TicketMessage> =>
+    api
+      .post(`/engagements/${engagementId}/tickets/${ticketId}/messages`, { body })
+      .then((r) => r.data.data),
+
+  /** Phase 45.6 — update status / assignee. */
+  patch: (
+    engagementId: string,
+    ticketId: string,
+    body: { status?: TicketStatus; assigneeUserId?: string | null },
+  ): Promise<Ticket> =>
+    api.patch(`/engagements/${engagementId}/tickets/${ticketId}`, body).then((r) => r.data.data),
 };
