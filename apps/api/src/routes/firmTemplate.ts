@@ -25,6 +25,7 @@ import { authenticate } from '../middleware/auth.js';
 import { requirePermission } from '../middleware/rbac.js';
 import * as db from '../db/index.js';
 import { parseBrandPack } from '../services/brandPackParser.js';
+import { seedXelerateBrandPack } from '../db/seeds/049-xelerate-brand-pack.js';
 
 const HEADLINE_CASE_SCHEMA = z.enum(['sentence', 'title', 'upper']);
 const HEX_COLOR = z.string().regex(/^#[0-9a-fA-F]{6}$/);
@@ -259,6 +260,64 @@ export async function firmTemplateRoutes(fastify: FastifyInstance): Promise<void
       }
       await db.deleteCustomTemplate(id);
       return reply.send({ data: { ok: true } });
+    },
+  );
+
+  // ── POST /admin/firm/:firmId/reseed-brand-pack (Phase 50.9.3) ─────────
+  // Manual force-reseed of the Brand Pack from the on-disk seed file.
+  // Clears the firm's `brandPackContentHash` first so the seed's
+  // idempotency gate sees a hash mismatch and re-parses + writes.
+  //
+  // Why this exists: even with the auto-run wiring in initDb (Phase
+  // 50.9.3), if an ops engineer ALSO hand-edited firm content via the
+  // UI between deploys, they may want to drop the hand-edit and
+  // resync to the seed file without a redeploy. This endpoint is the
+  // emergency lever. Gated to APP_ADMIN — `firmId` in the URL is the
+  // target, but the caller must be APP_ADMIN on their OWN firm
+  // (single-tenant safety: a malicious admin on firm A can't reseed
+  // firm B's content because the seed only touches the `xelerate`
+  // slug).
+  fastify.post(
+    '/admin/firm/:firmId/reseed-brand-pack',
+    { preHandler: requirePermission('WRITE', 'ROLES') },
+    async (request, reply) => {
+      const { firmId } = request.params as { firmId: string };
+      // Defence-in-depth: confirm the caller's firm matches the URL
+      // firmId. The matrix already restricts WRITE on ROLES to
+      // APP_ADMIN on that firm, but this catches future regressions
+      // where someone widens the permission and forgets the scoping.
+      if (request.jwtUser.firmId !== firmId) {
+        return reply.code(403).send({ error: { code: 'FORBIDDEN' } });
+      }
+      const client = db.getDb();
+      await client.execute({
+        sql: `UPDATE Firm SET brandPackContentHash = NULL WHERE id = ?`,
+        args: [firmId],
+      });
+      const result = await seedXelerateBrandPack();
+      if (result.status === 'PARSE_ERROR') {
+        return reply.code(500).send({
+          error: { code: 'PARSE_ERROR', message: result.message },
+        });
+      }
+      try {
+        await db.logActivity(
+          '',
+          firmId,
+          'BRAND_PACK_RESEEDED',
+          `Manual reseed: ${result.status} (${result.message})`,
+        );
+      } catch {
+        // Non-fatal — audit log is best-effort.
+      }
+      return reply.send({
+        data: {
+          status: result.status,
+          templateVersion: result.templateVersion,
+          contentHash: result.contentHash,
+          message: result.message,
+        },
+      });
     },
   );
 }

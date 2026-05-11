@@ -357,3 +357,104 @@ describe('CustomTemplate CRUD', () => {
     expect(cross.statusCode).toBe(404);
   });
 });
+
+/**
+ * Phase 50.9.3 — admin reseed-brand-pack endpoint.
+ *
+ * Surface contract:
+ *   POST /api/v1/admin/firm/:firmId/reseed-brand-pack
+ *     - APP_ADMIN only (gated via the matrix's WRITE on ROLES)
+ *     - URL firmId must match the caller's JWT firmId (defence-in-depth
+ *       against future permission widening)
+ *     - clears Firm.brandPackContentHash, then runs the seed
+ *     - returns the seed's structured result
+ *
+ * The seed itself is exercised in tests/db/seeds/049-xelerate-brand-pack.test.ts;
+ * here we cover only the route wiring + scoping.
+ */
+async function seedXelerateFirmAdmin(): Promise<Fixture> {
+  // Same shape as seedFirmAdmin but pins the slug to 'xelerate' so
+  // the Phase 50.8 seed actually engages — the slug is the lookup
+  // key.
+  const db = getDb();
+  const firmId = createId();
+  const userId = createId();
+  const now = new Date().toISOString();
+  await db.execute({
+    sql: `INSERT INTO Firm (id, name, slug, plan, createdAt) VALUES (?,?,?,?,?)`,
+    args: [firmId, 'Xelerate', 'xelerate', 'STARTER', now],
+  });
+  const hash = await bcrypt.hash('x', 4);
+  await db.execute({
+    sql: `INSERT INTO User (id, firmId, email, name, passwordHash, role, createdAt) VALUES (?,?,?,?,?,?,?)`,
+    args: [userId, firmId, `${userId}@example.com`, 'Admin', hash, 'APP_ADMIN', now],
+  });
+  await bootstrapFirmAdmin({ firmId, userId });
+  const token = app.jwt.sign({
+    userId,
+    firmId,
+    role: 'APP_ADMIN',
+    name: 'Admin',
+    email: `${userId}@example.com`,
+  });
+  return { firmId, userId, token };
+}
+
+describe('POST /api/v1/admin/firm/:firmId/reseed-brand-pack', () => {
+  it('reseeds when called as the firm admin (clears hash, runs seed)', async () => {
+    const f = await seedXelerateFirmAdmin();
+    const r = await app.inject({
+      method: 'POST',
+      url: `/api/v1/admin/firm/${f.firmId}/reseed-brand-pack`,
+      cookies: { token: f.token },
+    });
+    expect(r.statusCode).toBe(200);
+    const body = r.json() as {
+      data: { status: string; templateVersion?: number; contentHash?: string };
+    };
+    expect(body.data.status).toBe('SEEDED');
+    expect(body.data.contentHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(body.data.templateVersion).toBeGreaterThanOrEqual(2);
+  });
+
+  it('reseeds twice in a row — second call also returns SEEDED because we clear the hash', async () => {
+    const f = await seedXelerateFirmAdmin();
+    const first = await app.inject({
+      method: 'POST',
+      url: `/api/v1/admin/firm/${f.firmId}/reseed-brand-pack`,
+      cookies: { token: f.token },
+    });
+    expect(first.statusCode).toBe(200);
+    const second = await app.inject({
+      method: 'POST',
+      url: `/api/v1/admin/firm/${f.firmId}/reseed-brand-pack`,
+      cookies: { token: f.token },
+    });
+    expect(second.statusCode).toBe(200);
+    const body = second.json() as { data: { status: string } };
+    // Endpoint always clears the hash first, so the seed never hits
+    // SKIPPED_HASH_MATCH from this call path.
+    expect(body.data.status).toBe('SEEDED');
+  });
+
+  it('rejects unauthenticated callers (401)', async () => {
+    const r = await app.inject({
+      method: 'POST',
+      url: `/api/v1/admin/firm/${createId()}/reseed-brand-pack`,
+    });
+    expect(r.statusCode).toBe(401);
+  });
+
+  it('rejects callers targeting a different firm (403)', async () => {
+    const a = await seedXelerateFirmAdmin();
+    // Caller is a; URL says target firmId from a different admin's
+    // firm. Should 403 — the route confirms URL firmId === jwt firmId.
+    const otherFirmId = createId();
+    const r = await app.inject({
+      method: 'POST',
+      url: `/api/v1/admin/firm/${otherFirmId}/reseed-brand-pack`,
+      cookies: { token: a.token },
+    });
+    expect(r.statusCode).toBe(403);
+  });
+});

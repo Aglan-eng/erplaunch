@@ -98,6 +98,39 @@ export async function initDb() {
     console.error('[db] backfillAppAdmins failed:', err instanceof Error ? err.message : String(err));
   }
 
+  // Phase 50.9.3 — auto-run the Xelerate Brand Pack seed on every
+  // boot. Safe because the seed's content-hash idempotency (Phase
+  // 50.8) makes re-runs with unchanged pack content a true no-op
+  // (status: 'SKIPPED_HASH_MATCH'). Without this wiring the seed
+  // only ever ran via the manual `pnpm seed:xelerate-brand-pack`
+  // script, which is why the placeholder tagline was still on prod
+  // even after Phase 50.8 supposedly fixed the idempotency: nothing
+  // actually invoked the seed function. Now every deploy that picks
+  // up a Brand Pack edit propagates it automatically. Skipped firms
+  // (no `xelerate` slug — dev / test DBs) log nothing.
+  try {
+    const { seedXelerateBrandPack } = await import(
+      './seeds/049-xelerate-brand-pack.js'
+    );
+    const result = await seedXelerateBrandPack();
+    if (result.status === 'SEEDED') {
+      console.log(
+        `[db] seedXelerateBrandPack: SEEDED firm=${result.firmId} templateVersion=${result.templateVersion} hash=${result.contentHash?.slice(0, 12)}…`,
+      );
+    } else if (result.status === 'PARSE_ERROR') {
+      console.error(`[db] seedXelerateBrandPack: PARSE_ERROR ${result.message}`);
+    }
+    // SKIPPED_HASH_MATCH and SKIPPED_NO_FIRM are the quiet success
+    // paths — nothing to log on a no-op.
+  } catch (err) {
+    // Non-fatal — a seed failure must not block API startup. Ops can
+    // re-run via the admin endpoint or the CLI script after the fact.
+    console.error(
+      '[db] seedXelerateBrandPack failed:',
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+
   return _client;
 }
 

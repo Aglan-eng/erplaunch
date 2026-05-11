@@ -36,7 +36,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { initDb, getDb, updateFirmTemplate } from '../index.js';
+import { initDb, getDb, updateFirmTemplate, getFirmTemplate } from '../index.js';
 import { parseBrandPack } from '../../services/brandPackParser.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -121,6 +121,35 @@ export async function seedXelerateBrandPack(): Promise<SeedResult> {
     sql: `UPDATE Firm SET brandPackContentHash = ? WHERE id = ?`,
     args: [contentHash, firmId],
   });
+
+  // Phase 50.9.3 — post-write read-back assertion. If the parser
+  // silently produced a no-op patch (e.g. the section keys shifted
+  // and parseBrandPack returned an empty object that updateFirmTemplate
+  // accepted without writing), templateVersion would bump but the real
+  // content wouldn't land. Reading back and checking the tagline marker
+  // catches that class of bug — the seed surfaces ASSERT_FAIL loudly
+  // instead of silently leaving the placeholder content on prod (the
+  // exact symptom that motivated Phase 50.9.3).
+  //
+  // The marker is the lead phrase from the canonical
+  // xelerate-brand-pack.md. If we edit the pack and the lead changes,
+  // this assertion needs to be updated in lockstep — that's intentional:
+  // it forces a deliberate update rather than a silent drift.
+  const persisted = await getFirmTemplate(firmId);
+  const persistedTagline = persisted?.tagline ?? '';
+  if (!persistedTagline.includes('Business Enabling Technologies')) {
+    return {
+      status: 'PARSE_ERROR',
+      firmId,
+      contentHash,
+      templateVersion: updated?.templateVersion,
+      message:
+        `Post-write tagline assertion FAILED — read-back tagline does not contain the real Xelerate marker. ` +
+        `Got: ${JSON.stringify(persistedTagline.slice(0, 80))}. ` +
+        `This indicates the parser silently produced a no-op patch or the seed file content drifted. ` +
+        `Templates version was bumped to ${updated?.templateVersion} but the firm voice may still be the placeholder.`,
+    };
+  }
 
   return {
     status: 'SEEDED',
