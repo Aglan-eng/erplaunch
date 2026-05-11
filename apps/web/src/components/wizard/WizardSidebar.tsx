@@ -5,7 +5,7 @@ import {
   CircleCheck, Circle, ChevronRight, ChevronDown,
   FolderKanban, TriangleAlert, CircleAlert, BookOpen,
   CalendarClock, Truck, Activity, Settings2, Database,
-  Zap, Sparkles, ShieldCheck, FileText, Inbox, MessageCircle, Wand2, Flag,
+  Zap, Sparkles, ShieldCheck, FileText, FilePlus, Inbox, MessageCircle, Wand2, Flag,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useWizardStore } from '@/stores/wizardStore';
@@ -400,13 +400,20 @@ export function WizardSidebar({ engagementId, sectionProgress, licenseComplete, 
   // than a setCurrentSection click handler. Visually identical to the
   // in-wizard items below but the active-state matcher reads from the
   // router location, not the wizardStore.
+  //
+  // Phase 50.9.4 — added `activeWhen` so the "Generate Document"
+  // shortcut (same pathname, different query string) can claim the
+  // active highlight without trampling the plain "Documents" entry.
   const renderLinkItem = (item: {
     key: string;
     label: string;
     to: string;
     icon: React.ElementType;
+    activeWhen?: (location: { pathname: string; search: string }) => boolean;
   }) => {
-    const isActive = location.pathname === item.to;
+    const isActive = item.activeWhen
+      ? item.activeWhen(location)
+      : location.pathname === item.to && !location.search;
     const Icon = item.icon;
     return (
       <Link
@@ -616,7 +623,13 @@ export function WizardSidebar({ engagementId, sectionProgress, licenseComplete, 
             (the last item in the Project Mgmt section) and above the
             Customizations divider per the spec. The link is gated on
             engagementId being present so the firm-level list views
-            don't get a dangling Documents entry. */}
+            don't get a dangling Documents entry.
+
+            Phase 50.9.4 — Generate Document shortcut. Same target URL
+            with `?action=generate` so the documents page auto-opens
+            the template-picker modal on mount. Reduces "make a doc"
+            from 6 clicks (open page → click button → pick → name →
+            generate → done) to 3 (sidebar → pick → generate). */}
         {engagementId && (
           <div className="mt-0.5 space-y-0.5 pl-1">
             {renderLinkItem({
@@ -624,6 +637,18 @@ export function WizardSidebar({ engagementId, sectionProgress, licenseComplete, 
               label: 'Documents',
               to: `/engagements/${engagementId}/documents`,
               icon: FileText,
+              activeWhen: (loc) =>
+                loc.pathname === `/engagements/${engagementId}/documents` &&
+                !loc.search.includes('action=generate'),
+            })}
+            {renderLinkItem({
+              key: 'generate-document',
+              label: 'Generate Document',
+              to: `/engagements/${engagementId}/documents?action=generate`,
+              icon: FilePlus,
+              activeWhen: (loc) =>
+                loc.pathname === `/engagements/${engagementId}/documents` &&
+                loc.search.includes('action=generate'),
             })}
           </div>
         )}

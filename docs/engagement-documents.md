@@ -57,6 +57,14 @@ Two ways:
    you'll see in the body.
 6. Click **Done** to close. The document is already persisted.
 
+**Shortcut (Phase 50.9.4):** the sidebar also has a **Generate
+Document** entry directly below Documents. Clicking it routes to
+`/engagements/:id/documents?action=generate` which auto-opens the
+template-picker modal on mount — three clicks total from sidebar to
+generated doc instead of six. The `?action=generate` param is
+stripped from the URL after the modal opens so a refresh doesn't
+re-trigger it.
+
 **Via API:**
 ```http
 POST /api/v1/engagements/:engagementId/documents/from-template/:templateId
@@ -155,6 +163,101 @@ scoped to their engagement.
   with per-row download dropdown.
 - `apps/web/src/pages/EngagementDocumentsPage.tsx` —
   `/engagements/:id/documents` route.
+
+## Troubleshooting (Phase 50.9)
+
+The Phase 50.9 hotfix sprint addressed three real bugs that all
+blocked customer-facing PDF exports. These troubleshooting steps
+explain how to diagnose them if they recur in a future regression.
+
+### Generated PDF shows wrong colors (platform purple, not firm brand)
+
+**Symptom:** the cover page, H1 dividers, footer, and headings render
+in ERPLaunch purple (`#4f46e5`/`#818cf8`) regardless of the firm's
+configured brand colors.
+
+**Root cause (Phase 50.9.1):** `getFirmBranding` returns the platform
+purple as a concrete fallback when `Firm.primaryColor` is NULL.
+Brand Pack ingest sets `Firm.themeAccentColor` but never
+`Firm.primaryColor`, so a firm that only ingested a Brand Pack (no
+Settings → Branding override) sees the platform purple slip through.
+
+**Fix paths:**
+1. The route layer now uses `getFirmBrandingForExport` which returns
+   the raw nullable column values.
+2. The exporters use a shared `resolveExportColors` helper with the
+   fallback chain `primary ← Firm.primaryColor → Brand Pack
+   themeAccentColor → PLATFORM_PRIMARY`.
+
+**If colors are wrong again:** check whether `Firm.primaryColor` is
+NULL on the prod row AND whether `Firm.themeAccentColor` is also
+NULL. If both are NULL, the firm needs to either set Settings →
+Branding colors OR ingest a Brand Pack with a §12 Theme accent
+color. If only `primaryColor` is NULL but accent is set, generate
+a fresh PDF and confirm the accent color is rendering — if not, the
+resolver may have regressed.
+
+### Generated PDF has overlapping text lines
+
+**Symptom:** cover-letter paragraphs render on top of each other,
+bullet lists collapse onto a single y-coordinate, headings sit on
+top of body text. File is unreadable.
+
+**Root cause (Phase 50.9.2):** the PDF exporter's `renderInline`
+terminated with `doc.text('', { continued: false })`. The
+empty-string terminator doesn't reliably advance pdfkit's cursor;
+combined with tight `moveDown(0.5)` paragraph spacing and bullets
+emitted via a `continued:true` chain that never properly closed,
+adjacent blocks could share a baseline.
+
+**Fix paths:**
+1. Inline tokens are now flattened into per-style `InlineRun` chunks
+   and emitted with the LAST run carrying `continued: false` + real
+   text (so pdfkit's wrapping logic flushes the line).
+2. Bullet glyphs are prepended to the same paragraph as the body
+   content — `list_item_open` is now a no-op.
+3. `doc.lineGap(2)` on the document plus bumped `moveDown` values
+   (`0.8` after paragraphs, `0.6` after headings, `1.2` before H2,
+   `0.9` before H3) give breathing room.
+
+**If overlap returns:** the regression test
+`apps/api/tests/services/exporters/markdownToPdf.overlap.test.ts`
+should catch it — it uses pdfjs-dist to extract per-item baselines
+and asserts no bucket holds >5 items at the same y. File a P0 if
+that test ever goes green but the rendered PDF still shows overlap;
+that means the assertion's tolerance has drifted.
+
+### Generated content shows the old placeholder copy
+
+**Symptom:** Xelerate firm voice still reads "Outcome-first ERP
+delivery for ambitious mid-market operators" instead of the real
+"Business Enabling Technologies — your trusted Oracle NetSuite
+partner across MENA." Even after a deploy.
+
+**Root cause (Phase 50.9.3):** the Phase 50.8 content-hash seed
+function existed but nothing invoked it — the seed lived behind a
+manual `pnpm seed:xelerate-brand-pack` CLI script with no deploy
+hook. The placeholder content never got overwritten.
+
+**Fix paths:**
+1. `initDb()` now auto-runs `seedXelerateBrandPack()` after the
+   APP_ADMIN backfill. Safe because the hash-based idempotency
+   makes re-runs a true no-op.
+2. The seed now reads back the persisted tagline after write and
+   asserts it contains the canonical Xelerate marker — fails loudly
+   instead of silently leaving the placeholder.
+3. Admin force-reseed endpoint:
+   `POST /api/v1/admin/firm/:firmId/reseed-brand-pack`
+   clears `brandPackContentHash` and re-runs the seed. Use when ops
+   need to drop a hand-edit without redeploying.
+
+**If the placeholder returns:** call the admin endpoint as an
+APP_ADMIN on the affected firm. If that returns `PARSE_ERROR`,
+inspect the seed-file content for malformed sections (`MISSING_SECTIONS`
+/ `MALFORMED_SECTION` / `INVALID_THEME` codes). If it returns
+`SEEDED` but the firm-template GET still shows the placeholder,
+check that the matching `slug` in the seed lookup is still
+`'xelerate'` and not a renamed alternative.
 
 ## Out of scope (Phase 51+)
 

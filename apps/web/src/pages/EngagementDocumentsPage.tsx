@@ -1,10 +1,20 @@
-import React, { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronLeft, FileText, Plus } from 'lucide-react';
 import { engagementsApi } from '@/lib/api';
 import { EngagementDocumentsList } from '@/components/EngagementDocumentsList';
 import { GenerateFromTemplateModal } from '@/components/GenerateFromTemplateModal';
+
+/**
+ * Phase 50.9.4 — pure helper for the auto-open contract. Extracted so
+ * unit tests can pin the URL → modal-state mapping without needing a
+ * DOM. The page's mount effect calls this against the URLSearchParams
+ * and triggers `setModalOpen(true)` when it returns true.
+ */
+export function shouldAutoOpenGenerateModal(params: URLSearchParams): boolean {
+  return params.get('action') === 'generate';
+}
 
 /**
  * Phase 50.5 — Engagement documents page.
@@ -14,11 +24,31 @@ import { GenerateFromTemplateModal } from '@/components/GenerateFromTemplateModa
  * button that opens the picker modal. The wizard sidebar can link
  * here in a future polish pass; for now consumers reach the page via
  * direct URL or a future engagement-detail page.
+ *
+ * Phase 50.9.4 — accepts `?action=generate` query param. When present
+ * on mount, auto-opens the template-picker modal so the sidebar
+ * "Generate Document" shortcut lands the user one click away from
+ * generation instead of two. The query param is stripped after the
+ * modal opens so a refresh doesn't re-open it on a stale page state.
  */
 export function EngagementDocumentsPage() {
   const { id } = useParams<{ id: string }>();
   const engagementId = id ?? '';
   const [modalOpen, setModalOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Auto-open modal when navigating from the sidebar shortcut.
+  // Stripping the param after open keeps the URL clean — otherwise a
+  // refresh would re-open the modal on top of whatever state the user
+  // had landed on (e.g. mid-edit of a generated doc).
+  useEffect(() => {
+    if (shouldAutoOpenGenerateModal(searchParams)) {
+      setModalOpen(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete('action');
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   const engagementQuery = useQuery({
     queryKey: ['engagement', engagementId],
