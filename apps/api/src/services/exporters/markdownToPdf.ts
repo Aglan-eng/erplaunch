@@ -56,39 +56,114 @@ function caseHeadline(text: string, headlineCase: RenderState['headlineCase']): 
   return applyHeadlineCase(text, headlineCase);
 }
 
-function renderInline(state: RenderState, tokens: Token[]): void {
-  const { doc } = state;
-  doc.fontSize(11).fillColor('#1e293b').font(PLATFORM_FONT);
+interface InlineRun {
+  text: string;
+  font: 'regular' | 'bold' | 'italic' | 'code';
+}
+
+/**
+ * Phase 50.9.2 — flatten markdown-it inline tokens into per-style
+ * runs so the renderer can emit one `doc.text` call per run with a
+ * proper `continued:false` terminator on the final run.
+ *
+ * The pre-50.9.2 implementation used a free-form chain of
+ * `doc.text(content, { continued: true })` calls and terminated with
+ * `doc.text('', { continued: false })`. The empty-string terminator
+ * doesn't reliably advance pdfkit's cursor, which caused the next
+ * paragraph to overprint the previous one (the "lines on top of each
+ * other" symptom from prod).
+ *
+ * Collecting into runs lets us emit the LAST run with `continued:
+ * false` carrying its real text — pdfkit's wrapping logic treats that
+ * as a proper line terminator and the cursor advances correctly.
+ */
+function inlineToRuns(tokens: Token[]): InlineRun[] {
+  const runs: InlineRun[] = [];
+  let font: InlineRun['font'] = 'regular';
+  const push = (text: string, f: InlineRun['font'] = font): void => {
+    if (text.length === 0) return;
+    runs.push({ text, font: f });
+  };
   for (const t of tokens) {
     switch (t.type) {
       case 'text':
-        doc.text(t.content, { continued: true });
+        push(t.content);
         break;
       case 'strong_open':
-        doc.font(`${PLATFORM_FONT}-Bold`);
+        font = 'bold';
         break;
       case 'strong_close':
-        doc.font(PLATFORM_FONT);
+        font = 'regular';
         break;
       case 'em_open':
-        doc.font(`${PLATFORM_FONT}-Oblique`);
+        font = 'italic';
         break;
       case 'em_close':
-        doc.font(PLATFORM_FONT);
+        font = 'regular';
         break;
       case 'code_inline':
-        doc.font('Courier').text(` ${t.content} `, { continued: true }).font(PLATFORM_FONT);
+        push(t.content, 'code');
         break;
       case 'softbreak':
       case 'hardbreak':
-        doc.text(' ', { continued: true });
+        push(' ');
         break;
       default:
-        if (t.content) doc.text(t.content, { continued: true });
+        if (t.content) push(t.content);
         break;
     }
   }
-  doc.text('', { continued: false });
+  return runs;
+}
+
+function fontNameFor(run: InlineRun['font']): string {
+  switch (run) {
+    case 'bold':
+      return `${PLATFORM_FONT}-Bold`;
+    case 'italic':
+      return `${PLATFORM_FONT}-Oblique`;
+    case 'code':
+      return 'Courier';
+    default:
+      return PLATFORM_FONT;
+  }
+}
+
+/**
+ * Emit a paragraph of runs at the current cursor position. The first
+ * run starts at the current y (optionally with `indent`); each
+ * subsequent run is appended with `continued: true`; the LAST run
+ * uses `continued: false` so pdfkit advances the cursor to the next
+ * line. If `prefix` is provided (e.g. the bullet glyph "• ") it's
+ * prepended as a regular-weight run in front of the inline content.
+ */
+function emitParagraph(
+  state: RenderState,
+  runs: InlineRun[],
+  opts: { indent?: number; prefix?: string } = {},
+): void {
+  const { doc } = state;
+  doc.fontSize(11).fillColor('#1e293b').font(PLATFORM_FONT);
+
+  const allRuns: InlineRun[] = [];
+  if (opts.prefix) allRuns.push({ text: opts.prefix, font: 'regular' });
+  allRuns.push(...runs);
+
+  if (allRuns.length === 0) {
+    doc.text(' ', { continued: false });
+    return;
+  }
+
+  for (let i = 0; i < allRuns.length; i++) {
+    const run = allRuns[i];
+    const isLast = i === allRuns.length - 1;
+    doc.font(fontNameFor(run.font));
+    const textOpts: PDFKit.Mixins.TextOptions = { continued: !isLast };
+    if (i === 0 && opts.indent !== undefined) {
+      textOpts.indent = opts.indent;
+    }
+    doc.text(run.text, textOpts);
+  }
 }
 
 function drawCoverPage(doc: PDFKit.PDFDocument, meta: ExportMeta, state: RenderState): void {
@@ -122,7 +197,12 @@ function drawCoverPage(doc: PDFKit.PDFDocument, meta: ExportMeta, state: RenderS
 
   if (meta.firm.tagline) {
     doc
-      .moveDown(0.3)
+      // Phase 50.9.2 — moveDown(0.3) at fontSize(36) → moveDown(0.3)
+      // at fontSize(14) doesn't reset between size changes, so the
+      // 0.3 was being measured against the 36pt title's line height
+      // and undershooting. Bump to 0.8 for a visible gap below the
+      // title.
+      .moveDown(0.8)
       .font(PLATFORM_FONT)
       .fontSize(14)
       .fillColor(state.accent)
@@ -131,7 +211,7 @@ function drawCoverPage(doc: PDFKit.PDFDocument, meta: ExportMeta, state: RenderS
 
   if (meta.engagement?.client) {
     doc
-      .moveDown(0.4)
+      .moveDown(1.0)
       .font(PLATFORM_FONT)
       .fontSize(11)
       .fillColor(state.secondary)
@@ -195,6 +275,13 @@ export async function markdownToPdf(
     },
     bufferPages: true,
   });
+  // Phase 50.9.2 — explicit lineGap so wrapped body lines have
+  // breathing room. Default lineGap is 0, which combined with the
+  // tight pre-50.9.2 paragraph spacing made adjacent lines overlap
+  // (the "stacked text" symptom prod users reported). Setting it
+  // post-construction because pdfkit's published `PDFDocumentOptions`
+  // type omits the option even though the runtime accepts it.
+  doc.lineGap(2);
 
   const chunks: Buffer[] = [];
   doc.on('data', (chunk: Buffer) => chunks.push(chunk));
@@ -240,20 +327,22 @@ export async function markdownToPdf(
           drawSectionDivider(doc, text, state);
         } else if (level === 2) {
           doc
-            .moveDown(0.8)
+            .moveDown(1.2)
             .font(`${PLATFORM_FONT}-Bold`)
             .fontSize(18)
             .fillColor(state.primary)
             .text(text);
         } else {
           doc
-            .moveDown(0.6)
+            .moveDown(0.9)
             .font(`${PLATFORM_FONT}-Bold`)
             .fontSize(13)
             .fillColor(state.accent)
             .text(text);
         }
-        doc.font(PLATFORM_FONT).fontSize(11).fillColor('#1e293b').moveDown(0.4);
+        // Phase 50.9.2 — bumped to 0.6 so headings have visible
+        // air below them before the next paragraph starts.
+        doc.font(PLATFORM_FONT).fontSize(11).fillColor('#1e293b').moveDown(0.6);
         // Skip past the inline + heading_close — we already rendered.
         i += 2;
         break;
@@ -261,10 +350,28 @@ export async function markdownToPdf(
       case 'paragraph_open': {
         const inline = tokens[i + 1];
         if (inline && inline.type === 'inline' && inline.children) {
-          renderInline(state, inline.children);
+          const runs = inlineToRuns(inline.children);
+          if (state.listDepth > 0) {
+            // Inside a bullet list — prepend the bullet glyph + indent
+            // as part of the same paragraph so the bullet and body land
+            // on one line and the next bullet starts on a fresh line.
+            // Pre-50.9.2 the bullet was emitted in list_item_open with
+            // continued:true, then paragraph_open started a new
+            // continued chain that never properly terminated.
+            emitParagraph(state, runs, {
+              prefix: '• ',
+              indent: 8 + (state.listDepth - 1) * 16,
+            });
+          } else {
+            emitParagraph(state, runs);
+          }
           i++;
         }
-        doc.moveDown(0.5);
+        // Paragraph spacing — bumped from 0.5 to 0.8 (~11pt vs ~7pt)
+        // so adjacent paragraphs don't visually merge. Combined with
+        // the document-level lineGap:2, this gives ~13pt total
+        // breathing room between paragraphs.
+        doc.moveDown(0.8);
         break;
       }
       case 'bullet_list_open':
@@ -272,13 +379,11 @@ export async function markdownToPdf(
         break;
       case 'bullet_list_close':
         state.listDepth = Math.max(0, state.listDepth - 1);
-        doc.moveDown(0.3);
+        doc.moveDown(0.5);
         break;
-      case 'list_item_open': {
-        const indent = 8 + state.listDepth * 16;
-        doc.text('• ', { continued: true, indent });
+      case 'list_item_open':
+        // The bullet glyph is emitted by paragraph_open when listDepth > 0.
         break;
-      }
       case 'list_item_close':
         break;
       case 'hr':
