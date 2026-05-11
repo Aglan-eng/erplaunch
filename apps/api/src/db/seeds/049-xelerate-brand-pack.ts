@@ -1,22 +1,29 @@
 /**
- * Phase 49.5 — Xelerate Brand Pack auto-populate.
+ * Phase 49.5 + 50.8 — Xelerate Brand Pack auto-populate.
  *
  * Reads the canonical Xelerate Brand Pack from
  *   apps/api/src/db/seeds/data/xelerate-brand-pack.md
  * parses it via the Phase 49.3 brandPackParser, and writes the result
  * into the Xelerate firm row.
  *
- * Idempotency:
+ * Idempotency (Phase 50.8 change):
  *   - Looks up Xelerate by slug (`xelerate`) — NOT by hardcoded id.
  *     The original spec referenced firmId `lppcl9vlc2f2dw93zs3e0y07`
  *     but that's environment-specific; matching by slug works across
  *     dev / staging / prod without per-env config.
- *   - Skips entirely if templateVersion > 1 (the firm has already
- *     been ingested or has been edited via the UI). This is the
- *     "skip if already seeded" guard the spec required so re-running
- *     this on every Render deploy doesn't blow away firm-level edits.
+ *   - Computes SHA-256 of the seed file. Skips if the firm's stored
+ *     `brandPackContentHash` matches — re-running with unchanged
+ *     content is a no-op. Editing the seed file picks up the change
+ *     on the next deploy.
  *   - Skips silently if no `xelerate` slug exists in this DB (dev
  *     environments where the seed hasn't created Xelerate yet).
+ *
+ * Why the change: the Phase 49.5 "skip when templateVersion > 1"
+ * rule meant that once the seed ran once, subsequent edits to the
+ * pack file (e.g. to land the real Xelerate identity over the
+ * placeholder) were ignored. Content-hash idempotency makes the
+ * seed file the source of truth — any edit there propagates on the
+ * next deploy without manual intervention.
  *
  * Run via:
  *   pnpm --filter @ofoq/api exec tsx src/db/seeds/049-xelerate-brand-pack.ts
@@ -26,19 +33,32 @@
  */
 
 import fs from 'fs';
+import crypto from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { initDb, getDb, updateFirmTemplate, getFirmTemplate } from '../index.js';
+import { initDb, getDb, updateFirmTemplate } from '../index.js';
 import { parseBrandPack } from '../../services/brandPackParser.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PACK_PATH = path.join(__dirname, 'data', 'xelerate-brand-pack.md');
 
 export interface SeedResult {
-  status: 'SEEDED' | 'SKIPPED_VERSIONED' | 'SKIPPED_NO_FIRM' | 'PARSE_ERROR';
+  status: 'SEEDED' | 'SKIPPED_HASH_MATCH' | 'SKIPPED_NO_FIRM' | 'PARSE_ERROR';
   templateVersion?: number;
   firmId?: string;
+  contentHash?: string;
   message: string;
+}
+
+/**
+ * Compute the canonical SHA-256 hash of the pack contents. The hash
+ * is taken over the raw bytes of the file with no normalisation — a
+ * trailing newline edit or whitespace change WILL re-trigger the
+ * seed, which is the intended behaviour (any author edit should
+ * propagate).
+ */
+function hashPackContent(markdown: string): string {
+  return crypto.createHash('sha256').update(markdown).digest('hex');
 }
 
 /**
@@ -51,10 +71,13 @@ export async function seedXelerateBrandPack(): Promise<SeedResult> {
   // 1. Find the Xelerate firm by slug. We DON'T hard-code an id —
   // the slug is the stable identifier across environments.
   const firmRes = await db.execute({
-    sql: `SELECT id FROM Firm WHERE slug = ? LIMIT 1`,
+    sql: `SELECT id, brandPackContentHash FROM Firm WHERE slug = ? LIMIT 1`,
     args: ['xelerate'],
   });
-  const firmId = (firmRes.rows[0] as { id?: string } | undefined)?.id;
+  const firmRow = firmRes.rows[0] as
+    | { id?: string; brandPackContentHash?: string | null }
+    | undefined;
+  const firmId = firmRow?.id;
   if (!firmId) {
     return {
       status: 'SKIPPED_NO_FIRM',
@@ -62,37 +85,49 @@ export async function seedXelerateBrandPack(): Promise<SeedResult> {
     };
   }
 
-  // 2. Idempotency gate: if templateVersion > 1, the firm has been
-  // ingested or hand-edited. Don't re-import.
-  const existing = await getFirmTemplate(firmId);
-  if (existing && existing.templateVersion > 1) {
+  // 2. Load the Brand Pack from disk and compute its content hash.
+  const markdown = fs.readFileSync(PACK_PATH, 'utf8');
+  const contentHash = hashPackContent(markdown);
+
+  // 3. Idempotency gate: if the stored hash matches the current
+  // file's hash, the seed has nothing to do.
+  if (firmRow.brandPackContentHash && firmRow.brandPackContentHash === contentHash) {
     return {
-      status: 'SKIPPED_VERSIONED',
+      status: 'SKIPPED_HASH_MATCH',
       firmId,
-      templateVersion: existing.templateVersion,
-      message: `Xelerate firm already at templateVersion ${existing.templateVersion} — skipping seed.`,
+      contentHash,
+      message: `Xelerate Brand Pack content hash unchanged (${contentHash.slice(0, 12)}…) — skipping seed.`,
     };
   }
 
-  // 3. Load the Brand Pack from disk and parse it.
-  const markdown = fs.readFileSync(PACK_PATH, 'utf8');
+  // 4. Parse the pack. Fail loudly on parser errors so a malformed
+  // edit doesn't silently corrupt the firm template.
   const parsed = parseBrandPack(markdown);
   if (!parsed.ok) {
     return {
       status: 'PARSE_ERROR',
       firmId,
+      contentHash,
       message: `Brand Pack parse failed: ${parsed.message}`,
     };
   }
 
-  // 4. Write the parsed patch. updateFirmTemplate bumps templateVersion
-  // automatically, so the next run lands in the SKIPPED_VERSIONED branch.
+  // 5. Write the parsed patch + the new content hash atomically.
+  // updateFirmTemplate bumps templateVersion automatically; the
+  // hash column is updated in a second statement so a parse failure
+  // above leaves the previous content's hash in place.
   const updated = await updateFirmTemplate(firmId, parsed.patch);
+  await db.execute({
+    sql: `UPDATE Firm SET brandPackContentHash = ? WHERE id = ?`,
+    args: [contentHash, firmId],
+  });
+
   return {
     status: 'SEEDED',
     firmId,
+    contentHash,
     templateVersion: updated?.templateVersion,
-    message: `Ingested Xelerate Brand Pack — templateVersion now ${updated?.templateVersion}`,
+    message: `Ingested Xelerate Brand Pack (hash ${contentHash.slice(0, 12)}…) — templateVersion now ${updated?.templateVersion}`,
   };
 }
 

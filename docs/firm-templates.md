@@ -181,10 +181,32 @@ The parser returns a structured 400 error with one of these codes:
 ## Idempotency + versioning
 
 - `Firm.templateVersion` increments by 1 on every successful update.
-- The Phase 49.5 seed script (`pnpm --filter @ofoq/api seed:xelerate-brand-pack`) skips if `templateVersion > 1` to avoid clobbering UI edits.
-- Phase 50 will introduce template versioning + rollback. For now,
-  the editor saves are destructive — use git or a backup strategy if
-  you want history.
+  Bumps whether the update came from the seed runner, the API, or the
+  UI editor — so the counter reflects "total mutation count," not
+  "seed-vs-manual."
+- **Phase 50.8 content-hash seed idempotency.** The seed script
+  (`pnpm --filter @ofoq/api seed:xelerate-brand-pack`) computes a
+  SHA-256 of the seed file at `apps/api/src/db/seeds/data/xelerate-brand-pack.md`
+  and compares it to the value stored in `Firm.brandPackContentHash`.
+  Matching → skip (true no-op, no version bump). Differing → re-parse
+  and ingest, then update the hash.
+  - First run after a fresh deploy → SEEDED (file's hash didn't
+    match the NULL stored hash).
+  - Subsequent deploys with no pack edits → SKIPPED_HASH_MATCH.
+  - Edit the seed file in git → next deploy picks it up
+    automatically. No manual `templateVersion` reset needed.
+  - Hand-edits made via the UI BETWEEN deploys are NOT clobbered
+    so long as the seed file hasn't changed (hash still matches);
+    once the seed file changes, the UI edits ARE overwritten
+    because the seed is the firm-wide source of truth.
+- This replaces the Phase 49.5 rule ("skip when `templateVersion > 1`")
+  which refused to overwrite hand-edited firm voice even when the
+  seed was explicitly meant to update it. The hash-based approach
+  treats the seed file as the source of truth — author the pack,
+  commit it, redeploy.
+- Phase 51 will introduce per-document versioning + rollback. The
+  Brand Pack itself is still managed via git history of the seed
+  file.
 
 ## Files of interest
 

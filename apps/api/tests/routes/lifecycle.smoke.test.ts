@@ -582,4 +582,90 @@ cta body
     });
     expect(after.statusCode).toBe(404);
   });
+
+  // ─── Phase 50.8 — Real Xelerate Brand Pack lands in proposal output ─────
+  // Pinned acceptance: after the Phase 50.8 seed runs against a
+  // Xelerate-slugged firm, the proposal generator emits firm voice
+  // carrying the REAL Xelerate identity markers ("Business Enabling
+  // Technologies" tagline, "United OFOQ" heritage in the Why_Us
+  // section) and NOT the Phase 49.5 placeholder copy.
+  it('Phase 50.8 contract: seed real Xelerate pack, generate proposal, assert real identity in output', async () => {
+    // Seed a firm with slug "xelerate" so the seed picks it up.
+    const db = getDb();
+    const firmId = createId();
+    const userId = createId();
+    const now = new Date().toISOString();
+    await db.execute({
+      sql: `INSERT INTO Firm (id, name, slug, plan, displayName, primaryColor, secondaryColor, createdAt) VALUES (?,?,?,?,?,?,?,?)`,
+      args: [
+        firmId,
+        'Xelerate',
+        'xelerate',
+        'STARTER',
+        'Xelerate',
+        '#0A1A2F',
+        '#1FAE5C',
+        now,
+      ],
+    });
+    const passwordHash = await bcrypt.hash('irrelevant', 4);
+    await db.execute({
+      sql: `INSERT INTO User (id, firmId, email, name, passwordHash, role, createdAt) VALUES (?,?,?,?,?,?,?)`,
+      args: [
+        userId,
+        firmId,
+        `${userId}@xelerate.example`,
+        'Xelerate Smoke',
+        passwordHash,
+        'APP_ADMIN',
+        now,
+      ],
+    });
+    await bootstrapFirmAdmin({ firmId, userId });
+
+    // Run the seed.
+    const { seedXelerateBrandPack } = await import(
+      '../../src/db/seeds/049-xelerate-brand-pack.js'
+    );
+    const seedResult = await seedXelerateBrandPack();
+    expect(seedResult.status).toBe('SEEDED');
+    expect(seedResult.firmId).toBe(firmId);
+
+    // The firm template carries the real Xelerate identity.
+    const tpl = await getFirmTemplate(firmId);
+    expect(tpl?.tagline).toContain('Business Enabling Technologies');
+    expect(tpl?.companyDescription).toContain('United OFOQ');
+
+    // Generate the proposal pulling the real template values.
+    const proposal = generateProposal({
+      clientName: 'Acme Industries',
+      decisionMakerName: 'Jane Tate',
+      adaptorId: 'netsuite',
+      adaptorName: 'NetSuite',
+      pains: ['multi-entity-consolidation'],
+      modulesOfInterest: [{ id: 'gl-ar-ap', label: 'GL / AR / AP' }],
+      estimatedUsers: 50,
+      estimatedLocations: 1,
+      geographyMultiEntity: 'single',
+      targetGoLive: '6-12m',
+      perUserPricing: {},
+      defaultPerUserPrice: 1200,
+      firmName: 'Xelerate',
+      preparedAt: '2026-05-11',
+      firmTagline: tpl?.tagline ?? null,
+      firmCompanyDescription: tpl?.companyDescription ?? null,
+      firmMethodology: tpl?.methodology,
+      firmRoadmap: tpl?.roadmap,
+      firmIndustryVerticals: tpl?.industryVerticals,
+      firmCtaOptions: tpl?.ctaOptions,
+      industry: null,
+    });
+
+    // Why_Us carries the real Xelerate identity, not the placeholder.
+    const why = proposal['Proposal/Why_Us.docx'];
+    expect(why).toContain('Business Enabling Technologies');
+    expect(why).toContain('United OFOQ');
+    // The Phase 49.5 placeholder phrasing is gone.
+    expect(why).not.toContain('Outcome-first ERP delivery for ambitious');
+  });
 });

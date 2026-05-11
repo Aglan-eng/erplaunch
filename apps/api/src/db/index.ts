@@ -156,6 +156,14 @@ async function createTables(db: Client) {
   try { await db.execute(`ALTER TABLE Firm ADD COLUMN themeHeadlineCase TEXT`); } catch { /* idempotent */ }
   try { await db.execute(`ALTER TABLE Firm ADD COLUMN themeAccentColor TEXT`); } catch { /* idempotent */ }
   try { await db.execute(`ALTER TABLE Firm ADD COLUMN templateVersion INTEGER DEFAULT 1`); } catch { /* idempotent */ }
+  // Phase 50.8 — content-hash idempotency for the seed runner. Stores
+  // the SHA-256 of the most recently ingested Brand Pack so re-running
+  // the seed with unchanged content is a true no-op, while editing the
+  // pack file and re-deploying picks up the change automatically.
+  // Replaces the earlier "skip when templateVersion > 1" rule which
+  // refused to overwrite hand-edited firm voice even when the seed
+  // was explicitly meant to update it.
+  try { await db.execute(`ALTER TABLE Firm ADD COLUMN brandPackContentHash TEXT`); } catch { /* idempotent */ }
 
   // ─── Phase 49.4 — CustomTemplate table ─────────────────────────────────
   // Firm-authored templates created via the editor's "Create new template"

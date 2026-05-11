@@ -43,7 +43,10 @@ The editor enforces the firm's theme on every save:
 Two ways:
 
 **From the engagement page:**
-1. Open `/engagements/:id/documents`.
+1. Open the engagement wizard and click **Documents** in the
+   left sidebar (sits below "Activity Feed", above
+   "Customizations"). The link goes to
+   `/engagements/:id/documents`.
 2. Click **Generate from template**.
 3. Step 1 — pick a CustomTemplate from the firm's library.
 4. Step 2 — optionally override the document name (default:
