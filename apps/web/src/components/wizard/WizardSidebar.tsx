@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   CircleCheck, Circle, ChevronRight, ChevronDown,
@@ -198,6 +199,9 @@ function MiniProgress({ pct, color = 'stroke-brand-400' }: { pct: number; color?
 
 export function WizardSidebar({ engagementId, sectionProgress, licenseComplete, projectSetupComplete = false }: WizardSidebarProps) {
   const { currentSection, setCurrentSection } = useWizardStore();
+  // Phase 50.8 — route location feeds the active-state matcher for the
+  // Documents link (which routes OUT of the wizard to a sibling page).
+  const location = useLocation();
 
   // Phase 43.5 — current user's permissions for this engagement.
   // The Project Mgmt section filters items by permission below.
@@ -391,6 +395,54 @@ export function WizardSidebar({ engagementId, sectionProgress, licenseComplete, 
     );
   };
 
+  // Phase 50.8 — sidebar entries that route OUT of the wizard (to a
+  // sibling page like /engagements/:id/documents) need a Link rather
+  // than a setCurrentSection click handler. Visually identical to the
+  // in-wizard items below but the active-state matcher reads from the
+  // router location, not the wizardStore.
+  const renderLinkItem = (item: {
+    key: string;
+    label: string;
+    to: string;
+    icon: React.ElementType;
+  }) => {
+    const isActive = location.pathname === item.to;
+    const Icon = item.icon;
+    return (
+      <Link
+        key={item.key}
+        to={item.to}
+        data-testid={`sidebar-link-${item.key}`}
+        className={cn(
+          'w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 transition-all duration-150 group relative',
+          isActive
+            ? 'bg-brand-50 text-brand-700'
+            : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800',
+        )}
+      >
+        {isActive && (
+          <span className="absolute left-0 top-1 bottom-1 w-0.5 bg-brand-500 rounded-r-full" />
+        )}
+        <div className="flex-shrink-0 w-[18px] flex items-center justify-center">
+          <Icon
+            className={cn(
+              'h-3.5 w-3.5',
+              isActive ? 'text-brand-500' : 'text-gray-350 group-hover:text-gray-500',
+            )}
+          />
+        </div>
+        <span
+          className={cn(
+            'flex-1 text-xs truncate transition-colors',
+            isActive ? 'font-semibold text-brand-700' : 'font-medium',
+          )}
+        >
+          {item.label}
+        </span>
+      </Link>
+    );
+  };
+
   // ── Collapsible section header ─────────────────────────────────────────────
 
   const renderSectionHeader = ({
@@ -558,6 +610,23 @@ export function WizardSidebar({ engagementId, sectionProgress, licenseComplete, 
         style={{ scrollbarWidth: 'thin', scrollbarColor: '#e2e8f0 transparent' }}>
         <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] px-1 pt-1 pb-1.5">Project Mgmt</p>
         {renderMgmtSection()}
+
+        {/* Phase 50.8 — Documents link routes to the sibling
+            /engagements/:id/documents page. Sits below Activity Feed
+            (the last item in the Project Mgmt section) and above the
+            Customizations divider per the spec. The link is gated on
+            engagementId being present so the firm-level list views
+            don't get a dangling Documents entry. */}
+        {engagementId && (
+          <div className="mt-0.5 space-y-0.5 pl-1">
+            {renderLinkItem({
+              key: 'documents',
+              label: 'Documents',
+              to: `/engagements/${engagementId}/documents`,
+              icon: FileText,
+            })}
+          </div>
+        )}
 
         <div className="h-px bg-slate-100 my-2.5 mx-1" />
 
