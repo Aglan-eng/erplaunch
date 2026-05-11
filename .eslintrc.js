@@ -12,8 +12,16 @@ module.exports = {
   // UMD module wrappers (if (typeof define === 'function' && define.amd))
   // declare `define` as a global; without this no-undef fires on every
   // shipped library file the apps import.
+  //
+  // Phase 50.9.5 — `PDFKit` is the global namespace `@types/pdfkit`
+  // ships for type-only references (`PDFKit.PDFDocument`,
+  // `PDFKit.Mixins.TextOptions`). The base no-undef rule from
+  // `eslint:recommended` doesn't understand TS namespace types and
+  // flags every reference as undefined. Declaring it readonly here
+  // tells ESLint the identifier is intentional.
   globals: {
     define: 'readonly',
+    PDFKit: 'readonly',
   },
   rules: {
     '@typescript-eslint/no-explicit-any': 'warn',

@@ -20,7 +20,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { authenticate } from '../middleware/auth.js';
-import { requirePermission } from '../middleware/rbac.js';
 import * as db from '../db/index.js';
 import { renderTemplate } from '../services/templateRenderer.js';
 import { getFirmTemplate } from '../db/firmTemplate.js';
