@@ -44,19 +44,22 @@ import {
   BorderStyle,
 } from 'docx';
 import MarkdownIt from 'markdown-it';
-import { applyHeadlineCase, type ExportMeta } from './types.js';
+import {
+  applyHeadlineCase,
+  resolveExportColors,
+  type ExportMeta,
+} from './types.js';
 
 type Token = ReturnType<MarkdownIt['parse']>[number];
 
 const md = new MarkdownIt({ html: false, linkify: true, breaks: false });
 
-const PLATFORM_PRIMARY = '0F172A';
-const PLATFORM_SECONDARY = '475569';
-const PLATFORM_ACCENT = '1FAE5C';
-
-function toHex(color: string | null | undefined, fallback: string): string {
-  if (!color) return fallback;
-  // docx wants 6-digit hex with no `#` prefix.
+/**
+ * Strip the leading `#` and upper-case — docx wants 6-digit hex with
+ * no `#` prefix. Input is already non-null because the caller resolves
+ * via `resolveExportColors`.
+ */
+function toDocxHex(color: string): string {
   return color.replace(/^#/, '').toUpperCase();
 }
 
@@ -190,7 +193,6 @@ function coverPageParagraphs(meta: ExportMeta, primaryHex: string, accentHex: st
         new TextRun({
           text: `${new Date().toISOString().slice(0, 10)} · ${meta.firm.displayName}`,
           size: 18,
-          color: PLATFORM_SECONDARY,
         }),
       ],
     }),
@@ -293,9 +295,13 @@ export async function markdownToDocx(
   markdown: string,
   meta: ExportMeta,
 ): Promise<Buffer> {
-  const primaryHex = toHex(meta.firm.primaryColor, PLATFORM_PRIMARY);
-  const secondaryHex = toHex(meta.firm.secondaryColor, PLATFORM_SECONDARY);
-  const accentHex = toHex(meta.firm.themeAccentColor, PLATFORM_ACCENT);
+  // Phase 50.9.1 — shared resolver so DOCX honours the same fallback
+  // chain (Firm color → Brand Pack accent → platform default) the PDF
+  // exporter uses.
+  const colors = resolveExportColors(meta.firm);
+  const primaryHex = toDocxHex(colors.primary);
+  const secondaryHex = toDocxHex(colors.secondary);
+  const accentHex = toDocxHex(colors.accent);
 
   const bodyParagraphs: (Paragraph | Table)[] = [];
   bodyParagraphs.push(...coverPageParagraphs(meta, primaryHex, accentHex));

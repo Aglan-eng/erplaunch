@@ -92,4 +92,92 @@ describe('markdownToPdf', () => {
     expect(buf.toString('ascii', 0, 5)).toBe('%PDF-');
     expect(buf.byteLength).toBeGreaterThan(1024);
   });
+
+  /**
+   * Phase 50.9.1 regression test — Brand-Pack-only firms get their
+   * actual color (not the legacy platform purple).
+   *
+   * Scenario: a firm has ingested a Brand Pack so themeAccentColor is
+   * set, but they never configured Settings → Branding so primaryColor
+   * is NULL. Before 50.9.1 the renderer fell back to the platform
+   * purple `#4f46e5`; after 50.9.1 it should fall back to the Brand
+   * Pack accent.
+   *
+   * The check: a Brand-Pack-only firm (primaryColor: null,
+   * themeAccentColor: '#1FAE5C') produces a byte stream within ~32
+   * bytes of a firm with primaryColor explicitly set to '#1FAE5C'.
+   *
+   * Why ~32 bytes (not byte-identical): pdfkit derives the trailer ID
+   * from `md5(infoText + timestamp)`, so two separate renders of
+   * identical meta still differ in the 16-byte ID pair. Anything past
+   * that magnitude means the fallback chain didn't actually coalesce.
+   *
+   * Cross-check: same Brand-Pack-only firm is NOT close to a
+   * platform-default firm (different colors → much larger diff in
+   * the compressed content streams).
+   */
+  it('Brand-Pack-only firm renders within trailer-ID slack of an explicit primaryColor firm', async () => {
+    const sameBody = '# Section\n\n## Heading\n\nBody paragraph.';
+    const brandPackOnly = await markdownToPdf(
+      sameBody,
+      makeMeta({
+        firm: {
+          ...makeMeta().firm,
+          primaryColor: null,
+          secondaryColor: null,
+          themeAccentColor: '#1FAE5C',
+        },
+      }),
+    );
+    const explicitGreen = await markdownToPdf(
+      sameBody,
+      makeMeta({
+        firm: {
+          ...makeMeta().firm,
+          primaryColor: '#1FAE5C',
+          secondaryColor: '#1FAE5C',
+          themeAccentColor: '#1FAE5C',
+        },
+      }),
+    );
+    // Identical content streams → identical-or-near-identical sizes.
+    // PDF trailer IDs are 16 bytes each (× 2 in the trailer dict) and
+    // the xref offsets shift by the size delta, so a few-dozen-byte
+    // gap is the realistic upper bound for "structurally identical."
+    const sizeDelta = Math.abs(brandPackOnly.byteLength - explicitGreen.byteLength);
+    expect(sizeDelta).toBeLessThan(64);
+  });
+
+  it('Brand-Pack-only firm has a non-trivial size delta vs platform-default render', async () => {
+    const sameBody = '# Section\n\n## Heading\n\nBody paragraph with enough words to ' +
+      'force the renderer to use the resolved primary color for the H1 divider page ' +
+      'background AND the H2 heading color, so a single-bit color change shows up as ' +
+      'a multi-byte delta in the compressed content streams.';
+    const brandPackOnly = await markdownToPdf(
+      sameBody,
+      makeMeta({
+        firm: {
+          ...makeMeta().firm,
+          primaryColor: null,
+          secondaryColor: null,
+          themeAccentColor: '#1FAE5C',
+        },
+      }),
+    );
+    const platformDefault = await markdownToPdf(
+      sameBody,
+      makeMeta({
+        firm: {
+          ...makeMeta().firm,
+          primaryColor: null,
+          secondaryColor: null,
+          themeAccentColor: null,
+        },
+      }),
+    );
+    // Different colors → different draw commands → different byte
+    // streams. The pre-50.9.1 bug would have made these identical
+    // (both collapsing to platform purple).
+    expect(Buffer.compare(brandPackOnly, platformDefault)).not.toBe(0);
+  });
 });

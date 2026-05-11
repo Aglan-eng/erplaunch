@@ -81,3 +81,47 @@ export const PARTNER_TAG_DEFAULT = '';
  *  ratio; this is just the layout box. */
 export const LOGO_BOX_WIDTH_PT = 72;
 export const LOGO_BOX_HEIGHT_PT = 24;
+
+/**
+ * Platform-default palette used when the firm has neither a branding
+ * override nor a Brand Pack accent configured. Defined here (not in
+ * each exporter) so all three formats agree on the fallback hex.
+ */
+export const PLATFORM_PRIMARY_HEX = '#0F172A';
+export const PLATFORM_SECONDARY_HEX = '#475569';
+export const PLATFORM_ACCENT_HEX = '#1FAE5C';
+
+export interface ResolvedExportColors {
+  primary: string;
+  secondary: string;
+  accent: string;
+}
+
+/**
+ * Phase 50.9.1 — single source of truth for exporter color resolution.
+ *
+ * Fallback chain (the bug fix):
+ *   primary   ← Firm.primaryColor  → Brand Pack themeAccentColor → PLATFORM_PRIMARY
+ *   secondary ← Firm.secondaryColor → Brand Pack themeAccentColor → PLATFORM_SECONDARY
+ *   accent    ← Brand Pack themeAccentColor → Firm.primaryColor   → PLATFORM_ACCENT
+ *
+ * The pre-50.9.1 wiring landed PLATFORM_PRIMARY (purple `#4f46e5`)
+ * into firms that hadn't set primaryColor in Settings → Branding even
+ * when they HAD ingested a Brand Pack — because getFirmBranding
+ * returned the platform purple as a concrete value, the exporter's
+ * `?? PLATFORM_PRIMARY` never fired.
+ *
+ * Centralising the resolver here ensures PDF / DOCX / PPTX exporters
+ * stay in lockstep when a future hotfix tweaks the chain.
+ */
+export function resolveExportColors(firm: {
+  primaryColor?: string | null;
+  secondaryColor?: string | null;
+  themeAccentColor?: string | null;
+}): ResolvedExportColors {
+  return {
+    primary: firm.primaryColor ?? firm.themeAccentColor ?? PLATFORM_PRIMARY_HEX,
+    secondary: firm.secondaryColor ?? firm.themeAccentColor ?? PLATFORM_SECONDARY_HEX,
+    accent: firm.themeAccentColor ?? firm.primaryColor ?? PLATFORM_ACCENT_HEX,
+  };
+}

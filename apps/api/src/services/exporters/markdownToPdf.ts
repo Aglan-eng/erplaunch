@@ -26,7 +26,11 @@
 
 import PDFDocument from 'pdfkit';
 import MarkdownIt from 'markdown-it';
-import { applyHeadlineCase, type ExportMeta } from './types.js';
+import {
+  applyHeadlineCase,
+  resolveExportColors,
+  type ExportMeta,
+} from './types.js';
 
 // markdown-it doesn't export its Token type by name across all 14.x
 // builds; derive it from the parse return shape (same pattern the
@@ -35,9 +39,6 @@ type Token = ReturnType<MarkdownIt['parse']>[number];
 
 const md = new MarkdownIt({ html: false, linkify: true, breaks: false });
 
-const PLATFORM_PRIMARY = '#0f172a';
-const PLATFORM_SECONDARY = '#475569';
-const PLATFORM_ACCENT = '#1FAE5C';
 const PLATFORM_FONT = 'Helvetica';
 
 interface RenderState {
@@ -202,12 +203,18 @@ export async function markdownToPdf(
     doc.on('error', (err) => reject(err));
   });
 
+  // Phase 50.9.1 — central color resolver. Falls back to Brand Pack
+  // themeAccentColor when Firm.primaryColor is null, then to platform
+  // defaults. Prevents the platform purple `#4f46e5` from leaking into
+  // a firm that has ingested a Brand Pack but hasn't set
+  // Settings → Branding colors.
+  const colors = resolveExportColors(meta.firm);
   const state: RenderState = {
     doc,
     listDepth: 0,
-    primary: meta.firm.primaryColor ?? PLATFORM_PRIMARY,
-    secondary: meta.firm.secondaryColor ?? PLATFORM_SECONDARY,
-    accent: meta.firm.themeAccentColor ?? PLATFORM_ACCENT,
+    primary: colors.primary,
+    secondary: colors.secondary,
+    accent: colors.accent,
     headlineCase: meta.firm.themeHeadlineCase,
     pageCount: 1,
   };

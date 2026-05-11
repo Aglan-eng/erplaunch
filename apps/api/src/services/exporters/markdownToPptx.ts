@@ -31,18 +31,22 @@ const PptxGenJS: any =
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ((PptxGenJSImport as any).default ?? PptxGenJSImport) as any;
 import MarkdownIt from 'markdown-it';
-import { applyHeadlineCase, type ExportMeta } from './types.js';
+import {
+  applyHeadlineCase,
+  resolveExportColors,
+  type ExportMeta,
+} from './types.js';
 
 type Token = ReturnType<MarkdownIt['parse']>[number];
 
 const md = new MarkdownIt({ html: false, linkify: true, breaks: false });
 
-const PLATFORM_PRIMARY = '#0A1A2F';
-const PLATFORM_SECONDARY = '#475569';
-const PLATFORM_ACCENT = '#1FAE5C';
-
-function toHex(color: string | null | undefined, fallback: string): string {
-  if (!color) return fallback.replace(/^#/, '');
+/**
+ * Strip the leading `#` — pptxgenjs's color options want six-digit hex
+ * without it. Input is already non-null because the caller resolves
+ * via `resolveExportColors`.
+ */
+function toPptxHex(color: string): string {
   return color.replace(/^#/, '');
 }
 
@@ -194,9 +198,15 @@ export async function markdownToPptx(
   pres.author = meta.firm.displayName;
   pres.company = meta.firm.displayName;
 
-  const primary = toHex(meta.firm.primaryColor, PLATFORM_PRIMARY);
-  const secondary = toHex(meta.firm.secondaryColor, PLATFORM_SECONDARY);
-  const accent = toHex(meta.firm.themeAccentColor, PLATFORM_ACCENT);
+  // Phase 50.9.1 — shared resolver so PPTX honours the same fallback
+  // chain (Firm color → Brand Pack accent → platform default) the PDF
+  // exporter uses. No more leaking the platform purple `#4f46e5` into
+  // slides for firms that ingested a Brand Pack but never set
+  // Settings → Branding colors.
+  const colors = resolveExportColors(meta.firm);
+  const primary = toPptxHex(colors.primary);
+  const secondary = toPptxHex(colors.secondary);
+  const accent = toPptxHex(colors.accent);
 
   // ── Cover slide ───────────────────────────────────────────────────
   const cover = pres.addSlide();

@@ -24,7 +24,11 @@ import { requirePermission } from '../middleware/rbac.js';
 import * as db from '../db/index.js';
 import { renderTemplate } from '../services/templateRenderer.js';
 import { getFirmTemplate } from '../db/firmTemplate.js';
-import { getFirmBranding } from '../db/firmBranding.js';
+// Phase 50.9.1 — exporters need the raw (nullable) color columns so
+// the resolver can fall back to the Brand Pack's themeAccentColor
+// when Firm.primaryColor is unset. `getFirmBranding` collapses NULL →
+// platform purple, which masked the bug.
+import { getFirmBrandingForExport } from '../db/firmBranding.js';
 import { markdownToPdf } from '../services/exporters/markdownToPdf.js';
 import { markdownToDocx } from '../services/exporters/markdownToDocx.js';
 import { markdownToPptx } from '../services/exporters/markdownToPptx.js';
@@ -236,8 +240,10 @@ export async function generatedDocumentsRoutes(fastify: FastifyInstance): Promis
       }
 
       // Build the firm meta — firm branding + template fields with
-      // platform fallbacks when null.
-      const branding = await getFirmBranding(firmId);
+      // platform fallbacks when null. Uses the export-flavoured
+      // helper so null color columns stay null and the exporter's
+      // resolver can fall through to the Brand Pack accent.
+      const branding = await getFirmBrandingForExport(firmId);
       const template = (await getFirmTemplate(firmId)) ?? null;
       const eng = (await db.findEngagementByIdAndFirmId(engagementId, firmId)) as
         | { clientName?: string; code?: string | null }
