@@ -103,23 +103,32 @@ jobs:
         # so every Deploy run except the third (triggered by the LAST
         # upstream to complete) went red.
         #
-        # Now: poll each upstream workflow up to ~10 minutes for it to
-        # reach a terminal state, then check the conclusion. If a
-        # workflow reaches a non-success terminal state, fail fast. If
-        # it never registers (still "missing" after the timeout), fail
-        # too — that means the workflow isn't configured for this push
-        # and we shouldn't deploy without it.
+        # Phase 50.9.5 — split required (CI, Security) from optional
+        # (E2E). The E2E workflow at .github/workflows/e2e.yml is
+        # `workflow_dispatch` only and explicitly documents that it
+        # should NOT block PRs. The previous gate insisted on E2E
+        # reaching a terminal state, which contradicted E2E's design:
+        # every Deploy run timed out at the 10-minute E2E wait because
+        # E2E never auto-registered on push. Now REQUIRED workflows
+        # (CI, Security) must register AND succeed; OPTIONAL workflows
+        # (E2E) only block when they registered AND failed —
+        # "never registered" is tolerated cleanly so a deliberately
+        # manual-only workflow doesn't perma-block deploys.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SHA: ${{ steps.resolve.outputs.sha }}
         run: |
           set -euo pipefail
           POLL_INTERVAL=15
-          MAX_POLLS=40        # 40 × 15s = 10 minutes per workflow
-          for wf in CI E2E Security; do
-            status="missing"
-            conclusion="missing"
-            for i in $(seq 1 "$MAX_POLLS"); do
+          MAX_POLLS=40        # 40 × 15s = 10 minutes per required workflow
+          OPT_MAX_POLLS=4     # 4 × 15s = 1 minute grace for optional workflows
+
+          poll_workflow() {
+            local wf="$1"
+            local max="$2"
+            local status="missing"
+            local conclusion="missing"
+            for i in $(seq 1 "$max"); do
               payload=$(gh run list \
                 --repo "$GITHUB_REPOSITORY" \
                 --workflow "$wf" \
@@ -132,17 +141,38 @@ jobs:
               if [ "$status" = "completed" ]; then
                 break
               fi
-              echo "[$i/$MAX_POLLS] $wf status=$status — waiting ${POLL_INTERVAL}s..."
+              echo "[$i/$max] $wf status=$status — waiting ${POLL_INTERVAL}s..."
               sleep "$POLL_INTERVAL"
             done
-            echo "$wf → status=$status conclusion=$conclusion"
+            echo "$status:$conclusion"
+          }
+
+          for wf in CI Security; do
+            result=$(poll_workflow "$wf" "$MAX_POLLS")
+            status="${result%%:*}"
+            conclusion="${result##*:}"
+            echo "$wf → status=$status conclusion=$conclusion (REQUIRED)"
             if [ "$status" != "completed" ]; then
-              echo "::error::Cannot deploy — $wf never reached a terminal state for $SHA (last status: $status). Deploy gate timed out after 10 minutes."
+              echo "::error::Cannot deploy — required workflow $wf never reached a terminal state for $SHA (last status: $status)."
               exit 1
             fi
             if [ "$conclusion" != "success" ]; then
-              echo "::error::Cannot deploy — $wf concluded as '$conclusion' on $SHA"
+              echo "::error::Cannot deploy — required workflow $wf concluded as '$conclusion' on $SHA"
               exit 1
+            fi
+          done
+
+          for wf in E2E; do
+            result=$(poll_workflow "$wf" "$OPT_MAX_POLLS")
+            status="${result%%:*}"
+            conclusion="${result##*:}"
+            echo "$wf → status=$status conclusion=$conclusion (OPTIONAL)"
+            if [ "$status" = "completed" ] && [ "$conclusion" != "success" ]; then
+              echo "::error::Cannot deploy — optional workflow $wf ran and concluded as '$conclusion' on $SHA. Optional failures still block when the workflow actually executed."
+              exit 1
+            fi
+            if [ "$status" != "completed" ]; then
+              echo "::notice::Optional workflow $wf did not run for $SHA — tolerating (workflow is workflow_dispatch-only by design)."
             fi
           done
 
