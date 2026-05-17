@@ -131,6 +131,29 @@ export async function initDb() {
     );
   }
 
+  // Phase 52.1 — Customer backfill from Engagement. Runs on every
+  // boot but is a true no-op when the Customer table is already
+  // populated (the backfill function self-gates). The first boot
+  // after the Phase 52.1 deploy migrates every existing Engagement
+  // row to a Customer with id preserved + stage mapped + child
+  // tables' customerId column populated. See docs/ia-rebuild.md
+  // §"Backfill strategy" for the contract.
+  try {
+    const { backfillCustomersFromEngagements } = await import('./customerBackfill.js');
+    const result = await backfillCustomersFromEngagements();
+    if (result.status === 'BACKFILLED') {
+      console.log(
+        `[db] backfillCustomersFromEngagements: migrated ${result.migratedCount} engagements → customers; ${result.childRowsLinked} child rows linked across ${result.childTablesTouched} tables`,
+      );
+    }
+    // SKIPPED_ALREADY_POPULATED and SKIPPED_NO_ENGAGEMENTS are quiet.
+  } catch (err) {
+    console.error(
+      '[db] backfillCustomersFromEngagements failed:',
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+
   return _client;
 }
 
@@ -321,6 +344,57 @@ async function createTables(db: Client) {
   try { await db.execute(`ALTER TABLE Engagement ADD COLUMN wonAt TEXT`); } catch { /* idempotent */ }
   try { await db.execute(`ALTER TABLE Engagement ADD COLUMN lostAt TEXT`); } catch { /* idempotent */ }
   try { await db.execute(`ALTER TABLE Engagement ADD COLUMN salesCycleDays INTEGER`); } catch { /* idempotent */ }
+
+  // ─── Phase 52.1 — Unified Customer table ────────────────────────────────
+  // Replaces the parallel concepts (sales pipeline lived on
+  // Engagement.status PROSPECT/PROPOSED, delivery on DISCOVERY..GOLIVE,
+  // SLA on SLA_ACTIVE) with a single Customer row whose `currentStage`
+  // tracks the unified 14-stage lifecycle from LEAD → RENEWED. See
+  // docs/ia-rebuild.md for the full design contract.
+  //
+  // Migration strategy: backfill from Engagement (no separate
+  // SalesPipeline table exists in this codebase). Customer.id is set
+  // EQUAL to Engagement.id during backfill so every existing
+  // engagementId FK on the ~30 child tables keeps resolving without
+  // a rewrite. The parallel `customerId` column is added to each
+  // child table in the same boot run and populated to match — this
+  // lets Phase 52.3+ queries use customerId while the old
+  // engagementId columns stay alive until the Phase 52.6 cutover.
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS Customer (
+      id                  TEXT PRIMARY KEY,
+      firmId              TEXT NOT NULL REFERENCES Firm(id),
+      name                TEXT NOT NULL,
+      slug                TEXT,
+      currentStage        TEXT NOT NULL DEFAULT 'LEAD',
+      salesOwnerUserId    TEXT,
+      projectLeadUserId   TEXT,
+      csmUserId           TEXT,
+      arOwnerUserId       TEXT,
+      leadSource          TEXT,
+      industry            TEXT,
+      dealValue           INTEGER,
+      modules             TEXT,
+      startDate           TEXT,
+      targetGoLive        TEXT,
+      contractEndDate     TEXT,
+      cutoverStrategy     TEXT,
+      health              INTEGER,
+      renewalCount        INTEGER NOT NULL DEFAULT 0,
+      lostReason          TEXT,
+      isArchived          INTEGER NOT NULL DEFAULT 0,
+      sourceEngagementId  TEXT,
+      createdAt           TEXT NOT NULL,
+      updatedAt           TEXT NOT NULL
+    )
+  `);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_Customer_firmId ON Customer(firmId)`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_Customer_firmId_stage ON Customer(firmId, currentStage)`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_Customer_firmId_archived ON Customer(firmId, isArchived)`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_Customer_salesOwner ON Customer(salesOwnerUserId)`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_Customer_projectLead ON Customer(projectLeadUserId)`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_Customer_csm ON Customer(csmUserId)`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_Customer_sourceEngagement ON Customer(sourceEngagementId)`);
 
 
   await db.execute(`
@@ -3389,6 +3463,33 @@ export {
   assignTicket,
 } from './tickets.js';
 export type { Ticket, TicketMessage, TicketStatusChange } from './tickets.js';
+
+// ─── Re-exports for Phase 52.1 unified Customer model ──────────────────────
+export {
+  CUSTOMER_STAGES,
+  isCustomerStage,
+  stageGroup,
+  mapEngagementStatusToStage,
+  effectiveOwnerUserId,
+  getCustomer,
+  listCustomersByFirm,
+  listCustomersByFirmAndStage,
+  insertCustomer,
+  advanceStage,
+  archiveCustomer,
+  computeHealth,
+  healthBand,
+} from './customer.js';
+export type {
+  Customer,
+  CustomerStage,
+  StageGroup,
+  CreateCustomerInput,
+  ListCustomersFilters,
+  AdvanceStageOptions,
+} from './customer.js';
+export { backfillCustomersFromEngagements } from './customerBackfill.js';
+export type { CustomerBackfillResult } from './customerBackfill.js';
 
 // ─── Re-exports for Phase 45.1 closeout checklist ───────────────────────────
 export {
