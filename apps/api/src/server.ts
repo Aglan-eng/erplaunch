@@ -232,6 +232,53 @@ export async function buildServer() {
 
   fastify.get('/health', async () => ({ ok: true, version: '0.2.0' }));
 
+  // Phase 51.1 — Chromium spike. Gated on SPIKE_ENABLED so the route
+  // ONLY exists on the throwaway Render service used for the Day-1
+  // kill-switch decision. Unset on the production main service.
+  if (process.env.SPIKE_ENABLED === 'true') {
+    const { htmlToPdf } = await import('./services/exporters/htmlToPdf.js');
+    const {
+      warmBrowser,
+      closeBrowser,
+      browserDiagnostics,
+      RenderQueueFullError,
+    } = await import('./services/exporters/puppeteerBrowser.js');
+
+    // Pre-warm at boot so the first user-facing render doesn't pay
+    // the launch cost. Fire-and-forget — failures here are logged
+    // but never abort startup.
+    void warmBrowser();
+
+    fastify.addHook('onClose', async () => {
+      await closeBrowser();
+    });
+
+    fastify.get('/spike/diag', async () => browserDiagnostics());
+
+    fastify.post('/spike/render', async (request, reply) => {
+      const body = request.body as { html?: unknown } | undefined;
+      const html = typeof body?.html === 'string' ? body.html : '';
+      if (!html) {
+        return reply.code(400).send({ error: { code: 'MISSING_HTML' } });
+      }
+      try {
+        const pdf = await htmlToPdf(html, { waitUntil: 'domcontentloaded' });
+        return reply
+          .type('application/pdf')
+          .header('Content-Length', String(pdf.byteLength))
+          .send(pdf);
+      } catch (err) {
+        if (err instanceof RenderQueueFullError) {
+          return reply
+            .code(503)
+            .header('Retry-After', '5')
+            .send({ error: { code: 'QUEUE_FULL', message: err.message } });
+        }
+        throw err;
+      }
+    });
+  }
+
   fastify.setErrorHandler((error, _request, reply) => {
     fastify.log.error(error);
     const statusCode = error.statusCode ?? 500;

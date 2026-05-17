@@ -27,6 +27,7 @@
     "@ofoq/rule-engine": "workspace:*",
     "@ofoq/shared": "workspace:*",
     "@paralleldrive/cuid2": "^2.1.2",
+    "@sparticuz/chromium": "^131.0.1",
     "archiver": "^7.0.0",
     "bcryptjs": "^2.4.3",
     "bullmq": "^5.0.0",
