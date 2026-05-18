@@ -7,21 +7,22 @@
  *   - Auto-recycle after 100 renders to bound RSS growth.
  *   - Graceful shutdown via closeBrowser() — Fastify onClose hook.
  *
- * Cross-environment launcher:
- *   - On Render / serverless Linux: uses @sparticuz/chromium's
- *     stripped binary + the standard --single-process / --no-zygote
- *     flags Sparticuz requires for low-memory tiers.
- *   - On local dev (macOS / Windows / non-serverless): falls back to
- *     either PUPPETEER_EXECUTABLE_PATH (explicit override) or
- *     Puppeteer's bundled Chromium.
- *
- * Environment detection: presence of `process.env.RENDER` (Render
- * sets this to `true` on every dyno), `AWS_LAMBDA_FUNCTION_NAME`, or
- * explicit `USE_SPARTICUZ_CHROMIUM=true`. Local dev sees none of
- * these so the bundled-Chromium path wins.
+ * Browser binary:
+ *   - Always uses @sparticuz/chromium's executablePath() resolved at
+ *     RUNTIME (not via env vars or hardcoded paths). The first call
+ *     extracts the bundled binary to a temp directory and returns its
+ *     real path; subsequent calls inside the Sparticuz module cache
+ *     it. An earlier revision hardcoded the temp path and ENOENT'd
+ *     on Render — the binary lands in a different temp directory
+ *     each cold boot, so we must resolve via executablePath() every
+ *     time.
+ *   - We use `puppeteer-core` (NOT `puppeteer`) so the API library
+ *     never tries to download or use its own bundled Chromium —
+ *     Sparticuz is always the source of truth.
  */
 
-import type { Browser, LaunchOptions } from 'puppeteer';
+import chromium from '@sparticuz/chromium';
+import puppeteer, { type Browser, type Page } from 'puppeteer-core';
 
 let _browserPromise: Promise<Browser> | null = null;
 let _renderCount = 0;
@@ -43,56 +44,22 @@ export class RenderQueueFullError extends Error {
   }
 }
 
-function isServerless(): boolean {
-  if (process.env.USE_SPARTICUZ_CHROMIUM === 'true') return true;
-  if (process.env.USE_SPARTICUZ_CHROMIUM === 'false') return false;
-  // Render sets RENDER=true on every dyno. Lambda sets the function
-  // name. Both indicate a Linux container where Sparticuz applies.
-  return Boolean(process.env.RENDER || process.env.AWS_LAMBDA_FUNCTION_NAME);
-}
-
-async function buildLaunchOptions(): Promise<LaunchOptions> {
-  if (isServerless()) {
-    // Lazy-load — @sparticuz/chromium is a heavy module (~50MB
-    // binary path resolution). Local dev never touches it.
-    const chromium = (await import('@sparticuz/chromium')).default;
-    return {
-      args: [
-        ...chromium.args,
-        // Sparticuz's README explicitly recommends these for the
-        // Render Starter (512MB) tier — without them, Chromium
-        // spawns a zygote + helper processes and the RSS triples.
-        '--single-process',
-        '--no-zygote',
-        '--disable-dev-shm-usage',
-      ],
-      defaultViewport: chromium.defaultViewport,
-      executablePath: await chromium.executablePath(),
-      headless: 'shell',
-    };
-  }
-  // Local dev / non-serverless path. Puppeteer's bundled Chromium is
-  // used unless PUPPETEER_EXECUTABLE_PATH overrides — same convention
-  // Puppeteer itself documents.
-  return {
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    ...(process.env.PUPPETEER_EXECUTABLE_PATH
-      ? { executablePath: process.env.PUPPETEER_EXECUTABLE_PATH }
-      : {}),
-  };
-}
-
 /**
  * Lazy-launch + cache. Subsequent calls return the same promise so
  * concurrent first-callers don't spawn duplicate browsers.
+ *
+ * Launch options come straight from @sparticuz/chromium — args,
+ * defaultViewport, executablePath (resolved at runtime), headless
+ * mode. No env-var overrides; the binary is whatever Sparticuz says
+ * it is at the moment of the call.
  */
 async function launchBrowser(): Promise<Browser> {
-  // Dynamic import keeps the puppeteer module out of the test
-  // process's cold-start path unless the test actually exercises it.
-  const puppeteer = (await import('puppeteer')).default;
-  const opts = await buildLaunchOptions();
-  return puppeteer.launch(opts);
+  return puppeteer.launch({
+    args: chromium.args,
+    defaultViewport: chromium.defaultViewport,
+    executablePath: await chromium.executablePath(),
+    headless: chromium.headless,
+  });
 }
 
 export async function getBrowser(): Promise<Browser> {
@@ -118,7 +85,7 @@ export async function getBrowser(): Promise<Browser> {
  * layer can respond with 503 + Retry-After instead of holding the
  * request open indefinitely.
  */
-export async function withPage<T>(fn: (page: import('puppeteer').Page) => Promise<T>): Promise<T> {
+export async function withPage<T>(fn: (page: Page) => Promise<T>): Promise<T> {
   if (_queueDepth >= MAX_QUEUE_DEPTH) {
     throw new RenderQueueFullError(_queueDepth);
   }
