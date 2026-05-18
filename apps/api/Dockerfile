@@ -34,10 +34,25 @@ RUN pnpm --filter "./packages/**" -r run build
 # Prepare data dirs (Render mounts the persistent disk here)
 RUN mkdir -p /data/db /data/uploads /data/outputs
 
+# Phase 51.1 — Alpine-native Chromium for the HTML→PDF engine.
+# We install the distro chromium package (musl-built, native to this
+# image). The two ENV lines tell puppeteer-core to skip any browser
+# download and point the launcher at /usr/bin/chromium-browser.
+RUN apk add --no-cache \
+    chromium \
+    nss \
+    freetype \
+    freetype-dev \
+    harfbuzz \
+    ca-certificates \
+    ttf-freefont
+
 ENV NODE_ENV=production \
     API_HOST=0.0.0.0 \
     API_PORT=3000 \
-    DATABASE_URL=file:/data/db/dev.db
+    DATABASE_URL=file:/data/db/dev.db \
+    PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
 EXPOSE 3000
 

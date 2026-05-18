@@ -8,20 +8,18 @@
  *   - Graceful shutdown via closeBrowser() — Fastify onClose hook.
  *
  * Browser binary:
- *   - Always uses @sparticuz/chromium's executablePath() resolved at
- *     RUNTIME (not via env vars or hardcoded paths). The first call
- *     extracts the bundled binary to a temp directory and returns its
- *     real path; subsequent calls inside the Sparticuz module cache
- *     it. An earlier revision hardcoded the temp path and ENOENT'd
- *     on Render — the binary lands in a different temp directory
- *     each cold boot, so we must resolve via executablePath() every
- *     time.
- *   - We use `puppeteer-core` (NOT `puppeteer`) so the API library
- *     never tries to download or use its own bundled Chromium —
- *     Sparticuz is always the source of truth.
+ *   - Production (Render Alpine container): the Dockerfile apk-installs
+ *     `chromium` and sets `PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser`.
+ *     We launch puppeteer-core against that path. The distro Chromium
+ *     is built against musl libc and runs natively under Alpine — no
+ *     glibc shim required.
+ *   - Local dev: set PUPPETEER_EXECUTABLE_PATH to a system Chrome path
+ *     (e.g. `/c/Program Files/Google/Chrome/Application/chrome.exe` on
+ *     Windows or `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`
+ *     on macOS). puppeteer-core does NOT bundle its own Chromium —
+ *     that's the whole point of using the `-core` variant.
  */
 
-import chromium from '@sparticuz/chromium';
 import puppeteer, { type Browser, type Page } from 'puppeteer-core';
 
 let _browserPromise: Promise<Browser> | null = null;
@@ -32,6 +30,26 @@ const RECYCLE_AFTER_N_RENDERS = 100;
 let _renderLock: Promise<void> = Promise.resolve();
 let _queueDepth = 0;
 const MAX_QUEUE_DEPTH = 5;
+
+/**
+ * Alpine + Render Starter (512MB) flag set. The full list of flags
+ * is what Sparticuz documented for low-memory containers, minus the
+ * Sparticuz-specific font/cache flags we no longer need with the
+ * distro binary. `--no-sandbox` is required under Alpine because the
+ * sandbox needs CAP_SYS_ADMIN which Render dynos don't expose.
+ */
+const ALPINE_LAUNCH_ARGS: ReadonlyArray<string> = [
+  '--no-sandbox',
+  '--disable-setuid-sandbox',
+  '--disable-dev-shm-usage',
+  '--disable-gpu',
+  '--single-process',
+  '--no-zygote',
+  '--disable-accelerated-2d-canvas',
+  '--no-first-run',
+  '--no-default-browser-check',
+  '--hide-scrollbars',
+];
 
 /**
  * Custom error thrown when the in-process render queue is saturated.
@@ -47,18 +65,20 @@ export class RenderQueueFullError extends Error {
 /**
  * Lazy-launch + cache. Subsequent calls return the same promise so
  * concurrent first-callers don't spawn duplicate browsers.
- *
- * Launch options come straight from @sparticuz/chromium — args,
- * defaultViewport, executablePath (resolved at runtime), headless
- * mode. No env-var overrides; the binary is whatever Sparticuz says
- * it is at the moment of the call.
  */
 async function launchBrowser(): Promise<Browser> {
+  const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+  if (!executablePath) {
+    throw new Error(
+      'PUPPETEER_EXECUTABLE_PATH is not set. ' +
+        'In production the Dockerfile must apk-install chromium and set this env var to /usr/bin/chromium-browser. ' +
+        'For local dev point it at a system Chrome/Chromium binary.',
+    );
+  }
   return puppeteer.launch({
-    args: chromium.args,
-    defaultViewport: chromium.defaultViewport,
-    executablePath: await chromium.executablePath(),
-    headless: chromium.headless,
+    headless: true,
+    executablePath,
+    args: [...ALPINE_LAUNCH_ARGS],
   });
 }
 

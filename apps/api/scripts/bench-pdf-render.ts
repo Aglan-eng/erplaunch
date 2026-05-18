@@ -17,9 +17,11 @@
  * Run with:
  *   pnpm --filter @ofoq/api exec tsx scripts/bench-pdf-render.ts
  *
- * On Render: set USE_SPARTICUZ_CHROMIUM=true and the same command.
- * The Phase 51.1 spike docs/chromium-on-render-spike.md tracks
- * both environments' numbers side by side.
+ * Requires PUPPETEER_EXECUTABLE_PATH to point at a Chromium binary.
+ * On Render the Dockerfile sets this to /usr/bin/chromium-browser.
+ * For local dev export PUPPETEER_EXECUTABLE_PATH to a system Chrome
+ * before invoking. The Phase 51.1 spike docs/chromium-on-render-spike.md
+ * tracks both environments' numbers side by side.
  */
 
 import { htmlToPdf } from '../src/services/exporters/htmlToPdf.js';
@@ -92,7 +94,7 @@ function buildTenPageFixture(): string {
 async function runBench(): Promise<void> {
   const samples: RenderSample[] = [];
   log(`starting bench — ${TEN_PAGE_HTML.length} bytes of HTML, 6 sequential renders`);
-  log(`environment: USE_SPARTICUZ_CHROMIUM=${process.env.USE_SPARTICUZ_CHROMIUM ?? '(unset)'} RENDER=${process.env.RENDER ?? '(unset)'} NODE_ENV=${process.env.NODE_ENV ?? '(unset)'}`);
+  log(`environment: PUPPETEER_EXECUTABLE_PATH=${process.env.PUPPETEER_EXECUTABLE_PATH ?? '(unset)'} RENDER=${process.env.RENDER ?? '(unset)'} NODE_ENV=${process.env.NODE_ENV ?? '(unset)'}`);
   log(`process.platform=${process.platform} arch=${process.arch}`);
   log(`initial RSS: ${rssMb()} MB`);
 
@@ -125,7 +127,7 @@ async function runBench(): Promise<void> {
     environment: {
       platform: process.platform,
       arch: process.arch,
-      useSparticuz: process.env.USE_SPARTICUZ_CHROMIUM === 'true',
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH ?? null,
       onRender: Boolean(process.env.RENDER),
       nodeVersion: process.version,
     },
