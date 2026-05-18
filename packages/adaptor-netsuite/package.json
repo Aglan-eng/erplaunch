@@ -16,7 +16,7 @@
   },
   "devDependencies": {
     "@ofoq/adaptor-registry": "workspace:*",
-    "typescript": "^5.4.0",
+    "typescript": "^6.0.3",
     "vitest": "^1.0.0"
   },
   "exports": {

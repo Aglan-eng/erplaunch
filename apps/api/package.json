@@ -60,7 +60,7 @@
     "@types/sanitize-html": "^2.16.1",
     "jszip": "^3.10.1",
     "tsx": "^4.0.0",
-    "typescript": "^5.4.0",
+    "typescript": "^6.0.3",
     "vitest": "^1.0.0"
   }
 }
