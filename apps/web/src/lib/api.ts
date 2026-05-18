@@ -1402,3 +1402,72 @@ export const ticketsApi = {
   ): Promise<Ticket> =>
     api.patch(`/engagements/${engagementId}/tickets/${ticketId}`, body).then((r) => r.data.data),
 };
+
+// ─── Phase 52.3 — unified Customers list + stage transition ────────────────
+
+export const CUSTOMER_STAGES = [
+  'LEAD', 'QUALIFIED', 'PROPOSAL', 'NEGOTIATION', 'WON',
+  'DISCOVERY', 'SCOPING', 'BUILD', 'UAT',
+  'GOLIVE', 'HYPERCARE',
+  'LIVE_SLA', 'RENEWAL_DUE', 'RENEWED',
+  'LOST', 'CHURNED',
+] as const;
+export type CustomerStage = typeof CUSTOMER_STAGES[number];
+
+export type StageGroup = 'pre-sales' | 'closing' | 'delivery' | 'launch' | 'live' | 'terminal';
+
+export const STAGE_GROUP: Record<CustomerStage, StageGroup> = {
+  LEAD: 'pre-sales', QUALIFIED: 'pre-sales', PROPOSAL: 'pre-sales', NEGOTIATION: 'pre-sales',
+  WON: 'closing',
+  DISCOVERY: 'delivery', SCOPING: 'delivery', BUILD: 'delivery', UAT: 'delivery',
+  GOLIVE: 'launch', HYPERCARE: 'launch',
+  LIVE_SLA: 'live', RENEWAL_DUE: 'live',
+  RENEWED: 'terminal', LOST: 'terminal', CHURNED: 'terminal',
+};
+
+export interface CustomerSummary {
+  id: string;
+  name: string;
+  currentStage: CustomerStage;
+  primaryOwnerName: string;
+  primaryOwnerId: string;
+  healthScore: number;
+  healthBand: 'red' | 'yellow' | 'green';
+  renewalCount: number;
+  lastActivityAt: string | null;
+  arr: number | null;
+}
+
+export interface CustomersListFilters {
+  stages?: CustomerStage[];
+  owner?: string;
+  health?: Array<'red' | 'yellow' | 'green'>;
+  search?: string;
+  sort?: 'name' | 'stage' | 'health' | 'lastActivity';
+  order?: 'asc' | 'desc';
+  limit?: number;
+  offset?: number;
+  archived?: boolean;
+}
+
+export const customersApi = {
+  list: (filters: CustomersListFilters = {}): Promise<{ customers: CustomerSummary[] }> => {
+    const params: Record<string, string> = {};
+    if (filters.stages?.length) params.stage = filters.stages.join(',');
+    if (filters.owner) params.owner = filters.owner;
+    if (filters.health?.length) params.health = filters.health.join(',');
+    if (filters.search) params.search = filters.search;
+    if (filters.sort) params.sort = filters.sort;
+    if (filters.order) params.order = filters.order;
+    if (filters.limit != null) params.limit = String(filters.limit);
+    if (filters.offset != null) params.offset = String(filters.offset);
+    if (filters.archived) params.archived = 'true';
+    return api.get('/customers', { params }).then((r) => r.data);
+  },
+
+  transitionStage: (
+    id: string,
+    body: { toStage: CustomerStage; reason?: string },
+  ): Promise<{ customer: CustomerSummary }> =>
+    api.patch(`/customers/${id}/stage`, body).then((r) => r.data),
+};

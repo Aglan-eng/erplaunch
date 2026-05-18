@@ -76,6 +76,8 @@ import { dataCollectionRoutes } from './routes/dataCollection.js';
 import { exportRoutes } from './routes/export.js';
 // Phase 51.2 — HTML/CSS-driven branded PDF renderer routes.
 import { exportsRoutes } from './routes/exports.js';
+// Phase 52.3 — unified Customers list + stage transition.
+import { customersRoutes } from './routes/customers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -230,6 +232,11 @@ export async function buildServer() {
   await fastify.register(exportRoutes, { prefix: '/api/v1' });
   // Phase 51.2 — POST /api/exports/proposal (HTML/CSS engine via puppeteer).
   await fastify.register(exportsRoutes, { prefix: '/api' });
+  // Phase 52.3 — GET /api/v1/customers + PATCH /api/v1/customers/:id/stage.
+  // Mounted under /api/v1 to match the established axios baseURL on the
+  // SPA (apps/web/src/lib/api.ts) so the web client hits it via the
+  // existing `api` instance with no per-call prefix override.
+  await fastify.register(customersRoutes, { prefix: '/api/v1' });
   // /metrics sits at the root (not /api/v1) so scrapers can hit a stable
   // path. The onResponse hook it registers counts ALL responses.
   await fastify.register(metricsRoutes);

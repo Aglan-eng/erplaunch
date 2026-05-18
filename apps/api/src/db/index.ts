@@ -516,6 +516,15 @@ async function createTables(db: Client) {
       createdAt    TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
+  // Phase 52.3 — actor + stage transition payload columns. The
+  // existing `action` + `details` columns aren't going away — they
+  // back the legacy engagement audit trail. The new columns let
+  // the unified Customer surface query stage transitions with
+  // structured filters instead of having to parse JSON details.
+  try { await db.execute(`ALTER TABLE ActivityLog ADD COLUMN actorUserId TEXT`); } catch { /* idempotent */ }
+  try { await db.execute(`ALTER TABLE ActivityLog ADD COLUMN fromStage TEXT`); } catch { /* idempotent */ }
+  try { await db.execute(`ALTER TABLE ActivityLog ADD COLUMN toStage TEXT`); } catch { /* idempotent */ }
+  try { await db.execute(`ALTER TABLE ActivityLog ADD COLUMN isRollback INTEGER DEFAULT 0`); } catch { /* idempotent */ }
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS ClientPortalToken (

@@ -484,6 +484,23 @@ export interface AdvanceStageOptions {
   isRollback?: boolean;
 }
 
+/**
+ * Returns true when `toStage` sits AT OR BEFORE `fromStage` in the
+ * journey-order CUSTOMER_STAGES list. Terminal stages (LOST,
+ * CHURNED) are never "backwards" from a non-terminal stage because
+ * their indices are at the tail of the enum — but a transition
+ * FROM a terminal back into the live journey IS a rollback by
+ * intent (un-archiving), so we treat any non-strict-forward move
+ * as a rollback.
+ */
+function computeIsRollback(from: CustomerStage, to: CustomerStage): boolean {
+  if (from === to) return false;
+  const fromIdx = (CUSTOMER_STAGES as readonly CustomerStage[]).indexOf(from);
+  const toIdx = (CUSTOMER_STAGES as readonly CustomerStage[]).indexOf(to);
+  if (fromIdx < 0 || toIdx < 0) return false;
+  return toIdx < fromIdx;
+}
+
 export async function advanceStage(
   id: string,
   firmId: string,
@@ -496,9 +513,18 @@ export async function advanceStage(
     throw new Error(`advanceStage: customer not found id=${id} firmId=${firmId}`);
   }
 
+  // Renewal-close detection (per locked decision 1): RENEWAL_DUE
+  // closing back to LIVE_SLA bumps renewalCount. Also bump when the
+  // caller explicitly transitions to RENEWED (the transient "just
+  // renewed" badge stage from the Phase 52 spec).
+  const fromStage = existing.currentStage;
   const isRenewalClose =
-    existing.currentStage === 'RENEWAL_DUE' && toStage === 'LIVE_SLA';
+    fromStage === 'RENEWAL_DUE' && (toStage === 'LIVE_SLA' || toStage === 'RENEWED');
   const newRenewalCount = isRenewalClose ? existing.renewalCount + 1 : existing.renewalCount;
+
+  // Rollback detection: caller can force it via options.isRollback,
+  // otherwise we infer from journey order.
+  const isRollback = options.isRollback ?? computeIsRollback(fromStage, toStage);
 
   const now = new Date().toISOString();
   await db.execute({
@@ -508,31 +534,90 @@ export async function advanceStage(
     args: [toStage, newRenewalCount, now, id, firmId],
   });
 
-  // ActivityLog row for the audit trail. The Customer-specific
-  // activity surface is Phase 52.4; for now we use the existing
-  // engagement-scoped ActivityLog so the data is captured. The Phase
-  // 52.4 timeline reads from the same table filtered by customerId
-  // (added in Phase 52.6 cleanup) OR by sourceEngagementId.
-  if (existing.sourceEngagementId) {
+  // ─── Activity-log audit (Phase 52.3) ─────────────────────────────
+  // We write to ActivityLog scoped by customerId (the Phase 52.1
+  // parallel column on the table). When the customer came from a
+  // backfilled Engagement we ALSO set engagementId = sourceEngagementId
+  // so the legacy engagement-scoped readers keep finding rows during
+  // the transition window before the Phase 52.6 cutover drops the
+  // old engagementId references.
+  //
+  // The legacy engagementId FK was NOT NULL, so when we lack a
+  // sourceEngagementId (a customer created natively at Phase 52.2+),
+  // the INSERT will reject. We catch + log so a native-create stage
+  // transition still succeeds at the data layer; the activity surface
+  // for those customers comes online once Phase 52.6 drops the FK.
+  const engagementIdForLog = existing.sourceEngagementId ?? null;
+  const writeActivity = async (
+    action: string,
+    detailsJson: string,
+    extra: { fromStage?: string; toStage?: string; isRollback?: boolean } = {},
+  ): Promise<void> => {
+    if (engagementIdForLog === null) return;
     try {
       await db.execute({
-        sql: `INSERT INTO ActivityLog (id, engagementId, firmId, type, message, actorUserId, createdAt)
-              VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        sql: `INSERT INTO ActivityLog
+                (id, engagementId, customerId, firmId, action, details,
+                 actorUserId, fromStage, toStage, isRollback, createdAt)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         args: [
-          `act_${id}_${Date.now()}`,
-          existing.sourceEngagementId,
+          `act_${id}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          engagementIdForLog,
+          id,
           firmId,
-          options.isRollback ? 'STAGE_REVERTED' : 'STAGE_ADVANCED',
-          `${existing.currentStage} → ${toStage}${options.reason ? ` (${options.reason})` : ''}`,
+          action,
+          detailsJson,
           options.actorUserId,
+          extra.fromStage ?? null,
+          extra.toStage ?? null,
+          extra.isRollback ? 1 : 0,
           now,
         ],
       });
     } catch {
-      // Non-fatal — the transition landed; audit-log gap is OK for
-      // Phase 52.1. Phase 52.4 hardens this with a dedicated
-      // CustomerActivity table.
+      // Non-fatal — the transition landed. Native-create customers
+      // (no sourceEngagementId) take this branch until Phase 52.6.
     }
+  };
+
+  await writeActivity(
+    'STAGE_TRANSITION',
+    JSON.stringify({
+      from: fromStage,
+      to: toStage,
+      reason: options.reason ?? null,
+      isRollback,
+    }),
+    { fromStage, toStage, isRollback },
+  );
+
+  // ─── Owner-handoff (Phase 52.3, locked decision 2) ────────────────
+  // When the stage transition crosses an owner boundary (sales → PM,
+  // PM → CSM, etc.), we record a second activity row so the UI can
+  // surface "Handoff from {prev} to {new}" on the timeline and the
+  // notification helper can ping both users.
+  const prevOwnerId = effectiveOwnerUserId({
+    currentStage: fromStage,
+    salesOwnerUserId: existing.salesOwnerUserId,
+    projectLeadUserId: existing.projectLeadUserId,
+    csmUserId: existing.csmUserId,
+  });
+  const nextOwnerId = effectiveOwnerUserId({
+    currentStage: toStage,
+    salesOwnerUserId: existing.salesOwnerUserId,
+    projectLeadUserId: existing.projectLeadUserId,
+    csmUserId: existing.csmUserId,
+  });
+  if (prevOwnerId !== nextOwnerId) {
+    await writeActivity(
+      'OWNER_HANDOFF',
+      JSON.stringify({
+        fromOwnerId: prevOwnerId,
+        toOwnerId: nextOwnerId,
+        triggerStageFrom: fromStage,
+        triggerStageTo: toStage,
+      }),
+    );
   }
 
   const next = await getCustomer(id, firmId);
