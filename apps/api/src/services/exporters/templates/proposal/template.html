@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>{{firm.displayName}} — {{proposal.title}}</title>
+    <style>
+      :root {
+        --brand-primary: {{brand.primary}};
+        --brand-secondary: {{brand.secondary}};
+        --brand-accent: {{brand.accent}};
+        --brand-text: {{brand.text}};
+        --brand-bg: {{brand.bg}};
+        --brand-font-heading: {{{brand.fontHeading}}};
+        --brand-font-body: {{{brand.fontBody}}};
+        --brand-logo-url: {{{brand.logoCss}}};
+      }
+    </style>
+    <style>{{{baseStyles}}}</style>
+  </head>
+  <body>
+    {{!-- Cover page — full-bleed brand primary panel with the headline content stacked vertically. --}}
+    <section class="cover" data-testid="cover">
+      <div class="cover__top">
+        {{#if brand.logoUrl}}
+          <img class="cover__logo" src="{{brand.logoUrl}}" alt="{{firm.displayName}} logo" />
+        {{else}}
+          <div class="cover__mark">{{firm.initial}}</div>
+        {{/if}}
+        {{#if firm.tagline}}
+          <p class="cover__partner-tag">{{firm.tagline}}</p>
+        {{/if}}
+      </div>
+      <div class="cover__title-block">
+        <p class="cover__eyebrow">Proposal prepared for</p>
+        <h1 class="cover__customer">{{customer.name}}</h1>
+        <h2 class="cover__title">{{proposal.title}}</h2>
+      </div>
+      <div class="cover__meta">
+        <div>
+          <p class="cover__meta-label">Prepared by</p>
+          <p class="cover__meta-value">{{proposal.preparedBy}}</p>
+        </div>
+        <div>
+          <p class="cover__meta-label">Date</p>
+          <p class="cover__meta-value">{{formattedDate}}</p>
+        </div>
+        <div>
+          <p class="cover__meta-label">From</p>
+          <p class="cover__meta-value">{{firm.displayName}}</p>
+        </div>
+      </div>
+    </section>
+
+    {{!-- Executive summary --}}
+    <section class="section">
+      <h1 class="section__title">Executive summary</h1>
+      <div class="prose">{{{summaryHtml}}}</div>
+    </section>
+
+    {{!-- Scope — bullet list --}}
+    <section class="section">
+      <h1 class="section__title">Scope</h1>
+      <ul class="bullets">
+        {{#each proposal.scope}}
+          <li>{{this}}</li>
+        {{/each}}
+      </ul>
+    </section>
+
+    {{!-- Approach — free markdown --}}
+    <section class="section">
+      <h1 class="section__title">Approach</h1>
+      <div class="prose">{{{approachHtml}}}</div>
+    </section>
+
+    {{!-- Deliverables — card grid --}}
+    <section class="section">
+      <h1 class="section__title">Deliverables</h1>
+      <div class="deliverables">
+        {{#each proposal.deliverables}}
+          <article class="deliverable">
+            <h3 class="deliverable__name">{{name}}</h3>
+            <p class="deliverable__description">{{description}}</p>
+          </article>
+        {{/each}}
+      </div>
+    </section>
+
+    {{!-- Timeline — phase table --}}
+    <section class="section">
+      <h1 class="section__title">Timeline</h1>
+      <table class="timeline">
+        <thead>
+          <tr>
+            <th class="timeline__th">Phase</th>
+            <th class="timeline__th timeline__th--weeks">Weeks</th>
+            <th class="timeline__th">Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#each proposal.timeline}}
+            <tr>
+              <td class="timeline__td timeline__td--phase">{{phase}}</td>
+              <td class="timeline__td timeline__td--weeks">{{weeks}}</td>
+              <td class="timeline__td">{{description}}</td>
+            </tr>
+          {{/each}}
+        </tbody>
+      </table>
+    </section>
+
+    {{!-- Pricing — line items + subtotal + tax + grand total --}}
+    <section class="section">
+      <h1 class="section__title">Pricing</h1>
+      <table class="pricing">
+        <thead>
+          <tr>
+            <th class="pricing__th">Description</th>
+            <th class="pricing__th pricing__th--num">Qty</th>
+            <th class="pricing__th pricing__th--num">Unit price</th>
+            <th class="pricing__th pricing__th--num">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#each pricingFormatted.lineItems}}
+            <tr>
+              <td class="pricing__td">{{description}}</td>
+              <td class="pricing__td pricing__td--num">{{qty}}</td>
+              <td class="pricing__td pricing__td--num">{{unitPrice}}</td>
+              <td class="pricing__td pricing__td--num">{{total}}</td>
+            </tr>
+          {{/each}}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td class="pricing__total-label" colspan="3">Subtotal</td>
+            <td class="pricing__td pricing__td--num">{{pricingFormatted.subtotal}}</td>
+          </tr>
+          {{#if pricingFormatted.tax}}
+            <tr>
+              <td class="pricing__total-label" colspan="3">Tax</td>
+              <td class="pricing__td pricing__td--num">{{pricingFormatted.tax}}</td>
+            </tr>
+          {{/if}}
+          <tr class="pricing__grand-row">
+            <td class="pricing__grand-label" colspan="3">Total ({{proposal.pricing.currency}})</td>
+            <td class="pricing__grand-value">{{pricingFormatted.total}}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </section>
+
+    {{!-- Terms — free markdown --}}
+    <section class="section">
+      <h1 class="section__title">Terms</h1>
+      <div class="prose">{{{termsHtml}}}</div>
+    </section>
+
+    {{!-- Acceptance / signature block --}}
+    <section class="section signatures">
+      <h1 class="section__title">Acceptance</h1>
+      <div class="signatures__grid">
+        <div class="signatures__col">
+          <p class="signatures__label">{{customer.name}}</p>
+          <div class="signatures__line"></div>
+          <div class="signatures__caption">
+            <span>Signature</span>
+            <span>Date</span>
+          </div>
+          {{#if customer.contactName}}
+            <p class="signatures__name">{{customer.contactName}}</p>
+          {{/if}}
+        </div>
+        <div class="signatures__col">
+          <p class="signatures__label">{{firm.displayName}}</p>
+          <div class="signatures__line"></div>
+          <div class="signatures__caption">
+            <span>Signature</span>
+            <span>Date</span>
+          </div>
+          <p class="signatures__name">{{proposal.preparedBy}}</p>
+        </div>
+      </div>
+    </section>
+  </body>
+</html>

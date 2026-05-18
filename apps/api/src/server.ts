@@ -74,6 +74,8 @@ if (!(globalThis as { __erplaunch_adaptors_registered?: boolean }).__erplaunch_a
 import { verticalsRoutes } from './routes/verticals.js';
 import { dataCollectionRoutes } from './routes/dataCollection.js';
 import { exportRoutes } from './routes/export.js';
+// Phase 51.2 — HTML/CSS-driven branded PDF renderer routes.
+import { exportsRoutes } from './routes/exports.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -226,6 +228,8 @@ export async function buildServer() {
   await fastify.register(verticalsRoutes, { prefix: '/api/v1' });
   await fastify.register(dataCollectionRoutes, { prefix: '/api/v1' });
   await fastify.register(exportRoutes, { prefix: '/api/v1' });
+  // Phase 51.2 — POST /api/exports/proposal (HTML/CSS engine via puppeteer).
+  await fastify.register(exportsRoutes, { prefix: '/api' });
   // /metrics sits at the root (not /api/v1) so scrapers can hit a stable
   // path. The onResponse hook it registers counts ALL responses.
   await fastify.register(metricsRoutes);

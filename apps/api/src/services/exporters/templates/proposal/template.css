@@ -1,0 +1,419 @@
+/* Phase 51.2 — branded proposal stylesheet.
+ *
+ * All visual identity is driven by the CSS custom properties the
+ * renderer injects into the page's `<style>` block at the top of
+ * template.html. Anything not pulled from a firm's brand pack
+ * resolves to neutral defaults defined inline in the renderer's
+ * `buildBrandTokens` step.
+ *
+ * Print rules are scoped via `@page` + `@media print` so the same
+ * HTML renders cleanly inside Chromium's headless print engine.
+ */
+
+@page {
+  size: A4;
+  margin: 0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  color: var(--brand-text);
+  background: var(--brand-bg);
+  font-family: var(--brand-font-body);
+  font-size: 10.5pt;
+  line-height: 1.55;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* ─── Cover page ─────────────────────────────────────────────────── */
+
+.cover {
+  page-break-after: always;
+  break-after: page;
+  background: var(--brand-primary);
+  color: #ffffff;
+  min-height: 297mm;
+  padding: 25mm 22mm;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.cover__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16mm;
+}
+
+.cover__logo {
+  max-width: 48mm;
+  max-height: 18mm;
+  display: block;
+}
+
+.cover__mark {
+  width: 18mm;
+  height: 18mm;
+  border-radius: 4mm;
+  background: var(--brand-accent);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--brand-font-heading);
+  font-weight: 700;
+  font-size: 22pt;
+}
+
+.cover__partner-tag {
+  margin: 0;
+  font-size: 9pt;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.78);
+  text-align: right;
+  max-width: 90mm;
+}
+
+.cover__title-block {
+  margin-top: 28mm;
+}
+
+.cover__eyebrow {
+  margin: 0 0 6mm 0;
+  font-size: 9pt;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--brand-accent);
+}
+
+.cover__customer {
+  margin: 0;
+  font-family: var(--brand-font-heading);
+  font-size: 36pt;
+  line-height: 1.05;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.cover__title {
+  margin: 6mm 0 0 0;
+  font-family: var(--brand-font-heading);
+  font-size: 22pt;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.92);
+  max-width: 140mm;
+  line-height: 1.25;
+}
+
+.cover__meta {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10mm;
+  border-top: 1px solid rgba(255, 255, 255, 0.25);
+  padding-top: 10mm;
+}
+
+.cover__meta-label {
+  margin: 0;
+  font-size: 8pt;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.65);
+  margin-bottom: 2mm;
+}
+
+.cover__meta-value {
+  margin: 0;
+  font-size: 12pt;
+  font-weight: 500;
+  color: #ffffff;
+}
+
+/* ─── Generic content sections ───────────────────────────────────── */
+
+.section {
+  page-break-inside: avoid;
+  break-inside: avoid;
+  padding: 20mm 22mm 12mm 22mm;
+}
+
+.section + .section {
+  padding-top: 8mm;
+}
+
+.section__title {
+  margin: 0 0 8mm 0;
+  font-family: var(--brand-font-heading);
+  font-size: 22pt;
+  font-weight: 700;
+  color: var(--brand-primary);
+  border-left: 3mm solid var(--brand-accent);
+  padding-left: 6mm;
+  line-height: 1.15;
+}
+
+.prose h2,
+.prose h3 {
+  font-family: var(--brand-font-heading);
+  color: var(--brand-primary);
+}
+
+.prose h2 {
+  font-size: 14pt;
+  margin: 6mm 0 3mm 0;
+}
+
+.prose h3 {
+  font-size: 12pt;
+  color: var(--brand-accent);
+  margin: 5mm 0 2mm 0;
+}
+
+.prose p {
+  margin: 0 0 3mm 0;
+}
+
+.prose ul,
+.prose ol {
+  margin: 0 0 4mm 0;
+  padding-left: 6mm;
+}
+
+.prose li {
+  margin: 0 0 1.5mm 0;
+}
+
+.prose strong {
+  color: var(--brand-primary);
+}
+
+.prose blockquote {
+  margin: 4mm 0;
+  padding: 2mm 0 2mm 6mm;
+  border-left: 1mm solid var(--brand-accent);
+  color: var(--brand-secondary);
+  font-style: italic;
+}
+
+/* ─── Bullet list (scope) ────────────────────────────────────────── */
+
+.bullets {
+  margin: 0;
+  padding-left: 6mm;
+}
+
+.bullets li {
+  margin: 0 0 2.5mm 0;
+}
+
+.bullets li::marker {
+  color: var(--brand-accent);
+}
+
+/* ─── Deliverables card grid ─────────────────────────────────────── */
+
+.deliverables {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5mm;
+}
+
+.deliverable {
+  border: 0.5mm solid rgba(0, 0, 0, 0.08);
+  border-left: 1.5mm solid var(--brand-accent);
+  border-radius: 1.5mm;
+  padding: 5mm;
+  background: #ffffff;
+  page-break-inside: avoid;
+}
+
+.deliverable__name {
+  margin: 0 0 2mm 0;
+  font-family: var(--brand-font-heading);
+  font-size: 12pt;
+  color: var(--brand-primary);
+}
+
+.deliverable__description {
+  margin: 0;
+  font-size: 10pt;
+  color: var(--brand-text);
+}
+
+/* ─── Timeline table ─────────────────────────────────────────────── */
+
+.timeline {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.timeline__th {
+  background: var(--brand-primary);
+  color: #ffffff;
+  padding: 3mm 4mm;
+  text-align: left;
+  font-size: 10pt;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.timeline__th--weeks {
+  text-align: center;
+  width: 24mm;
+}
+
+.timeline__td {
+  padding: 3mm 4mm;
+  border-bottom: 0.3mm solid rgba(0, 0, 0, 0.08);
+  font-size: 10pt;
+  vertical-align: top;
+}
+
+.timeline tbody tr:nth-child(odd) .timeline__td {
+  background: #f8f9fa;
+}
+
+.timeline__td--phase {
+  font-weight: 600;
+  color: var(--brand-primary);
+}
+
+.timeline__td--weeks {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Pricing table ──────────────────────────────────────────────── */
+
+.pricing {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.pricing__th {
+  background: var(--brand-primary);
+  color: #ffffff;
+  padding: 3mm 4mm;
+  text-align: left;
+  font-size: 10pt;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.pricing__th--num {
+  text-align: right;
+}
+
+.pricing__td {
+  padding: 3mm 4mm;
+  border-bottom: 0.3mm solid rgba(0, 0, 0, 0.08);
+  font-size: 10pt;
+  vertical-align: top;
+}
+
+.pricing tbody tr:nth-child(odd) .pricing__td {
+  background: #f8f9fa;
+}
+
+.pricing__td--num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.pricing__total-label {
+  padding: 3mm 4mm;
+  text-align: right;
+  font-size: 10pt;
+  color: var(--brand-secondary);
+  font-weight: 500;
+}
+
+.pricing__grand-row td {
+  border-top: 0.6mm solid var(--brand-primary);
+  padding-top: 4mm;
+}
+
+.pricing__grand-label {
+  padding: 4mm 4mm;
+  text-align: right;
+  font-size: 11pt;
+  font-weight: 700;
+  color: var(--brand-primary);
+}
+
+.pricing__grand-value {
+  padding: 4mm 4mm;
+  text-align: right;
+  font-size: 13pt;
+  font-weight: 700;
+  color: var(--brand-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Signature block ────────────────────────────────────────────── */
+
+.signatures__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12mm;
+  margin-top: 4mm;
+}
+
+.signatures__col {
+  display: flex;
+  flex-direction: column;
+}
+
+.signatures__label {
+  margin: 0 0 4mm 0;
+  font-size: 9pt;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--brand-secondary);
+}
+
+.signatures__line {
+  height: 0.4mm;
+  background: rgba(0, 0, 0, 0.35);
+  margin: 16mm 0 2mm 0;
+}
+
+.signatures__caption {
+  display: flex;
+  justify-content: space-between;
+  font-size: 8.5pt;
+  color: var(--brand-secondary);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.signatures__name {
+  margin: 4mm 0 0 0;
+  font-size: 10pt;
+  font-weight: 500;
+  color: var(--brand-primary);
+}
+
+/* ─── Print-specific overrides ──────────────────────────────────── */
+
+@media print {
+  .section {
+    break-inside: avoid;
+  }
+  .timeline,
+  .pricing {
+    break-inside: avoid;
+  }
+  .deliverables {
+    break-inside: avoid;
+  }
+}
