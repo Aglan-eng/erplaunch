@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>{{firm.displayName}} — {{sow.title}} (SOW)</title>
+    <style>
+      :root {
+        --brand-primary: {{brand.primary}};
+        --brand-secondary: {{brand.secondary}};
+        --brand-accent: {{brand.accent}};
+        --brand-text: {{brand.text}};
+        --brand-bg: {{brand.bg}};
+        --brand-font-heading: {{{brand.fontHeading}}};
+        --brand-font-body: {{{brand.fontBody}}};
+        --brand-logo-url: {{{brand.logoCss}}};
+      }
+    </style>
+    <style>{{{baseStyles}}}</style>
+  </head>
+  <body>
+    {{!-- Cover page — full-bleed brand primary panel with SOW headline. --}}
+    <section class="cover" data-testid="cover">
+      <div class="cover__top">
+        {{#if brand.logoUrl}}
+          <img class="cover__logo" src="{{brand.logoUrl}}" alt="{{firm.displayName}} logo" />
+        {{else}}
+          <div class="cover__mark">{{firm.initial}}</div>
+        {{/if}}
+        <p class="cover__doc-type">Statement of Work</p>
+      </div>
+      <div class="cover__title-block">
+        <p class="cover__eyebrow">SOW between</p>
+        <h1 class="cover__customer">{{customer.name}}</h1>
+        <p class="cover__and">and {{firm.displayName}}</p>
+        <h2 class="cover__title">{{sow.title}}</h2>
+      </div>
+      <div class="cover__meta">
+        <div>
+          <p class="cover__meta-label">Effective</p>
+          <p class="cover__meta-value">{{formattedEffectiveDate}}</p>
+        </div>
+        {{#if sow.referenceProposalNumber}}
+          <div>
+            <p class="cover__meta-label">Proposal ref</p>
+            <p class="cover__meta-value">{{sow.referenceProposalNumber}}</p>
+          </div>
+        {{/if}}
+        <div>
+          <p class="cover__meta-label">From</p>
+          <p class="cover__meta-value">{{firm.displayName}}</p>
+        </div>
+      </div>
+    </section>
+
+    {{!-- Project overview --}}
+    <section class="section">
+      <h1 class="section__title">Project overview</h1>
+      <div class="prose">{{{projectOverviewHtml}}}</div>
+    </section>
+
+    {{!-- In-scope / out-of-scope side-by-side --}}
+    <section class="section">
+      <h1 class="section__title">Scope</h1>
+      <div class="scope-grid">
+        <div class="scope-col scope-col--in">
+          <h3 class="scope-col__title">In scope</h3>
+          <ul class="bullets">
+            {{#each sow.inScope}}
+              <li>{{this}}</li>
+            {{/each}}
+          </ul>
+        </div>
+        <div class="scope-col scope-col--out">
+          <h3 class="scope-col__title">Out of scope</h3>
+          <ul class="bullets bullets--out">
+            {{#each sow.outOfScope}}
+              <li>{{this}}</li>
+            {{/each}}
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    {{!-- Deliverables with acceptance criteria --}}
+    <section class="section">
+      <h1 class="section__title">Deliverables</h1>
+      <div class="deliverables">
+        {{#each sow.deliverables}}
+          <article class="deliverable">
+            <header class="deliverable__header">
+              <span class="deliverable__id">{{id}}</span>
+              <h3 class="deliverable__name">{{name}}</h3>
+            </header>
+            <p class="deliverable__description">{{description}}</p>
+            <div class="deliverable__criteria">
+              <p class="deliverable__criteria-label">Acceptance criteria</p>
+              <p class="deliverable__criteria-text">{{acceptanceCriteria}}</p>
+            </div>
+          </article>
+        {{/each}}
+      </div>
+    </section>
+
+    {{!-- Milestones + payment schedule --}}
+    <section class="section">
+      <h1 class="section__title">Milestones &amp; payment schedule</h1>
+      <table class="timeline">
+        <thead>
+          <tr>
+            <th class="timeline__th">Milestone</th>
+            <th class="timeline__th timeline__th--weeks">Target date</th>
+            <th class="timeline__th timeline__th--weeks">Payment %</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#each milestonesFormatted}}
+            <tr>
+              <td class="timeline__td timeline__td--phase">{{name}}</td>
+              <td class="timeline__td timeline__td--weeks">{{targetDate}}</td>
+              <td class="timeline__td timeline__td--weeks">{{paymentPercent}}%</td>
+            </tr>
+          {{/each}}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td class="pricing__total-label" colspan="2">Total committed</td>
+            <td class="pricing__td pricing__td--num">{{totalPaymentPercent}}%</td>
+          </tr>
+        </tfoot>
+      </table>
+    </section>
+
+    {{!-- Assumptions --}}
+    <section class="section">
+      <h1 class="section__title">Assumptions</h1>
+      <ul class="bullets">
+        {{#each sow.assumptions}}
+          <li>{{this}}</li>
+        {{/each}}
+      </ul>
+    </section>
+
+    {{!-- Change-order process --}}
+    <section class="section">
+      <h1 class="section__title">Change-order process</h1>
+      <div class="prose">{{{changeOrderProcessHtml}}}</div>
+    </section>
+
+    {{!-- Fees + payment terms --}}
+    <section class="section">
+      <h1 class="section__title">Fees &amp; payment terms</h1>
+      <div class="fees">
+        {{#if feesFormatted.fixedFee}}
+          <div class="fees__primary">
+            <p class="fees__label">Fixed professional services fee</p>
+            <p class="fees__value">{{feesFormatted.fixedFee}}</p>
+          </div>
+        {{/if}}
+        {{#if feesFormatted.tAndM}}
+          <div class="fees__secondary">
+            <p class="fees__label">Time &amp; materials (for changes / overruns)</p>
+            <p class="fees__value-sm">
+              {{feesFormatted.tAndM.rate}} / hour
+              · est. {{feesFormatted.tAndM.estimatedHours}} hours
+              {{#if feesFormatted.tAndM.cap}}· cap {{feesFormatted.tAndM.cap}}{{/if}}
+            </p>
+          </div>
+        {{/if}}
+        <div class="fees__terms">
+          <p class="fees__terms-label">Payment terms</p>
+          <p class="fees__terms-text">{{sow.fees.paymentTerms}}</p>
+        </div>
+      </div>
+    </section>
+
+    {{!-- Term &amp; termination --}}
+    <section class="section">
+      <h1 class="section__title">Term &amp; termination</h1>
+      <div class="prose">{{{termAndTerminationHtml}}}</div>
+    </section>
+
+    {{!-- Dual signature block --}}
+    <section class="section signatures">
+      <h1 class="section__title">Acceptance</h1>
+      <p class="signatures__lead">
+        Each party warrants the signatory below has authority to bind their organisation to the terms of this Statement of Work, effective {{formattedEffectiveDate}}.
+      </p>
+      <div class="signatures__grid">
+        <div class="signatures__col">
+          <p class="signatures__label">For {{customer.name}}</p>
+          <div class="signatures__line"></div>
+          <div class="signatures__caption">
+            <span>Signature</span>
+            <span>Date</span>
+          </div>
+          <p class="signatures__name">{{sow.signatures.customerSignatoryName}}</p>
+          <p class="signatures__title">{{sow.signatures.customerSignatoryTitle}}</p>
+        </div>
+        <div class="signatures__col">
+          <p class="signatures__label">For {{firm.displayName}}</p>
+          <div class="signatures__line"></div>
+          <div class="signatures__caption">
+            <span>Signature</span>
+            <span>Date</span>
+          </div>
+          <p class="signatures__name">{{sow.signatures.firmSignatoryName}}</p>
+          <p class="signatures__title">{{sow.signatures.firmSignatoryTitle}}</p>
+        </div>
+      </div>
+    </section>
+  </body>
+</html>

@@ -18,6 +18,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { authenticate } from '../middleware/auth.js';
 import { renderProposalPdf } from '../services/exporters/templates/proposal/index.js';
+import { renderSowPdf } from '../services/exporters/templates/sow/index.js';
 import { RenderQueueFullError } from '../services/exporters/puppeteerBrowser.js';
 
 const ProposalLineItemSchema = z.object({
@@ -82,6 +83,8 @@ const ProposalInputBodySchema = z.object({
 export async function exportsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.addHook('preHandler', authenticate);
 
+  registerSowRoute(fastify);
+
   fastify.post('/exports/proposal', async (request, reply) => {
     const parsed = ProposalInputBodySchema.safeParse(request.body);
     if (!parsed.success) {
@@ -122,4 +125,101 @@ function buildFilename(customerName: string, proposalTitle: string): string {
   const safe = (s: string): string =>
     s.replace(/[^A-Za-z0-9._\- ]+/g, '_').trim() || 'document';
   return `${safe(customerName)} — ${safe(proposalTitle)}.pdf`;
+}
+
+// ─── Phase 51.3 — SOW endpoint ─────────────────────────────────────────────
+
+const SowDeliverableSchema = z.object({
+  id: z.string().min(1).max(50),
+  name: z.string().min(1).max(200),
+  description: z.string().min(1).max(5000),
+  acceptanceCriteria: z.string().min(1).max(5000),
+});
+
+const SowMilestoneSchema = z.object({
+  name: z.string().min(1).max(200),
+  targetDate: z.string().min(1),
+  paymentPercent: z.number().min(0).max(100),
+});
+
+const SowFeesSchema = z.object({
+  fixedFee: z.number().nonnegative().optional(),
+  tAndM: z
+    .object({
+      rate: z.number().nonnegative(),
+      estimatedHours: z.number().nonnegative(),
+      cap: z.number().nonnegative().optional(),
+    })
+    .optional(),
+  currency: z.string().regex(/^[A-Z]{3}$/),
+  paymentTerms: z.string().min(1).max(2000),
+});
+
+const SowSignaturesSchema = z.object({
+  firmSignatoryName: z.string().min(1).max(200),
+  firmSignatoryTitle: z.string().min(1).max(200),
+  customerSignatoryName: z.string().min(1).max(200),
+  customerSignatoryTitle: z.string().min(1).max(200),
+});
+
+const SowContentSchema = z.object({
+  title: z.string().min(1).max(500),
+  effectiveDate: z.string().min(1),
+  referenceProposalNumber: z.string().max(100).optional(),
+  projectOverview: z.string().max(50_000),
+  inScope: z.array(z.string().min(1).max(500)).max(200),
+  outOfScope: z.array(z.string().min(1).max(500)).max(200),
+  deliverables: z.array(SowDeliverableSchema).max(100),
+  milestones: z.array(SowMilestoneSchema).max(100),
+  assumptions: z.array(z.string().min(1).max(500)).max(200),
+  changeOrderProcess: z.string().max(50_000),
+  fees: SowFeesSchema,
+  termAndTermination: z.string().max(50_000),
+  signatures: SowSignaturesSchema,
+});
+
+const SowInputBodySchema = z.object({
+  // firmId in the body is ignored — sourced from jwtUser for tenant
+  // isolation. See note on the proposal route above.
+  firmId: z.string().optional(),
+  customer: z.object({
+    name: z.string().min(1).max(200),
+    address: z.string().max(1000).optional(),
+    contactName: z.string().max(200).optional(),
+  }),
+  sow: SowContentSchema,
+});
+
+function registerSowRoute(fastify: FastifyInstance): void {
+  fastify.post('/exports/sow', async (request, reply) => {
+    const parsed = SowInputBodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({
+        error: { code: 'VALIDATION_ERROR', message: parsed.error.message },
+      });
+    }
+
+    const firmId = request.jwtUser.firmId;
+    try {
+      const pdf = await renderSowPdf({
+        firmId,
+        customer: parsed.data.customer,
+        sow: parsed.data.sow,
+      });
+      const filename = buildFilename(parsed.data.customer.name, `${parsed.data.sow.title} (SOW)`);
+      return reply
+        .type('application/pdf')
+        .header('Content-Length', String(pdf.byteLength))
+        .header('Content-Disposition', `attachment; filename="${filename}"`)
+        .send(pdf);
+    } catch (err) {
+      if (err instanceof RenderQueueFullError) {
+        return reply
+          .code(503)
+          .header('Retry-After', '5')
+          .send({ error: { code: 'QUEUE_FULL', message: err.message } });
+      }
+      throw err;
+    }
+  });
 }

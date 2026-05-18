@@ -1,0 +1,538 @@
+/* Phase 51.3 — branded SOW stylesheet.
+ *
+ * Shares the proposal's visual vocabulary (cover-band, section
+ * heading with brand-accent ruling, signature block) so SOWs and
+ * proposals feel like the same product. Adds SOW-specific bits:
+ *
+ *   - Scope two-up (in-scope green / out-of-scope amber)
+ *   - Fees panel (primary headline + optional T&M footnote +
+ *     payment-terms call-out)
+ *   - Deliverable cards with acceptance-criteria sub-block
+ *   - Signature column shows both name AND title under the line
+ *
+ * Driven entirely by the CSS custom properties injected by
+ * `_shared/brandPackCss.ts`. Unbranded firms render with neutral
+ * defaults.
+ */
+
+@page {
+  size: A4;
+  margin: 0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  color: var(--brand-text);
+  background: var(--brand-bg);
+  font-family: var(--brand-font-body);
+  font-size: 10.5pt;
+  line-height: 1.55;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* ─── Cover page ─────────────────────────────────────────────────── */
+
+.cover {
+  page-break-after: always;
+  break-after: page;
+  background: var(--brand-primary);
+  color: #ffffff;
+  min-height: 297mm;
+  padding: 25mm 22mm;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.cover__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16mm;
+}
+
+.cover__logo {
+  max-width: 48mm;
+  max-height: 18mm;
+  display: block;
+}
+
+.cover__mark {
+  width: 18mm;
+  height: 18mm;
+  border-radius: 4mm;
+  background: var(--brand-accent);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--brand-font-heading);
+  font-weight: 700;
+  font-size: 22pt;
+}
+
+.cover__doc-type {
+  margin: 0;
+  font-size: 10pt;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--brand-accent);
+  font-weight: 700;
+}
+
+.cover__title-block {
+  margin-top: 28mm;
+}
+
+.cover__eyebrow {
+  margin: 0 0 6mm 0;
+  font-size: 9pt;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.cover__customer {
+  margin: 0;
+  font-family: var(--brand-font-heading);
+  font-size: 30pt;
+  line-height: 1.1;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.cover__and {
+  margin: 2mm 0 0 0;
+  font-size: 11pt;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.cover__title {
+  margin: 8mm 0 0 0;
+  font-family: var(--brand-font-heading);
+  font-size: 20pt;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.92);
+  max-width: 140mm;
+  line-height: 1.25;
+}
+
+.cover__meta {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10mm;
+  border-top: 1px solid rgba(255, 255, 255, 0.25);
+  padding-top: 10mm;
+}
+
+.cover__meta-label {
+  margin: 0 0 2mm 0;
+  font-size: 8pt;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.cover__meta-value {
+  margin: 0;
+  font-size: 12pt;
+  font-weight: 500;
+  color: #ffffff;
+}
+
+/* ─── Generic content sections ───────────────────────────────────── */
+
+.section {
+  page-break-inside: avoid;
+  break-inside: avoid;
+  padding: 20mm 22mm 12mm 22mm;
+}
+
+.section + .section {
+  padding-top: 8mm;
+}
+
+.section__title {
+  margin: 0 0 8mm 0;
+  font-family: var(--brand-font-heading);
+  font-size: 22pt;
+  font-weight: 700;
+  color: var(--brand-primary);
+  border-left: 3mm solid var(--brand-accent);
+  padding-left: 6mm;
+  line-height: 1.15;
+}
+
+.prose h2,
+.prose h3 {
+  font-family: var(--brand-font-heading);
+  color: var(--brand-primary);
+}
+
+.prose h2 {
+  font-size: 14pt;
+  margin: 6mm 0 3mm 0;
+}
+
+.prose h3 {
+  font-size: 12pt;
+  color: var(--brand-accent);
+  margin: 5mm 0 2mm 0;
+}
+
+.prose p {
+  margin: 0 0 3mm 0;
+}
+
+.prose ul,
+.prose ol {
+  margin: 0 0 4mm 0;
+  padding-left: 6mm;
+}
+
+.prose li {
+  margin: 0 0 1.5mm 0;
+}
+
+.prose strong {
+  color: var(--brand-primary);
+}
+
+.prose blockquote {
+  margin: 4mm 0;
+  padding: 2mm 0 2mm 6mm;
+  border-left: 1mm solid var(--brand-accent);
+  color: var(--brand-secondary);
+  font-style: italic;
+}
+
+/* ─── Bullet lists (assumptions, scope) ──────────────────────────── */
+
+.bullets {
+  margin: 0;
+  padding-left: 6mm;
+}
+
+.bullets li {
+  margin: 0 0 2.5mm 0;
+}
+
+.bullets li::marker {
+  color: var(--brand-accent);
+}
+
+.bullets--out li::marker {
+  color: #b45309; /* amber-700 — distinguishes out-of-scope visually */
+}
+
+/* ─── Scope two-up ───────────────────────────────────────────────── */
+
+.scope-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8mm;
+}
+
+.scope-col {
+  border: 0.5mm solid rgba(0, 0, 0, 0.08);
+  border-radius: 1.5mm;
+  padding: 6mm;
+  background: #ffffff;
+}
+
+.scope-col--in {
+  border-left: 1.5mm solid var(--brand-accent);
+}
+
+.scope-col--out {
+  border-left: 1.5mm solid #b45309;
+}
+
+.scope-col__title {
+  margin: 0 0 4mm 0;
+  font-family: var(--brand-font-heading);
+  font-size: 12pt;
+  color: var(--brand-primary);
+}
+
+/* ─── Deliverables ───────────────────────────────────────────────── */
+
+.deliverables {
+  display: flex;
+  flex-direction: column;
+  gap: 5mm;
+}
+
+.deliverable {
+  border: 0.5mm solid rgba(0, 0, 0, 0.08);
+  border-left: 1.5mm solid var(--brand-accent);
+  border-radius: 1.5mm;
+  padding: 6mm;
+  background: #ffffff;
+  page-break-inside: avoid;
+}
+
+.deliverable__header {
+  display: flex;
+  align-items: baseline;
+  gap: 4mm;
+  margin-bottom: 3mm;
+}
+
+.deliverable__id {
+  font-family: var(--brand-font-heading);
+  font-size: 9pt;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--brand-secondary);
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 1mm;
+  padding: 1mm 2mm;
+}
+
+.deliverable__name {
+  margin: 0;
+  font-family: var(--brand-font-heading);
+  font-size: 12pt;
+  color: var(--brand-primary);
+}
+
+.deliverable__description {
+  margin: 0 0 4mm 0;
+  font-size: 10pt;
+  color: var(--brand-text);
+}
+
+.deliverable__criteria {
+  border-top: 0.3mm solid rgba(0, 0, 0, 0.08);
+  padding-top: 3mm;
+}
+
+.deliverable__criteria-label {
+  margin: 0 0 1mm 0;
+  font-size: 8.5pt;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--brand-accent);
+  font-weight: 600;
+}
+
+.deliverable__criteria-text {
+  margin: 0;
+  font-size: 10pt;
+  font-style: italic;
+  color: var(--brand-secondary);
+}
+
+/* ─── Timeline / milestones table ────────────────────────────────── */
+
+.timeline {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.timeline__th {
+  background: var(--brand-primary);
+  color: #ffffff;
+  padding: 3mm 4mm;
+  text-align: left;
+  font-size: 10pt;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.timeline__th--weeks {
+  text-align: center;
+  width: 32mm;
+}
+
+.timeline__td {
+  padding: 3mm 4mm;
+  border-bottom: 0.3mm solid rgba(0, 0, 0, 0.08);
+  font-size: 10pt;
+  vertical-align: top;
+}
+
+.timeline tbody tr:nth-child(odd) .timeline__td {
+  background: #f8f9fa;
+}
+
+.timeline__td--phase {
+  font-weight: 600;
+  color: var(--brand-primary);
+}
+
+.timeline__td--weeks {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.pricing__total-label {
+  padding: 3mm 4mm;
+  text-align: right;
+  font-size: 10pt;
+  color: var(--brand-secondary);
+  font-weight: 500;
+}
+
+.pricing__td--num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Fees panel ─────────────────────────────────────────────────── */
+
+.fees {
+  display: flex;
+  flex-direction: column;
+  gap: 6mm;
+}
+
+.fees__primary {
+  background: var(--brand-primary);
+  color: #ffffff;
+  padding: 8mm;
+  border-radius: 2mm;
+  display: flex;
+  flex-direction: column;
+  gap: 2mm;
+}
+
+.fees__label {
+  margin: 0;
+  font-size: 9pt;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.fees__primary .fees__label {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.fees__value {
+  margin: 0;
+  font-family: var(--brand-font-heading);
+  font-size: 28pt;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.fees__secondary {
+  background: #f8f9fa;
+  border-left: 1mm solid var(--brand-accent);
+  padding: 5mm 6mm;
+  border-radius: 1.5mm;
+  display: flex;
+  flex-direction: column;
+  gap: 1mm;
+}
+
+.fees__secondary .fees__label {
+  color: var(--brand-secondary);
+}
+
+.fees__value-sm {
+  margin: 0;
+  font-size: 11pt;
+  font-weight: 500;
+  color: var(--brand-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.fees__terms {
+  border-top: 0.3mm solid rgba(0, 0, 0, 0.08);
+  padding-top: 4mm;
+}
+
+.fees__terms-label {
+  margin: 0 0 1mm 0;
+  font-size: 9pt;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--brand-accent);
+  font-weight: 600;
+}
+
+.fees__terms-text {
+  margin: 0;
+  font-size: 10.5pt;
+  color: var(--brand-text);
+}
+
+/* ─── Signature block ────────────────────────────────────────────── */
+
+.signatures__lead {
+  margin: 0 0 6mm 0;
+  font-size: 10pt;
+  color: var(--brand-secondary);
+}
+
+.signatures__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12mm;
+  margin-top: 4mm;
+}
+
+.signatures__col {
+  display: flex;
+  flex-direction: column;
+}
+
+.signatures__label {
+  margin: 0 0 4mm 0;
+  font-size: 9pt;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--brand-secondary);
+}
+
+.signatures__line {
+  height: 0.4mm;
+  background: rgba(0, 0, 0, 0.35);
+  margin: 16mm 0 2mm 0;
+}
+
+.signatures__caption {
+  display: flex;
+  justify-content: space-between;
+  font-size: 8.5pt;
+  color: var(--brand-secondary);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.signatures__name {
+  margin: 4mm 0 0 0;
+  font-size: 11pt;
+  font-weight: 600;
+  color: var(--brand-primary);
+}
+
+.signatures__title {
+  margin: 0.5mm 0 0 0;
+  font-size: 9.5pt;
+  color: var(--brand-secondary);
+}
+
+/* ─── Print-specific overrides ──────────────────────────────────── */
+
+@media print {
+  .section {
+    break-inside: avoid;
+  }
+  .scope-grid,
+  .timeline,
+  .deliverable {
+    break-inside: avoid;
+  }
+}
