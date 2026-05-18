@@ -33,6 +33,11 @@ const CustomAdaptorsPage = lazy(() => import('./pages/CustomAdaptorsPage').then(
 const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage').then(m => ({ default: m.ForgotPasswordPage })));
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage').then(m => ({ default: m.ResetPasswordPage })));
 const VerifyEmailPage = lazy(() => import('./pages/VerifyEmailPage').then(m => ({ default: m.VerifyEmailPage })));
+// Phase 52.2 — unified-IA stub routes. Real implementations land in 52.3/52.4/52.5.
+const InboxPage = lazy(() => import('./pages/InboxPage').then(m => ({ default: m.InboxPage })));
+const CustomersPage = lazy(() => import('./pages/CustomersPage').then(m => ({ default: m.CustomersPage })));
+const CustomerDetailPage = lazy(() => import('./pages/CustomerDetailPage').then(m => ({ default: m.CustomerDetailPage })));
+const ReportsPage = lazy(() => import('./pages/ReportsPage').then(m => ({ default: m.ReportsPage })));
 
 function PageLoader() {
   return (
@@ -261,6 +266,43 @@ function AppRoutes() {
           element={
             <RequireAuth>
               <ErrorBoundary><WizardPage /></ErrorBoundary>
+            </RequireAuth>
+          }
+        />
+        {/* Phase 52.2 — unified-IA stubs. Real implementations:
+            /inbox          → Phase 52.5 (role-aware home)
+            /customers      → Phase 52.3 (kanban + list)
+            /customers/:id  → Phase 52.4 (detail)
+            /reports        → Phase 53                              */}
+        <Route
+          path="/inbox"
+          element={
+            <RequireAuth>
+              <ErrorBoundary><InboxPage /></ErrorBoundary>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/customers"
+          element={
+            <RequireAuth>
+              <ErrorBoundary><CustomersPage /></ErrorBoundary>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/customers/:id"
+          element={
+            <RequireAuth>
+              <ErrorBoundary><CustomerDetailPage /></ErrorBoundary>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/reports"
+          element={
+            <RequireAuth>
+              <ErrorBoundary><ReportsPage /></ErrorBoundary>
             </RequireAuth>
           }
         />
