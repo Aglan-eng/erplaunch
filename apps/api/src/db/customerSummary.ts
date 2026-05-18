@@ -18,7 +18,6 @@ import {
   type Customer,
   type CustomerStage,
   type ListCustomersFilters,
-  computeHealth,
   effectiveOwnerUserId,
   healthBand,
   listCustomersByFirm,
@@ -103,15 +102,17 @@ export async function buildCustomerSummary(customer: Customer): Promise<Customer
       projectLeadUserId: customer.projectLeadUserId,
       csmUserId: customer.csmUserId,
     }) ?? '';
-  const [ownerName, lastActivityAt, healthScore] = await Promise.all([
+  const [ownerName, lastActivityAt] = await Promise.all([
     resolveUserName(ownerId || null),
     getLastActivityAt(customer.id, customer.sourceEngagementId),
-    computeHealth(customer.id, customer.firmId),
   ]);
-  // `healthBand` returns 'unknown' only when its input is null;
-  // `computeHealth` always returns a number, so the 'unknown' branch
-  // is unreachable here. Coerce defensively so the type narrows to
-  // the route surface's red|yellow|green contract.
+  // Phase 52.3.1 — read the persisted column rather than calling
+  // the old computeHealth stub. The reconcile worker + the stage-
+  // transition hook keep the column fresh; archived customers
+  // floor to 0 as the canonical "no signal" value.
+  const healthScore = customer.isArchived
+    ? 0
+    : customer.health ?? 0;
   const band = healthBand(healthScore);
   const summaryBand: 'red' | 'yellow' | 'green' = band === 'unknown' ? 'red' : band;
   return {

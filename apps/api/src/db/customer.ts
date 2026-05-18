@@ -187,18 +187,32 @@ export function effectiveOwnerUserId(customer: {
   csmUserId: string | null;
 }): string | null {
   const group = stageGroup(customer.currentStage);
+  // Stage-canonical owner first per Phase 52 lock #2.
+  let canonical: string | null = null;
   if (group === 'pre-sales' || customer.currentStage === 'WON') {
-    return customer.salesOwnerUserId;
+    canonical = customer.salesOwnerUserId;
+  } else if (
+    group === 'delivery' ||
+    (group === 'launch' && customer.currentStage === 'GOLIVE')
+  ) {
+    canonical = customer.projectLeadUserId;
+  } else if (
+    group === 'live' ||
+    customer.currentStage === 'HYPERCARE' ||
+    customer.currentStage === 'RENEWED'
+  ) {
+    canonical = customer.csmUserId;
   }
-  if (group === 'delivery' || group === 'launch' && customer.currentStage === 'GOLIVE') {
-    return customer.projectLeadUserId;
-  }
-  if (group === 'live' || customer.currentStage === 'HYPERCARE' || customer.currentStage === 'RENEWED') {
-    return customer.csmUserId;
-  }
-  // Terminal negatives (LOST, CHURNED): return first non-null in
-  // priority order so the audit trail still has a "who owned this."
-  return customer.csmUserId ?? customer.projectLeadUserId ?? customer.salesOwnerUserId;
+  if (canonical) return canonical;
+  // Phase 52.3.1 fallback per spec §5: if the active stage's owner
+  // field is null, fall back to any non-null owner field so the UI
+  // surfaces SOMEONE rather than a blank cell. Priority order goes
+  // from the closest-to-current-stage role outward.
+  return (
+    customer.csmUserId ??
+    customer.projectLeadUserId ??
+    customer.salesOwnerUserId
+  );
 }
 
 // ─── The Customer interface ─────────────────────────────────────────────────
@@ -618,6 +632,17 @@ export async function advanceStage(
         triggerStageTo: toStage,
       }),
     );
+  }
+
+  // Phase 52.3.1 — recompute health on every stage transition. Per
+  // locked decision 4 the score is "recomputed nightly + on every
+  // status-changing write." Lazy-imported to avoid circular deps;
+  // failures are non-fatal (the transition still succeeded).
+  try {
+    const { recomputeAndPersistHealth } = await import('../services/customer/health.js');
+    await recomputeAndPersistHealth(id);
+  } catch {
+    // ignore — stale health up to the nightly recompute is acceptable.
   }
 
   const next = await getCustomer(id, firmId);

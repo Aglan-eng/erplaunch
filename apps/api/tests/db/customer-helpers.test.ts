@@ -201,13 +201,28 @@ describe('effectiveOwnerUserId', () => {
     ).toBeNull();
   });
 
-  it('returns null when the relevant owner column is unset', () => {
+  it('falls back across owner columns when the stage-canonical one is null (Phase 52.3.1 spec §5)', () => {
+    // BUILD stage → canonical column is projectLeadUserId. Old
+    // behavior returned null; the strengthened helper now falls
+    // back to csmUserId (closest-role priority) so the UI surfaces
+    // SOMEONE rather than a blank cell.
     expect(
       effectiveOwnerUserId({
         currentStage: 'BUILD',
         salesOwnerUserId: 'sales-user',
         projectLeadUserId: null,
         csmUserId: 'csm-user',
+      }),
+    ).toBe('csm-user');
+  });
+
+  it('returns null when ALL owner columns are unset (the only true-null case)', () => {
+    expect(
+      effectiveOwnerUserId({
+        currentStage: 'BUILD',
+        salesOwnerUserId: null,
+        projectLeadUserId: null,
+        csmUserId: null,
       }),
     ).toBeNull();
   });

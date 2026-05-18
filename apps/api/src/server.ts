@@ -78,6 +78,8 @@ import { exportRoutes } from './routes/export.js';
 import { exportsRoutes } from './routes/exports.js';
 // Phase 52.3 — unified Customers list + stage transition.
 import { customersRoutes } from './routes/customers.js';
+// Phase 52.3.1 — admin reconcile endpoint.
+import { adminRoutes } from './routes/admin.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -139,6 +141,36 @@ export async function buildServer() {
   await fastify.register(requestIdPlugin);
 
   await fastify.register(dbPlugin);
+
+  // Phase 52.3.1 — boot-time reconcile of the Customer table.
+  //   1. Insert Customer rows for orphan Engagements.
+  //   2. Populate the right owner column on Customers whose four
+  //      owner fields all came back null from the Phase 52.1 backfill.
+  //   3. Recompute + persist the composite health score for every
+  //      Customer in every firm so the new /customers page surfaces
+  //      real numbers instead of the stub 100.
+  // Skipped under NODE_ENV=test so vitest forks don't pay the cost
+  // (and so the explicit reconcile tests can exercise the helpers
+  // directly without boot-time interference).
+  if (process.env.NODE_ENV !== 'test') {
+    try {
+      const { reconcileAllFirms } = await import('./services/customer/reconcile.js');
+      const results = await reconcileAllFirms();
+      for (const r of results) {
+        // eslint-disable-next-line no-console
+        console.log(
+          `[52.3.1 reconcile] firm=${r.firmId} created=${r.created} owners=${r.ownersFilled} health=${r.healthUpdated}`,
+        );
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error(
+        '[52.3.1 reconcile] boot-time reconcile failed:',
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  }
+
   await fastify.register(redisPlugin);
 
   // Queue plugin must register after Redis — uses its own connection config
@@ -237,6 +269,8 @@ export async function buildServer() {
   // SPA (apps/web/src/lib/api.ts) so the web client hits it via the
   // existing `api` instance with no per-call prefix override.
   await fastify.register(customersRoutes, { prefix: '/api/v1' });
+  // Phase 52.3.1 — POST /api/v1/admin/customer/reconcile (admin lever).
+  await fastify.register(adminRoutes, { prefix: '/api/v1' });
   // /metrics sits at the root (not /api/v1) so scrapers can hit a stable
   // path. The onResponse hook it registers counts ALL responses.
   await fastify.register(metricsRoutes);
