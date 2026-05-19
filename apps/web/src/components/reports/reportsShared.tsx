@@ -102,6 +102,18 @@ export function formatArr(value: number | null | undefined): string {
   return `$${value.toFixed(0)}`;
 }
 
+/**
+ * Phase 52.9.1 — render an ISO timestamp as a clean human date
+ * ("Jun 18, 2026"). Returns "—" for null / unparseable input so
+ * tables don't show "Invalid Date" placeholders.
+ */
+export function formatDate(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
 export function stageLabel(stage: string): string {
   return stage.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase()).replace('Sla', 'SLA').replace('Uat', 'UAT');
 }

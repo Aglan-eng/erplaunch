@@ -1,6 +1,6 @@
 import React from 'react';
 import type { StageWidget } from '@/lib/api';
-import { Stat } from './shared';
+import { Stat, formatDate } from './shared';
 
 type LiveSlaData = Extract<StageWidget, { kind: 'LIVE_SLA' }>;
 
@@ -22,11 +22,7 @@ export function LiveSlaWidget({ data }: { data: LiveSlaData }) {
         />
         <Stat
           label="Next renewal"
-          value={
-            data.nextRenewalDate
-              ? data.nextRenewalDate.slice(0, 10)
-              : '—'
-          }
+          value={formatDate(data.nextRenewalDate)}
           tone="brand"
           testid="widget-livesla-renewal"
         />

@@ -9,6 +9,7 @@
     "seed:odoo": "tsx src/seed-odoo.ts",
     "seed:xelerate-brand-pack": "tsx src/db/seeds/049-xelerate-brand-pack.ts",
     "seed:lifecycle": "tsx scripts/seed-lifecycle.ts",
+    "clean:lifecycle": "tsx scripts/clean-lifecycle.ts",
     "verify:personas": "tsx scripts/verify-personas.ts",
     "test": "rimraf tsconfig.tsbuildinfo && tsc --noEmit && vitest run",
     "test:notypecheck": "vitest run"

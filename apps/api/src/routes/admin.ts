@@ -24,6 +24,7 @@ import {
   reconcileFirmCustomers,
 } from '../services/customer/reconcile.js';
 import { seedLifecycleForFirm } from '../../scripts/seed-lifecycle.js';
+import { cleanLifecycleDemoCustomers } from '../../scripts/clean-lifecycle.js';
 
 const ReconcileBody = z.object({
   firmId: z.string().optional(),
@@ -32,6 +33,11 @@ const ReconcileBody = z.object({
 const SeedLifecycleBody = z.object({
   firmId: z.string().optional(),
   includeDeadEnds: z.boolean().optional(),
+});
+
+const CleanLifecycleBody = z.object({
+  // Required — destructive operation, no default-to-caller's-firm.
+  firmId: z.string().min(1, 'firmId is required'),
 });
 
 export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
@@ -94,6 +100,33 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
         const message = err instanceof Error ? err.message : String(err);
         return reply.code(500).send({
           error: { code: 'SEED_FAILED', message },
+        });
+      }
+    },
+  );
+
+  // Phase 52.9.1 — Demo cleanup. firmId is REQUIRED (no default).
+  // Caller's APP_ADMIN scope must already cover the target firm.
+  fastify.post(
+    '/admin/clean-lifecycle',
+    { preHandler: requirePermission('WRITE', 'ROLES') },
+    async (request, reply) => {
+      const parsed = CleanLifecycleBody.safeParse(request.body ?? {});
+      if (!parsed.success) {
+        return reply.code(400).send({
+          error: { code: 'VALIDATION_ERROR', message: parsed.error.message },
+        });
+      }
+      if (parsed.data.firmId !== request.jwtUser.firmId) {
+        return reply.code(403).send({ error: { code: 'FORBIDDEN' } });
+      }
+      try {
+        const result = await cleanLifecycleDemoCustomers(parsed.data.firmId);
+        return reply.send(result);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return reply.code(500).send({
+          error: { code: 'CLEAN_FAILED', message },
         });
       }
     },

@@ -26,6 +26,7 @@ import {
   EmptyState,
   ReportSection,
   formatArr,
+  formatDate,
   SEVERITY_BG,
   SEVERITY_TEXT,
 } from './reportsShared';
@@ -159,7 +160,7 @@ export function RenewalsDashboard() {
                       {row.healthBand}
                     </span>
                   </td>
-                  <td className="py-1.5 text-right tabular-nums">{row.renewalDueDate}</td>
+                  <td className="py-1.5 text-right tabular-nums">{formatDate(row.renewalDueDate)}</td>
                   <td className="py-1.5 text-right text-gray-700 tabular-nums">{row.daysUntilDue}</td>
                   <td className="py-1.5 text-right font-semibold tabular-nums">
                     {formatArr(row.arr)}

@@ -17,7 +17,7 @@ import {
   YAxis,
 } from 'recharts';
 import { reportsApi } from '@/lib/api';
-import { CHART_COLORS, Callout, EmptyState, ReportSection, stageLabel } from './reportsShared';
+import { CHART_COLORS, Callout, EmptyState, ReportSection, formatDate, stageLabel } from './reportsShared';
 import { cn } from '@/lib/utils';
 
 export function DeliveryDashboard() {
@@ -178,7 +178,7 @@ export function DeliveryDashboard() {
                       {row.customerName}
                     </Link>
                     <span className="text-xs text-gray-500 tabular-nums">
-                      {row.estimatedGoLiveDate} · {weeks} wk
+                      {formatDate(row.estimatedGoLiveDate)} · {weeks} wk
                     </span>
                   </li>
                 );

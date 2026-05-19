@@ -91,6 +91,14 @@ export function Chip({
   );
 }
 
+/** Phase 52.9.1 — clean human-readable date ("Jun 18, 2026") from ISO. */
+export function formatDate(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
 export function formatArr(value: number | null): string {
   if (value == null) return '—';
   if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
