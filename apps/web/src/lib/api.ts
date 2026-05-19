@@ -1470,4 +1470,156 @@ export const customersApi = {
     body: { toStage: CustomerStage; reason?: string },
   ): Promise<{ customer: CustomerSummary }> =>
     api.patch(`/customers/${id}/stage`, body).then((r) => r.data),
+
+  // ─── Phase 52.4 — detail / activity / update ─────────────────────────
+  detail: (id: string): Promise<{ customer: CustomerDetail }> =>
+    api.get(`/customers/${id}`).then((r) => r.data),
+
+  activity: (
+    id: string,
+    opts: { limit?: number; offset?: number; types?: string[] } = {},
+  ): Promise<{ activities: CustomerActivity[]; limit: number; offset: number }> => {
+    const params: Record<string, string> = {};
+    if (opts.limit != null) params.limit = String(opts.limit);
+    if (opts.offset != null) params.offset = String(opts.offset);
+    if (opts.types && opts.types.length > 0) params.types = opts.types.join(',');
+    return api.get(`/customers/${id}/activity`, { params }).then((r) => r.data);
+  },
+
+  update: (id: string, patch: CustomerPatch): Promise<{ customer: CustomerDetail }> =>
+    api.patch(`/customers/${id}`, patch).then((r) => r.data),
+};
+
+// ─── Phase 52.4 — Customer Detail page + exports ───────────────────────────
+
+export interface OwnerRef {
+  id: string;
+  name: string;
+}
+
+export interface CustomerHealthBreakdown {
+  score: number;
+  band: 'red' | 'yellow' | 'green';
+  questionnaireCompletion: number;
+  blockersComponent: number;
+  overdueComponent: number;
+  pendingDecisionsComponent: number;
+  rawCounts: {
+    blockers: number;
+    daysOverdue: number;
+    pendingDecisions: number;
+    questionnairePct: number;
+  };
+}
+
+export interface StageHistoryEntry {
+  id: string;
+  fromStage: CustomerStage;
+  toStage: CustomerStage;
+  actorName: string;
+  isRollback: boolean;
+  reason: string | null;
+  createdAt: string;
+}
+
+export interface CustomerDetail extends CustomerSummary {
+  customerAddress: string | null;
+  primaryContactName: string | null;
+  primaryContactEmail: string | null;
+  primaryContactPhone: string | null;
+  salesOwner: OwnerRef | null;
+  projectLeadOwner: OwnerRef | null;
+  csmOwner: OwnerRef | null;
+  arOwner: OwnerRef | null;
+  healthBreakdown: CustomerHealthBreakdown;
+  stageHistory: StageHistoryEntry[];
+}
+
+export interface CustomerActivity {
+  id: string;
+  action: string;
+  actorUserId: string | null;
+  actorName: string;
+  fromStage: CustomerStage | null;
+  toStage: CustomerStage | null;
+  isRollback: boolean;
+  details: string | null;
+  summary: string;
+  createdAt: string;
+}
+
+export interface CustomerPatch {
+  customerName?: string;
+  customerAddress?: string | null;
+  primaryContactName?: string | null;
+  primaryContactEmail?: string | null;
+  primaryContactPhone?: string | null;
+  arr?: number | null;
+  salesOwnerUserId?: string | null;
+  projectLeadUserId?: string | null;
+  csmUserId?: string | null;
+  arOwnerUserId?: string | null;
+}
+
+// ─── Exports (Phase 51.2/51.3 — now mounted under /api/v1) ─────────────────
+
+export interface ProposalExportBody {
+  customer: { name: string; address?: string; contactName?: string };
+  proposal: {
+    title: string;
+    date: string;
+    preparedBy: string;
+    summary: string;
+    scope: string[];
+    approach: string;
+    deliverables: Array<{ name: string; description: string }>;
+    timeline: Array<{ phase: string; weeks: number; description: string }>;
+    pricing: {
+      lineItems: Array<{ description: string; qty: number; unitPrice: number; total: number }>;
+      subtotal: number;
+      tax?: number;
+      total: number;
+      currency: string;
+    };
+    terms: string;
+  };
+}
+
+export interface SowExportBody {
+  customer: { name: string; address?: string; contactName?: string };
+  sow: {
+    title: string;
+    effectiveDate: string;
+    referenceProposalNumber?: string;
+    projectOverview: string;
+    inScope: string[];
+    outOfScope: string[];
+    deliverables: Array<{ id: string; name: string; description: string; acceptanceCriteria: string }>;
+    milestones: Array<{ name: string; targetDate: string; paymentPercent: number }>;
+    assumptions: string[];
+    changeOrderProcess: string;
+    fees: {
+      fixedFee?: number;
+      tAndM?: { rate: number; estimatedHours: number; cap?: number };
+      currency: string;
+      paymentTerms: string;
+    };
+    termAndTermination: string;
+    signatures: {
+      firmSignatoryName: string;
+      firmSignatoryTitle: string;
+      customerSignatoryName: string;
+      customerSignatoryTitle: string;
+    };
+  };
+}
+
+export const exportsApi = {
+  proposal: (body: ProposalExportBody): Promise<Blob> =>
+    api
+      .post('/exports/proposal', body, { responseType: 'blob' })
+      .then((r) => r.data as Blob),
+
+  sow: (body: SowExportBody): Promise<Blob> =>
+    api.post('/exports/sow', body, { responseType: 'blob' }).then((r) => r.data as Blob),
 };

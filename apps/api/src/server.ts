@@ -262,8 +262,11 @@ export async function buildServer() {
   await fastify.register(verticalsRoutes, { prefix: '/api/v1' });
   await fastify.register(dataCollectionRoutes, { prefix: '/api/v1' });
   await fastify.register(exportRoutes, { prefix: '/api/v1' });
-  // Phase 51.2 — POST /api/exports/proposal (HTML/CSS engine via puppeteer).
-  await fastify.register(exportsRoutes, { prefix: '/api' });
+  // Phase 51.2 — POST /api/v1/exports/proposal (HTML/CSS engine via puppeteer).
+  // Phase 52.4 moved this from /api → /api/v1 to match the established
+  // axios baseURL on the SPA so the Customer Detail "Generate" buttons
+  // can hit it via the existing `api` instance with no prefix override.
+  await fastify.register(exportsRoutes, { prefix: '/api/v1' });
   // Phase 52.3 — GET /api/v1/customers + PATCH /api/v1/customers/:id/stage.
   // Mounted under /api/v1 to match the established axios baseURL on the
   // SPA (apps/web/src/lib/api.ts) so the web client hits it via the

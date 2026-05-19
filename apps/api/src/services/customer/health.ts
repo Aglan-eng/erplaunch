@@ -66,6 +66,28 @@ export interface HealthResult {
   band: HealthBand;
 }
 
+/**
+ * Phase 52.4 — full breakdown for the Customer Detail page health
+ * card. Each component is a 0-N pre-clamped contribution to the
+ * total score (N is the component's max — see the locked formula
+ * above the file). `rawCounts` carries the underlying signals so
+ * the UI can render "3 blockers · 12 days overdue" tooltips.
+ */
+export interface HealthBreakdown {
+  score: number;
+  band: HealthBand;
+  questionnaireCompletion: number;
+  blockersComponent: number;
+  overdueComponent: number;
+  pendingDecisionsComponent: number;
+  rawCounts: {
+    blockers: number;
+    daysOverdue: number;
+    pendingDecisions: number;
+    questionnairePct: number;
+  };
+}
+
 interface CustomerRowForHealth {
   id: unknown;
   currentStage: unknown;
@@ -171,6 +193,16 @@ async function getDaysInCurrentStage(
  * dashboards, so the floor signal is the right semantic.
  */
 export async function computeHealthScore(customerId: string): Promise<HealthResult> {
+  const breakdown = await computeHealthBreakdown(customerId);
+  return { score: breakdown.score, band: breakdown.band };
+}
+
+/**
+ * Returns the full per-component breakdown. The Phase 52.4 Customer
+ * Detail page reads this to render the 4 mini-bars under the health
+ * score. The plain-band `computeHealthScore` is now a thin wrapper.
+ */
+export async function computeHealthBreakdown(customerId: string): Promise<HealthBreakdown> {
   const db = getDb();
   const customerRow = await db.execute({
     sql: `SELECT id, currentStage, createdAt, sourceEngagementId, isArchived
@@ -178,8 +210,17 @@ export async function computeHealthScore(customerId: string): Promise<HealthResu
     args: [customerId],
   });
   const row = customerRow.rows[0] as unknown as CustomerRowForHealth | undefined;
-  if (!row) return { score: 0, band: 'red' };
-  if (Number(row.isArchived ?? 0) === 1) return { score: 0, band: 'red' };
+  const empty: HealthBreakdown = {
+    score: 0,
+    band: 'red',
+    questionnaireCompletion: 0,
+    blockersComponent: 0,
+    overdueComponent: 0,
+    pendingDecisionsComponent: 0,
+    rawCounts: { blockers: 0, daysOverdue: 0, pendingDecisions: 0, questionnairePct: 0 },
+  };
+  if (!row) return empty;
+  if (Number(row.isArchived ?? 0) === 1) return empty;
 
   const currentStage = String(row.currentStage ?? 'LEAD') as CustomerStage;
   const createdAt = String(row.createdAt ?? new Date().toISOString());
@@ -201,7 +242,7 @@ export async function computeHealthScore(customerId: string): Promise<HealthResu
 
   // ─── Open blockers (25 pts, drops by 5% per blocker) ──────────────────
   const blockerCount = await getOpenBlockerCount(engagementId);
-  const blockerComponent = 25 * Math.max(0, 1 - blockerCount * 0.05);
+  const blockersComponent = 25 * Math.max(0, 1 - blockerCount * 0.05);
 
   // ─── Days overdue on stage advance (25 pts, drops by 1/30 per day) ───
   const daysInStage = await getDaysInCurrentStage(
@@ -212,16 +253,31 @@ export async function computeHealthScore(customerId: string): Promise<HealthResu
   );
   const targetDays = STAGE_TARGET_DAYS[currentStage] ?? 30;
   const daysOverdue = Math.max(0, daysInStage - targetDays);
-  const stageComponent = 25 * Math.max(0, 1 - daysOverdue / 30);
+  const overdueComponent = 25 * Math.max(0, 1 - daysOverdue / 30);
 
   // ─── Decisions pending > 14 days (20 pts, drops by 20% per pending) ──
   const pendingDecisions = await getDecisionsPendingOver14Days(engagementId);
-  const decisionsComponent = 20 * Math.max(0, 1 - pendingDecisions * 0.2);
+  const pendingDecisionsComponent = 20 * Math.max(0, 1 - pendingDecisions * 0.2);
 
   const raw =
-    questionnaireComponent + blockerComponent + stageComponent + decisionsComponent;
+    questionnaireComponent + blockersComponent + overdueComponent + pendingDecisionsComponent;
   const score = Math.max(0, Math.min(100, Math.round(raw)));
-  return { score, band: bandFor(score) };
+  return {
+    score,
+    band: bandFor(score),
+    // Round individual components to one decimal so they sum
+    // reasonably to the rounded score without floating-point drift.
+    questionnaireCompletion: Math.round(questionnaireComponent * 10) / 10,
+    blockersComponent: Math.round(blockersComponent * 10) / 10,
+    overdueComponent: Math.round(overdueComponent * 10) / 10,
+    pendingDecisionsComponent: Math.round(pendingDecisionsComponent * 10) / 10,
+    rawCounts: {
+      blockers: blockerCount,
+      daysOverdue,
+      pendingDecisions,
+      questionnairePct: Math.round(questionnairePct * 100) / 100,
+    },
+  };
 }
 
 /**

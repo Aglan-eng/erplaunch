@@ -23,6 +23,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { createId } from '@paralleldrive/cuid2';
 
 import { authenticate } from '../middleware/auth.js';
 import {
@@ -38,6 +39,11 @@ import {
   type CustomerSortField,
   type SortOrder,
 } from '../db/customerSummary.js';
+import {
+  getCustomerDetail,
+  updateCustomerEditableFields,
+} from '../db/customerDetail.js';
+import { getDb } from '../db/index.js';
 
 // ─── Query / body schemas ──────────────────────────────────────────────────
 
@@ -150,5 +156,197 @@ export async function customersRoutes(fastify: FastifyInstance): Promise<void> {
 
     const summary = await buildCustomerSummary(updated);
     return reply.send({ customer: summary });
+  });
+
+  // ── GET /api/v1/customers/:id ──────────────────────────────────────────
+  fastify.get('/customers/:id', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const firmId = request.jwtUser.firmId;
+    const detail = await getCustomerDetail(id, firmId);
+    if (!detail) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+    return reply.send({ customer: detail });
+  });
+
+  // ── GET /api/v1/customers/:id/activity ─────────────────────────────────
+  fastify.get('/customers/:id/activity', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const firmId = request.jwtUser.firmId;
+    // Tenant guard.
+    const exists = await getCustomer(id, firmId);
+    if (!exists) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+
+    const querySchema = z.object({
+      limit: z.coerce.number().int().positive().max(500).optional(),
+      offset: z.coerce.number().int().nonnegative().optional(),
+      types: z.string().optional(),
+    });
+    const parsed = querySchema.safeParse(request.query);
+    if (!parsed.success) {
+      return reply.code(400).send({
+        error: { code: 'VALIDATION_ERROR', message: parsed.error.message },
+      });
+    }
+    const limit = parsed.data.limit ?? 50;
+    const offset = parsed.data.offset ?? 0;
+    const typeList = parsed.data.types
+      ? parsed.data.types
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+
+    const db = getDb();
+    const filters: string[] = [
+      `(a.customerId = ? OR (a.customerId IS NULL AND a.engagementId = ?))`,
+    ];
+    const args: Array<string | number> = [id, exists.sourceEngagementId ?? ''];
+    if (typeList.length > 0) {
+      filters.push(`a.action IN (${typeList.map(() => '?').join(',')})`);
+      args.push(...typeList);
+    }
+    args.push(limit, offset);
+
+    const rows = await db.execute({
+      sql: `SELECT a.id, a.action, a.details, a.fromStage, a.toStage, a.isRollback,
+                   a.createdAt, a.actorUserId, u.name AS actorName
+            FROM ActivityLog a
+            LEFT JOIN User u ON u.id = a.actorUserId
+            WHERE ${filters.join(' AND ')}
+            ORDER BY a.createdAt DESC
+            LIMIT ? OFFSET ?`,
+      args,
+    });
+
+    const activities = rows.rows.map((raw) => {
+      const r = raw as unknown as {
+        id: unknown;
+        action: unknown;
+        details: unknown;
+        fromStage: unknown;
+        toStage: unknown;
+        isRollback: unknown;
+        createdAt: unknown;
+        actorUserId: unknown;
+        actorName: unknown;
+      };
+      let summary = String(r.action);
+      const action = String(r.action);
+      if (action === 'STAGE_TRANSITION') {
+        summary = `${r.actorName ?? 'system'} moved from ${String(r.fromStage)} to ${String(r.toStage)}`;
+        if (Number(r.isRollback ?? 0) === 1) {
+          summary = `Rolled back from ${String(r.fromStage)} to ${String(r.toStage)}`;
+        }
+      } else if (action === 'OWNER_HANDOFF') {
+        summary = `Handoff: ${String(r.fromStage)} → ${String(r.toStage)}`;
+      } else if (action === 'CUSTOMER_EDITED') {
+        summary = `${r.actorName ?? 'system'} edited customer details`;
+      }
+      return {
+        id: String(r.id),
+        action,
+        actorUserId: r.actorUserId == null ? null : String(r.actorUserId),
+        actorName: r.actorName == null ? 'system' : String(r.actorName),
+        fromStage: r.fromStage == null ? null : String(r.fromStage),
+        toStage: r.toStage == null ? null : String(r.toStage),
+        isRollback: Number(r.isRollback ?? 0) === 1,
+        details: r.details == null ? null : String(r.details),
+        summary,
+        createdAt: String(r.createdAt),
+      };
+    });
+    return reply.send({ activities, limit, offset });
+  });
+
+  // ── PATCH /api/v1/customers/:id ────────────────────────────────────────
+  const PatchBody = z.object({
+    customerName: z.string().min(1).max(200).optional(),
+    customerAddress: z.string().max(1000).nullable().optional(),
+    primaryContactName: z.string().max(200).nullable().optional(),
+    primaryContactEmail: z.string().email().nullable().optional(),
+    primaryContactPhone: z.string().max(50).nullable().optional(),
+    arr: z.number().nonnegative().nullable().optional(),
+    salesOwnerUserId: z.string().nullable().optional(),
+    projectLeadUserId: z.string().nullable().optional(),
+    csmUserId: z.string().nullable().optional(),
+    arOwnerUserId: z.string().nullable().optional(),
+  });
+
+  fastify.patch('/customers/:id', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const firmId = request.jwtUser.firmId;
+    const actorUserId = request.jwtUser.userId;
+    const parsed = PatchBody.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({
+        error: { code: 'VALIDATION_ERROR', message: parsed.error.message },
+      });
+    }
+
+    const existing = await getCustomer(id, firmId);
+    if (!existing) return reply.code(404).send({ error: { code: 'NOT_FOUND' } });
+
+    // Defence: any owner userId in the patch must belong to the
+    // caller's firm. Empty string / null clear the column; only
+    // present non-null strings need validation.
+    const db = getDb();
+    const ownerFields: Array<
+      'salesOwnerUserId' | 'projectLeadUserId' | 'csmUserId' | 'arOwnerUserId'
+    > = ['salesOwnerUserId', 'projectLeadUserId', 'csmUserId', 'arOwnerUserId'];
+    for (const f of ownerFields) {
+      const next = parsed.data[f];
+      if (next && typeof next === 'string') {
+        const r = await db.execute({
+          sql: `SELECT 1 AS ok FROM User WHERE id = ? AND firmId = ? LIMIT 1`,
+          args: [next, firmId],
+        });
+        if (r.rows.length === 0) {
+          return reply.code(400).send({
+            error: {
+              code: 'CROSS_FIRM_OWNER',
+              message: `User ${next} is not a member of this firm.`,
+            },
+          });
+        }
+      }
+    }
+
+    try {
+      const { detail, changes } = await updateCustomerEditableFields(
+        id,
+        firmId,
+        parsed.data,
+      );
+
+      // Activity row — best-effort, requires sourceEngagementId due
+      // to the legacy NOT NULL engagementId FK on ActivityLog.
+      if (existing.sourceEngagementId && Object.keys(changes).length > 0) {
+        try {
+          await db.execute({
+            sql: `INSERT INTO ActivityLog
+                    (id, engagementId, customerId, firmId, action, details, actorUserId, createdAt)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            args: [
+              `act_${id}_${Date.now()}_${createId().slice(0, 8)}`,
+              existing.sourceEngagementId,
+              id,
+              firmId,
+              'CUSTOMER_EDITED',
+              JSON.stringify({ changes }),
+              actorUserId,
+              new Date().toISOString(),
+            ],
+          });
+        } catch {
+          // Audit-log gap is OK — the write landed.
+        }
+      }
+
+      return reply.send({ customer: detail });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return reply.code(500).send({
+        error: { code: 'UPDATE_FAILED', message },
+      });
+    }
   });
 }
