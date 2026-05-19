@@ -23,9 +23,15 @@ import {
   reconcileAllFirms,
   reconcileFirmCustomers,
 } from '../services/customer/reconcile.js';
+import { seedLifecycleForFirm } from '../../scripts/seed-lifecycle.js';
 
 const ReconcileBody = z.object({
   firmId: z.string().optional(),
+});
+
+const SeedLifecycleBody = z.object({
+  firmId: z.string().optional(),
+  includeDeadEnds: z.boolean().optional(),
 });
 
 export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
@@ -59,6 +65,35 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
         const message = err instanceof Error ? err.message : String(err);
         return reply.code(500).send({
           error: { code: 'RECONCILE_FAILED', message },
+        });
+      }
+    },
+  );
+
+  // Phase 52.9 — Lifecycle demo seed. Idempotent; safe to re-run.
+  fastify.post(
+    '/admin/seed-lifecycle',
+    { preHandler: requirePermission('WRITE', 'ROLES') },
+    async (request, reply) => {
+      const parsed = SeedLifecycleBody.safeParse(request.body ?? {});
+      if (!parsed.success) {
+        return reply.code(400).send({
+          error: { code: 'VALIDATION_ERROR', message: parsed.error.message },
+        });
+      }
+      const firmId = parsed.data.firmId ?? request.jwtUser.firmId;
+      if (firmId !== request.jwtUser.firmId) {
+        return reply.code(403).send({ error: { code: 'FORBIDDEN' } });
+      }
+      try {
+        const result = await seedLifecycleForFirm(firmId, {
+          includeDeadEnds: parsed.data.includeDeadEnds,
+        });
+        return reply.send(result);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return reply.code(500).send({
+          error: { code: 'SEED_FAILED', message },
         });
       }
     },
