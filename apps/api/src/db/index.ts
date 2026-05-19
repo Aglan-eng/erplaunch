@@ -396,6 +396,22 @@ async function createTables(db: Client) {
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_Customer_csm ON Customer(csmUserId)`);
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_Customer_sourceEngagement ON Customer(sourceEngagementId)`);
 
+  // ─── Phase 52.5 — Inbox dismissals ──────────────────────────────────────
+  // One row per (user, itemId) pair. The Inbox aggregator filters
+  // out items dismissed within the last 7 days. Items are
+  // identified by a composite string key `${customerId}:${itemType}`
+  // so the same logical alert can be re-dismissed across renders
+  // without duplicate keys.
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS InboxDismissal (
+      userId      TEXT NOT NULL REFERENCES User(id) ON DELETE CASCADE,
+      itemId      TEXT NOT NULL,
+      dismissedAt TEXT NOT NULL,
+      PRIMARY KEY (userId, itemId)
+    )
+  `);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_InboxDismissal_user_ts ON InboxDismissal(userId, dismissedAt)`);
+
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS ProjectMember (

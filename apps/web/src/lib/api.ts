@@ -1623,3 +1623,39 @@ export const exportsApi = {
   sow: (body: SowExportBody): Promise<Blob> =>
     api.post('/exports/sow', body, { responseType: 'blob' }).then((r) => r.data as Blob),
 };
+
+// ─── Phase 52.5 — Inbox (role-based home) ──────────────────────────────────
+
+export type InboxItemType =
+  | 'STAGE_OVERDUE'
+  | 'BLOCKER_OPEN'
+  | 'DECISION_PENDING'
+  | 'QUESTIONNAIRE_INCOMPLETE'
+  | 'HANDOFF_INCOMING'
+  | 'RENEWAL_DUE_SOON';
+
+export type InboxSeverity = 'critical' | 'warning' | 'info';
+
+export interface InboxItem {
+  id: string;
+  itemType: InboxItemType;
+  customerId: string;
+  customerName: string;
+  currentStage: CustomerStage;
+  severity: InboxSeverity;
+  summary: string;
+  ageDays: number;
+  createdAt: string;
+}
+
+export interface InboxResponse {
+  forYou: InboxItem[];
+  watching: InboxItem[];
+  firmWide: InboxItem[] | null;
+}
+
+export const inboxApi = {
+  get: (): Promise<InboxResponse> => api.get('/inbox').then((r) => r.data),
+  dismiss: (itemId: string): Promise<{ ok: true }> =>
+    api.post('/inbox/dismiss', { itemId }).then((r) => r.data),
+};

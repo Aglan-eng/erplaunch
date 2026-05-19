@@ -80,6 +80,8 @@ import { exportsRoutes } from './routes/exports.js';
 import { customersRoutes } from './routes/customers.js';
 // Phase 52.3.1 — admin reconcile endpoint.
 import { adminRoutes } from './routes/admin.js';
+// Phase 52.5 — role-based Inbox.
+import { inboxRoutes } from './routes/inbox.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -274,6 +276,8 @@ export async function buildServer() {
   await fastify.register(customersRoutes, { prefix: '/api/v1' });
   // Phase 52.3.1 — POST /api/v1/admin/customer/reconcile (admin lever).
   await fastify.register(adminRoutes, { prefix: '/api/v1' });
+  // Phase 52.5 — GET /api/v1/inbox + POST /api/v1/inbox/dismiss.
+  await fastify.register(inboxRoutes, { prefix: '/api/v1' });
   // /metrics sits at the root (not /api/v1) so scrapers can hit a stable
   // path. The onResponse hook it registers counts ALL responses.
   await fastify.register(metricsRoutes);
