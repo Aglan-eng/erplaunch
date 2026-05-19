@@ -90,6 +90,13 @@ function makeDetail(over: Partial<CustomerDetail> = {}): CustomerDetail {
         createdAt: new Date(Date.now() - 86_400_000).toISOString(),
       },
     ],
+    stageWidget: {
+      kind: 'BUILD',
+      openBlockerCount: 1,
+      openDecisionCount: 1,
+      daysInStage: 12,
+      targetDays: 60,
+    },
     ...over,
   };
 }

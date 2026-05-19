@@ -1522,6 +1522,76 @@ export interface StageHistoryEntry {
   createdAt: string;
 }
 
+// ─── Phase 52.7 — Stage-specific widget discriminated union ────────────────
+
+export type StageWidget =
+  | { kind: 'LEAD' | 'QUALIFIED'; daysInStage: number; targetDays: number; leadSource: string | null }
+  | {
+      kind: 'PROPOSAL' | 'NEGOTIATION';
+      daysInStage: number;
+      targetDays: number;
+      proposalGeneratedAt: string | null;
+      arr: number | null;
+    }
+  | { kind: 'WON'; sowGeneratedAt: string | null; kickoffScheduled: boolean }
+  | {
+      kind: 'DISCOVERY';
+      questionnaireCompletionPct: number;
+      questionnaireSectionsComplete: number;
+      questionnaireSectionsTotal: number;
+      nextSectionName: string | null;
+    }
+  | { kind: 'SCOPING'; openDecisionsCount: number; pendingScopeSignoff: boolean }
+  | {
+      kind: 'BUILD';
+      openBlockerCount: number;
+      openDecisionCount: number;
+      daysInStage: number;
+      targetDays: number;
+    }
+  | {
+      kind: 'UAT';
+      openBlockerCount: number;
+      daysInStage: number;
+      targetDays: number;
+      testsPassedPct: number | null;
+    }
+  | {
+      kind: 'GOLIVE';
+      daysUntilGoLive: number | null;
+      cutoverChecklistComplete: number;
+      cutoverChecklistTotal: number;
+    }
+  | {
+      kind: 'HYPERCARE';
+      openIncidentCount: number;
+      p1Count: number;
+      daysRemainingInHypercare: number;
+      hypercareStartDate: string | null;
+    }
+  | {
+      kind: 'LIVE_SLA';
+      openTicketCount: number;
+      slaUptimePct: number | null;
+      lastIncidentDaysAgo: number | null;
+      nextRenewalDate: string | null;
+    }
+  | {
+      kind: 'RENEWAL_DUE';
+      daysUntilRenewal: number;
+      renewalValueArr: number | null;
+      healthBand: 'red' | 'yellow' | 'green';
+      quoteGenerated: boolean;
+    }
+  | {
+      kind: 'RENEWED';
+      renewalCount: number;
+      lastRenewalDate: string | null;
+      nextRenewalDate: string | null;
+    }
+  | { kind: 'LOST'; lostReason: string | null; lostValue: number | null }
+  | { kind: 'CHURNED'; churnReason: string | null; churnedAt: string | null };
+
 export interface CustomerDetail extends CustomerSummary {
   customerAddress: string | null;
   primaryContactName: string | null;
@@ -1533,6 +1603,7 @@ export interface CustomerDetail extends CustomerSummary {
   arOwner: OwnerRef | null;
   healthBreakdown: CustomerHealthBreakdown;
   stageHistory: StageHistoryEntry[];
+  stageWidget: StageWidget;
 }
 
 export interface CustomerActivity {

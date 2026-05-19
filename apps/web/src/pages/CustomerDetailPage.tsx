@@ -45,6 +45,7 @@ import {
 import { HealthCard } from '@/components/customers/HealthCard';
 import { OwnerBadge } from '@/components/customers/OwnerBadge';
 import { StageHistoryStrip } from '@/components/customers/StageHistoryStrip';
+import { StageWidget } from '@/components/customers/widgets';
 import {
   STAGE_DETAILS_ORDERED,
   formatRelativeTime,
@@ -366,11 +367,13 @@ function TabsBar({ tab, onChange }: TabsBarProps) {
 
 function OverviewTab({ customer }: { customer: CustomerDetail }) {
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4" data-testid="tab-overview">
-      <div className="lg:col-span-1">
-        <HealthCard breakdown={customer.healthBreakdown} />
-      </div>
-      <div className="lg:col-span-2 bg-white border border-gray-200 rounded-xl p-5">
+    <div className="space-y-4" data-testid="tab-overview">
+      <StageWidget detail={customer} />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-1">
+          <HealthCard breakdown={customer.healthBreakdown} />
+        </div>
+        <div className="lg:col-span-2 bg-white border border-gray-200 rounded-xl p-5">
         <h2 className="text-sm font-semibold text-gray-900 mb-3">Stage history</h2>
         <StageHistoryStrip history={customer.stageHistory} />
         <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
@@ -408,6 +411,7 @@ function OverviewTab({ customer }: { customer: CustomerDetail }) {
             </dd>
           </div>
         </dl>
+        </div>
       </div>
     </div>
   );

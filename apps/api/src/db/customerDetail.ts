@@ -36,6 +36,11 @@ import {
   computeHealthBreakdown,
   type HealthBreakdown,
 } from '../services/customer/health.js';
+import {
+  buildStageWidget,
+  ensureCustomerMetadataColumn,
+  type StageWidget,
+} from '../services/customer/stageWidget.js';
 import type { CustomerSummary } from './customerSummary.js';
 
 // ─── Detail row types ──────────────────────────────────────────────────────
@@ -66,6 +71,7 @@ export interface CustomerDetail extends CustomerSummary {
   arOwner: OwnerRef | null;
   healthBreakdown: HealthBreakdown;
   stageHistory: StageHistoryEntry[];
+  stageWidget: StageWidget;
 }
 
 // ─── Schema extension (idempotent) ─────────────────────────────────────────
@@ -239,6 +245,7 @@ export async function getCustomerDetail(
  */
 export async function assembleDetail(customer: Customer): Promise<CustomerDetail> {
   await ensureCustomerDetailColumns();
+  await ensureCustomerMetadataColumn();
   const [
     salesOwner,
     projectLeadOwner,
@@ -248,6 +255,7 @@ export async function assembleDetail(customer: Customer): Promise<CustomerDetail
     stageHistory,
     lastActivityAt,
     contact,
+    stageWidget,
   ] = await Promise.all([
     resolveOwner(customer.salesOwnerUserId),
     resolveOwner(customer.projectLeadUserId),
@@ -257,6 +265,7 @@ export async function assembleDetail(customer: Customer): Promise<CustomerDetail
     loadStageHistory(customer.id, customer.sourceEngagementId),
     lookupLastActivityAt(customer.id, customer.sourceEngagementId),
     loadContactFields(customer.id),
+    buildStageWidget(customer),
   ]);
 
   const primaryOwnerId =
@@ -304,6 +313,7 @@ export async function assembleDetail(customer: Customer): Promise<CustomerDetail
     arOwner,
     healthBreakdown: breakdown,
     stageHistory,
+    stageWidget,
   };
 }
 
