@@ -66,16 +66,16 @@ export function WizardTopBar({
       qc.invalidateQueries({ queryKey: ['engagement', engagementId] });
       setConfirmArchive(false);
       setMenuOpen(false);
-      navigate('/dashboard');
+      navigate('/customers');
     },
   });
 
   return (
     <header className="bg-white/80 backdrop-blur-md border-b border-slate-200/60 px-6 py-4 flex items-center gap-6 z-20">
       <button
-        onClick={() => navigate('/dashboard')}
+        onClick={() => navigate('/customers')}
         className="p-2 rounded-xl text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-all active:scale-95"
-        title="Back to dashboard"
+        title="Back to customers"
       >
         <ArrowLeft className="h-5 w-5" />
       </button>

@@ -36,7 +36,7 @@ export function VerifyEmailPage() {
 
   useEffect(() => {
     if (status !== 'ok') return;
-    const t = setTimeout(() => navigate('/dashboard'), 2500);
+    const t = setTimeout(() => navigate('/inbox'), 2500);
     return () => clearTimeout(t);
   }, [status, navigate]);
 
@@ -66,8 +66,8 @@ export function VerifyEmailPage() {
                 <CheckCircle2 className="h-5 w-5 text-green-600" />
               </div>
               <h2 className="text-base font-semibold text-gray-900">Email verified</h2>
-              <p className="text-sm text-gray-500">Sending you to the dashboard…</p>
-              <Link to="/dashboard" className="inline-block text-sm text-emerald-700 hover:text-emerald-900 font-medium">
+              <p className="text-sm text-gray-500">Sending you to your inbox…</p>
+              <Link to="/inbox" className="inline-block text-sm text-emerald-700 hover:text-emerald-900 font-medium">
                 Take me there now →
               </Link>
             </div>

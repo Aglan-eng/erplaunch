@@ -40,7 +40,7 @@ export function LoginPage() {
     setLoading(true);
     try {
       await login(email, password);
-      navigate('/dashboard');
+      navigate('/inbox');
     } catch {
       setError('Invalid email or password');
     } finally {

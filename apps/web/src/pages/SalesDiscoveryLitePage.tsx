@@ -100,7 +100,7 @@ export function SalesDiscoveryLitePage() {
       qc.invalidateQueries({ queryKey: ['discovery-lite', engagementId] });
       qc.invalidateQueries({ queryKey: ['sales-pipeline'] });
       // Brief banner flash, then bounce to pipeline.
-      setTimeout(() => navigate('/sales/pipeline'), 1500);
+      setTimeout(() => navigate('/reports?tab=pipeline'), 1500);
     },
     onError: (err: unknown) => {
       const data = (err as { response?: { data?: { error?: { missingFields?: string[] } } } })
@@ -171,7 +171,7 @@ export function SalesDiscoveryLitePage() {
         {/* Header */}
         <div className="mb-5">
           <Link
-            to="/sales/pipeline"
+            to="/reports?tab=pipeline"
             className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800 mb-3"
           >
             <ChevronLeft className="h-4 w-4" />

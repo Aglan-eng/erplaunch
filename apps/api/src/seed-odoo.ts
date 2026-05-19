@@ -198,7 +198,7 @@ async function main(): Promise<void> {
   console.log(`    Adaptor:    odoo (ENTERPRISE edition, 12 modules)`);
   console.log(`    Engagement: ${engId}`);
   console.log(`    Login:      ${USER_EMAIL} / ${USER_PASSWORD}`);
-  console.log(`    Dashboard:  ${appUrl}/dashboard`);
+  console.log(`    Inbox:      ${appUrl}/inbox`);
   console.log(`    Portal:     ${appUrl}/portal/${portalToken}`);
 }
 

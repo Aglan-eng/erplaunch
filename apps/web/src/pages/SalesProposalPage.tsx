@@ -151,7 +151,7 @@ export function SalesProposalPage() {
         {/* Header */}
         <div className="mb-5">
           <Link
-            to="/sales/pipeline"
+            to="/reports?tab=pipeline"
             className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800 mb-3"
           >
             <ChevronLeft className="h-4 w-4" />

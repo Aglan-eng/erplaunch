@@ -41,9 +41,9 @@ export function CustomAdaptorsPage() {
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-100 sticky top-0 z-20">
         <div className="max-w-6xl mx-auto px-6 py-3.5 flex items-center justify-between">
-          <Link to="/dashboard" className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900">
+          <Link to="/settings" className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900">
             <ArrowLeft className="h-4 w-4" />
-            Back to dashboard
+            Back to Settings
           </Link>
           <h1 className="text-sm font-bold text-gray-900">Custom Platform Adaptors</h1>
           <Button size="sm" onClick={() => setCreating(true)}>

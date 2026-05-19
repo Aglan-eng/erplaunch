@@ -60,7 +60,7 @@ export function SignupPage() {
     setLoading(true);
     try {
       await register({ firmName: firmName.trim(), firmSlug, adminName: adminName.trim(), adminEmail, password });
-      navigate('/dashboard');
+      navigate('/inbox');
     } catch (err) {
       const r = (err as { response?: { status?: number; data?: { error?: { code?: string; message?: string } } } }).response;
       const code = r?.data?.error?.code;

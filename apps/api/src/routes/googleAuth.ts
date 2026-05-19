@@ -165,11 +165,11 @@ export async function googleAuthRoutes(fastify: FastifyInstance) {
         maxAge: 60 * 60 * 24 * 7,
       })
       // First-time sign-ups get a `?welcome=1` flag the SPA can use to
-      // surface an onboarding banner. Re-logins go straight to dashboard.
+      // surface an onboarding banner. Re-logins go straight to the inbox.
       .redirect(
         resolved.action === 'created'
-          ? `${APP_URL}/dashboard?welcome=1`
-          : `${APP_URL}/dashboard`,
+          ? `${APP_URL}/inbox?welcome=1`
+          : `${APP_URL}/inbox`,
       );
   });
 }
