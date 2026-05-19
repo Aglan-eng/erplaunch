@@ -1659,3 +1659,87 @@ export const inboxApi = {
   dismiss: (itemId: string): Promise<{ ok: true }> =>
     api.post('/inbox/dismiss', { itemId }).then((r) => r.data),
 };
+
+// ─── Phase 52.6 — Reports tab (five dashboards) ────────────────────────────
+
+export interface PipelineReport {
+  funnel: Array<{ stage: CustomerStage; count: number; totalArr: number }>;
+  conversionRates: Array<{ from: CustomerStage; to: CustomerStage; ratePct: number }>;
+  avgDaysInStage: Array<{ stage: CustomerStage; days: number }>;
+  stalledCount: number;
+}
+
+export interface DeliveryReport {
+  activeProjects: number;
+  byStage: Array<{ stage: CustomerStage; total: number; onTrack: number; slipping: number }>;
+  slippingList: Array<{
+    customerId: string;
+    customerName: string;
+    stage: CustomerStage;
+    daysOverdue: number;
+    projectLeadName: string | null;
+  }>;
+  blockersByStage: Array<{ stage: CustomerStage; openBlockers: number }>;
+  forecastedGoLives: Array<{
+    customerId: string;
+    customerName: string;
+    estimatedGoLiveDate: string;
+  }>;
+}
+
+export interface HealthReport {
+  totalManagedCustomers: number;
+  distribution: { red: number; yellow: number; green: number };
+  redCustomers: Array<{
+    customerId: string;
+    customerName: string;
+    healthScore: number;
+    lastActivityDaysAgo: number;
+    csmName: string | null;
+  }>;
+  churnRiskScore: number;
+  byStage: Array<{ stage: CustomerStage; red: number; yellow: number; green: number }>;
+}
+
+export interface RenewalsReport {
+  next90Days: Array<{
+    customerId: string;
+    customerName: string;
+    renewalDueDate: string;
+    daysUntilDue: number;
+    arr: number | null;
+    healthBand: 'red' | 'yellow' | 'green';
+    csmName: string | null;
+  }>;
+  totalArrAtRisk: number;
+  byMonth: Array<{ monthLabel: string; count: number; arrAtRisk: number }>;
+  riskBreakdown: { healthyRenewals: number; atRiskRenewals: number };
+}
+
+export interface UtilizationReport {
+  byUser: Array<{
+    userId: string;
+    userName: string;
+    salesCount: number;
+    projectLeadCount: number;
+    csmCount: number;
+    arCount: number;
+    totalActive: number;
+    isOverloaded: boolean;
+  }>;
+  overloadedUsers: number;
+  unbalancedRoles: {
+    role: 'sales' | 'projectLead' | 'csm' | 'ar';
+    topUser: string;
+    bottomUser: string;
+    ratio: number;
+  } | null;
+}
+
+export const reportsApi = {
+  pipeline: (): Promise<PipelineReport> => api.get('/reports/pipeline').then((r) => r.data),
+  delivery: (): Promise<DeliveryReport> => api.get('/reports/delivery').then((r) => r.data),
+  health: (): Promise<HealthReport> => api.get('/reports/health').then((r) => r.data),
+  renewals: (): Promise<RenewalsReport> => api.get('/reports/renewals').then((r) => r.data),
+  utilization: (): Promise<UtilizationReport> => api.get('/reports/utilization').then((r) => r.data),
+};

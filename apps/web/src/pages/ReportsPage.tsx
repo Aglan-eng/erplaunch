@@ -1,26 +1,116 @@
 /**
- * Phase 52.2 — /reports stub.
+ * Phase 52.6 — Reports tab with five dashboards.
  *
- * Reserves the route so the new top nav has somewhere 200-OK to
- * land. Real Reports surface ships in Phase 53.
+ * Replaces the Phase 52.2 stub. URL-state via `?tab=`:
+ *   pipeline (default) · delivery · health · renewals · utilization
+ *
+ * Each dashboard is its own component under
+ * `apps/web/src/components/reports/` and fetches via the matching
+ * `reportsApi.<dashboard>` helper.
  */
 import React from 'react';
+import { useSearchParams } from 'react-router-dom';
+import {
+  BarChart3,
+  Briefcase,
+  Heart,
+  RefreshCcw,
+  Users,
+} from 'lucide-react';
+
 import { AppNav } from '../components/AppNav';
-import { BarChart3 } from 'lucide-react';
+import { PipelineDashboard } from '@/components/reports/PipelineDashboard';
+import { DeliveryDashboard } from '@/components/reports/DeliveryDashboard';
+import { HealthDashboard } from '@/components/reports/HealthDashboard';
+import { RenewalsDashboard } from '@/components/reports/RenewalsDashboard';
+import { UtilizationDashboard } from '@/components/reports/UtilizationDashboard';
+import { cn } from '@/lib/utils';
+
+type Tab = 'pipeline' | 'delivery' | 'health' | 'renewals' | 'utilization';
+
+const TABS: Array<{
+  key: Tab;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+}> = [
+  { key: 'pipeline', label: 'Pipeline', icon: BarChart3 },
+  { key: 'delivery', label: 'Delivery', icon: Briefcase },
+  { key: 'health', label: 'Customer Health', icon: Heart },
+  { key: 'renewals', label: 'Renewals', icon: RefreshCcw },
+  { key: 'utilization', label: 'Utilization', icon: Users },
+];
+
+function readTab(params: URLSearchParams): Tab {
+  const raw = params.get('tab');
+  if (
+    raw === 'pipeline' ||
+    raw === 'delivery' ||
+    raw === 'health' ||
+    raw === 'renewals' ||
+    raw === 'utilization'
+  ) {
+    return raw;
+  }
+  return 'pipeline';
+}
 
 export function ReportsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = readTab(searchParams);
+
+  const setTab = (next: Tab): void => {
+    const np = new URLSearchParams(searchParams);
+    if (next === 'pipeline') np.delete('tab');
+    else np.set('tab', next);
+    setSearchParams(np, { replace: true });
+  };
+
   return (
     <div className="min-h-screen bg-gray-50" data-testid="reports-page">
       <AppNav />
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        <div className="bg-white rounded-xl border border-gray-200 px-6 py-12 text-center">
-          <BarChart3 className="h-10 w-10 text-gray-300 mx-auto mb-4" />
-          <h1 className="text-lg font-semibold text-gray-900 mb-1">Reports</h1>
-          <p className="text-sm text-gray-500 max-w-md mx-auto">
-            Coming soon — Phase 53. Cross-customer reporting (pipeline value,
-            win rates, renewal forecast, portfolio health) lives here.
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <header className="mb-4">
+          <h1 className="text-xl font-bold text-gray-900">Reports</h1>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Roll-ups across your firm's customers — pipeline, delivery, health, renewals,
+            utilization.
           </p>
-        </div>
+        </header>
+
+        <nav
+          className="flex items-center gap-1 border-b border-gray-200 mb-4 overflow-x-auto"
+          aria-label="Reports tabs"
+          data-testid="reports-tabs"
+        >
+          {TABS.map((t) => {
+            const Icon = t.icon;
+            const active = tab === t.key;
+            return (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setTab(t.key)}
+                data-testid={`reports-tab-${t.key}`}
+                aria-current={active ? 'page' : undefined}
+                className={cn(
+                  '-mb-px inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 whitespace-nowrap transition-colors',
+                  active
+                    ? 'text-brand-700 border-brand-500'
+                    : 'text-gray-500 border-transparent hover:text-gray-900',
+                )}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {t.label}
+              </button>
+            );
+          })}
+        </nav>
+
+        {tab === 'pipeline' && <PipelineDashboard />}
+        {tab === 'delivery' && <DeliveryDashboard />}
+        {tab === 'health' && <HealthDashboard />}
+        {tab === 'renewals' && <RenewalsDashboard />}
+        {tab === 'utilization' && <UtilizationDashboard />}
       </main>
     </div>
   );
