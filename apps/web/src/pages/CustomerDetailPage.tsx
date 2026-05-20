@@ -24,10 +24,16 @@ import {
   Activity as ActivityIcon,
   Settings as SettingsIcon,
   LayoutGrid,
+  Wrench,
   Undo2,
   ArrowRight,
   Download,
   Loader2,
+  ClipboardList,
+  Layers,
+  Sparkles,
+  Briefcase,
+  Folder,
 } from 'lucide-react';
 
 import { AppNav } from '../components/AppNav';
@@ -56,11 +62,18 @@ import {
 } from '@/components/customers/stageMetadata';
 import { cn } from '@/lib/utils';
 
-type Tab = 'overview' | 'documents' | 'activity' | 'settings';
+type Tab = 'overview' | 'documents' | 'implementation' | 'activity' | 'settings';
 
 function readTab(params: URLSearchParams): Tab {
   const raw = params.get('tab');
-  if (raw === 'documents' || raw === 'activity' || raw === 'settings') return raw;
+  if (
+    raw === 'documents' ||
+    raw === 'implementation' ||
+    raw === 'activity' ||
+    raw === 'settings'
+  ) {
+    return raw;
+  }
   return 'overview';
 }
 
@@ -151,6 +164,9 @@ export function CustomerDetailPage() {
                 onSuccess={(msg) => pushToast('success', msg)}
                 onError={(msg) => pushToast('error', msg)}
               />
+            )}
+            {tab === 'implementation' && (
+              <ImplementationTab customer={detailQuery.data.customer} />
             )}
             {tab === 'activity' && (
               <ActivityTab customerId={detailQuery.data.customer.id} />
@@ -345,6 +361,7 @@ function TabsBar({ tab, onChange }: TabsBarProps) {
   const tabs: Array<{ key: Tab; label: string; icon: React.ComponentType<{ className?: string }> }> = [
     { key: 'overview', label: 'Overview', icon: LayoutGrid },
     { key: 'documents', label: 'Documents', icon: FileText },
+    { key: 'implementation', label: 'Implementation', icon: Wrench },
     { key: 'activity', label: 'Activity', icon: ActivityIcon },
     { key: 'settings', label: 'Settings', icon: SettingsIcon },
   ];
@@ -431,6 +448,149 @@ function OverviewTab({ customer }: { customer: CustomerDetail }) {
         </div>
       </div>
     </div>
+  );
+}
+
+// ─── Implementation tab (Phase 54.1) ──────────────────────────────────────
+
+interface ImplementationTabProps {
+  customer: CustomerDetail;
+}
+
+interface WorkspaceEntry {
+  id: string;
+  title: string;
+  description: string;
+  icon: React.ComponentType<{ className?: string }>;
+  to: string;
+  /** When true, the card surfaces the muted "pre-implementation" hint. */
+  preImplementation?: boolean;
+}
+
+const PRE_WON_STAGES: ReadonlyArray<string> = [
+  'LEAD',
+  'QUALIFIED',
+  'PROPOSAL',
+  'NEGOTIATION',
+];
+
+function ImplementationTab({ customer }: ImplementationTabProps) {
+  const isPreWon = PRE_WON_STAGES.includes(customer.currentStage);
+  const id = customer.id;
+  const back = `from=customer&customerId=${id}`;
+
+  const entries: WorkspaceEntry[] = [
+    {
+      id: 'data-collection',
+      title: 'Discovery & Data Collection',
+      description:
+        'Run the discovery questionnaire and capture the customer\'s real-world processes. Feeds every downstream generator.',
+      icon: ClipboardList,
+      to: `/engagements/${id}/data-collection?${back}`,
+    },
+    {
+      id: 'documents',
+      title: 'Generate Documents',
+      description:
+        'The full document generator surface — proposals, SOWs, status reports, configuration workbooks, runbooks, and more.',
+      icon: Sparkles,
+      to: `/engagements/${id}/documents?${back}`,
+    },
+    {
+      id: 'status-report',
+      title: 'Status Report',
+      description:
+        'Roll-up of risks, issues, decisions, and progress per stage. Print-optimised for sponsor meetings.',
+      icon: Briefcase,
+      to: `/engagements/${id}/status-report?${back}`,
+    },
+    {
+      id: 'vertical-workspace',
+      title: 'Vertical Workspace',
+      description:
+        'Industry-specific accelerator workspace — pre-built modules, flows, and data shapes for the customer\'s vertical.',
+      icon: Layers,
+      to: `/engagements/${id}/vertical?${back}`,
+    },
+    {
+      id: 'jobs',
+      title: 'Generation Jobs',
+      description:
+        'Browse outputs from past generation runs — solution design bundles, NetSuite SDF projects, deliverable ZIPs.',
+      icon: Folder,
+      to: `/engagements/${id}/jobs/latest?${back}`,
+    },
+  ];
+
+  return (
+    <div className="space-y-4" data-testid="tab-implementation">
+      <section className="bg-white border border-gray-200 rounded-xl p-5">
+        <header className="flex items-start gap-3 mb-2">
+          <Wrench className="h-5 w-5 text-brand-600 mt-0.5 flex-shrink-0" />
+          <div className="flex-1">
+            <h2 className="text-sm font-semibold text-gray-900">
+              Implementation workspace
+            </h2>
+            <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
+              Discovery, document generation, and delivery tooling for{' '}
+              <span className="font-semibold text-gray-700">{customer.name}</span>. Everything
+              here is scoped to this customer.
+            </p>
+          </div>
+        </header>
+        {isPreWon && (
+          <div
+            className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"
+            data-testid="implementation-prewon-note"
+          >
+            This customer is still at the{' '}
+            <span className="font-semibold">{stageDetail(customer.currentStage).label}</span>{' '}
+            stage. Implementation tooling unlocks fully once the deal moves to Won — but
+            you can still poke around below.
+          </div>
+        )}
+      </section>
+
+      <div
+        className="grid grid-cols-1 md:grid-cols-2 gap-3"
+        data-testid="implementation-entries"
+      >
+        {entries.map((entry) => (
+          <WorkspaceCard key={entry.id} entry={entry} muted={isPreWon} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function WorkspaceCard({
+  entry,
+  muted,
+}: {
+  entry: WorkspaceEntry;
+  muted: boolean;
+}) {
+  const Icon = entry.icon;
+  return (
+    <Link
+      to={entry.to}
+      data-testid={`implementation-entry-${entry.id}`}
+      className={cn(
+        'group flex items-start gap-3 rounded-xl border border-gray-200 bg-white p-4 transition-colors hover:border-brand-300 hover:bg-brand-50/30',
+        muted && 'opacity-90',
+      )}
+    >
+      <div className="flex-shrink-0 h-9 w-9 rounded-lg bg-brand-50 text-brand-700 flex items-center justify-center group-hover:bg-brand-100">
+        <Icon className="h-4 w-4" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-gray-900 group-hover:text-brand-700">
+          {entry.title}
+        </p>
+        <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{entry.description}</p>
+      </div>
+      <ArrowRight className="h-4 w-4 text-gray-300 group-hover:text-brand-600 flex-shrink-0 mt-1" />
+    </Link>
   );
 }
 

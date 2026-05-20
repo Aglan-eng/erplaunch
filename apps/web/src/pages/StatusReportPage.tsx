@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { engagementsApi } from '@/lib/api';
 
@@ -90,6 +90,18 @@ export function StatusReportPage() {
 
   return (
     <div style={{ fontFamily: "'Segoe UI', system-ui, sans-serif", margin: 0, padding: 0, background: '#fff', color: '#111' }}>
+      <div
+        className="no-print"
+        style={{ padding: '12px 18mm', borderBottom: '1px solid #e5e7eb', background: '#fff' }}
+      >
+        <Link
+          to={`/customers/${engagementId}?tab=implementation`}
+          data-testid="status-report-back-to-customer"
+          style={{ fontSize: 13, color: '#6b7280', textDecoration: 'none' }}
+        >
+          ← Back to customer
+        </Link>
+      </div>
       <style>{`
         @page { margin: 18mm 15mm; size: A4; }
         @media print {

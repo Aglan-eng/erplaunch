@@ -292,9 +292,10 @@ export function JobBrowserPage() {
         <div className="max-w-[1600px] mx-auto px-6 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <button
-              onClick={() => navigate(`/engagements/${id}/wizard`)}
+              onClick={() => navigate(`/customers/${id}?tab=implementation`)}
+              data-testid="job-browser-back-to-customer"
               className="p-2 rounded-xl text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-all active:scale-95"
-              title="Back to wizard"
+              title="Back to customer"
             >
               <ArrowLeft className="h-5 w-5" />
             </button>
@@ -307,10 +308,10 @@ export function JobBrowserPage() {
           </div>
           <div className="flex items-center gap-2">
             <Link
-              to={`/engagements/${id}/wizard`}
+              to={`/customers/${id}?tab=implementation`}
               className="text-sm text-gray-500 hover:text-gray-900 px-2 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
             >
-              ← Back to wizard
+              ← Back to customer
             </Link>
             {downloadAllUrl && (
               <a

@@ -62,11 +62,12 @@ export function EngagementDocumentsPage() {
     <div className="min-h-screen bg-slate-50" data-testid="engagement-documents-page">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Link
-          to={`/engagements/${engagementId}/wizard`}
+          to={`/customers/${engagementId}?tab=implementation`}
+          data-testid="engagement-documents-back-to-customer"
           className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800 mb-3"
         >
           <ChevronLeft className="h-4 w-4" />
-          Back to engagement
+          Back to customer
         </Link>
         <div className="flex items-center justify-between mb-5">
           <div>

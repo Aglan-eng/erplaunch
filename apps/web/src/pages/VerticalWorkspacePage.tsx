@@ -211,11 +211,12 @@ export function VerticalWorkspacePage() {
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link
-              to={`/engagements/${(engagement as Record<string, unknown>)?.parentEngagementId ?? id}`}
+              to={`/customers/${id}?tab=implementation`}
+              data-testid="vertical-workspace-back-to-customer"
               className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-brand-600 transition-colors"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
-              Back to engagement
+              Back to customer
             </Link>
             <div className="h-4 w-px bg-gray-200" />
             <div className="flex items-center gap-3">
