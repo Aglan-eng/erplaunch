@@ -21,6 +21,59 @@ import { renderProposalPdf } from '../services/exporters/templates/proposal/inde
 import { renderSowPdf } from '../services/exporters/templates/sow/index.js';
 import { RenderQueueFullError } from '../services/exporters/puppeteerBrowser.js';
 
+/**
+ * Phase-52.9.2 hotfix — hard timeout for any PDF render.
+ *
+ * Without this, a stuck Chromium launch / `page.pdf()` call hangs the
+ * HTTP connection forever (the production symptom that produced the
+ * "spinning generate button" bug report). Configurable via
+ * PDF_RENDER_TIMEOUT_MS for local debugging; defaults to 30 seconds
+ * which is comfortably above the ~1.5s cold-start + ~500ms warm
+ * render observed in the Phase 51 bench.
+ */
+const PDF_RENDER_TIMEOUT_MS = (() => {
+  const raw = process.env.PDF_RENDER_TIMEOUT_MS;
+  const n = raw ? parseInt(raw, 10) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : 30_000;
+})();
+
+export class PdfRenderTimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(`PDF render exceeded ${timeoutMs}ms timeout`);
+    this.name = 'PdfRenderTimeoutError';
+  }
+}
+
+/**
+ * Race `fn()` against a timeout. Used by the route layer to enforce a
+ * hard upper bound on PDF rendering — see PDF_RENDER_TIMEOUT_MS above.
+ * Exported for tests; route handlers use the no-arg `withRenderTimeout`
+ * shorthand.
+ */
+export async function withRenderTimeoutMs<T>(
+  fn: () => Promise<T>,
+  timeoutMs: number,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      fn(),
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new PdfRenderTimeoutError(timeoutMs)),
+          timeoutMs,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function withRenderTimeout<T>(fn: () => Promise<T>): Promise<T> {
+  return withRenderTimeoutMs(fn, PDF_RENDER_TIMEOUT_MS);
+}
+
 const ProposalLineItemSchema = z.object({
   description: z.string().min(1).max(500),
   qty: z.number().int().nonnegative(),
@@ -98,11 +151,13 @@ export async function exportsRoutes(fastify: FastifyInstance): Promise<void> {
     const firmId = request.jwtUser.firmId;
 
     try {
-      const pdf = await renderProposalPdf({
-        firmId,
-        customer: parsed.data.customer,
-        proposal: parsed.data.proposal,
-      });
+      const pdf = await withRenderTimeout(() =>
+        renderProposalPdf({
+          firmId,
+          customer: parsed.data.customer,
+          proposal: parsed.data.proposal,
+        }),
+      );
       const filename = buildFilename(parsed.data.customer.name, parsed.data.proposal.title);
       return reply
         .type('application/pdf')
@@ -116,7 +171,21 @@ export async function exportsRoutes(fastify: FastifyInstance): Promise<void> {
           .header('Retry-After', '5')
           .send({ error: { code: 'QUEUE_FULL', message: err.message } });
       }
-      throw err;
+      if (err instanceof PdfRenderTimeoutError) {
+        request.log.error(`[exports.proposal] timeout: ${err.message}`);
+        return reply
+          .code(504)
+          .send({ error: { code: 'RENDER_TIMEOUT', message: err.message } });
+      }
+      request.log.error(
+        `[exports.proposal] render failed: ${err instanceof Error ? err.stack : String(err)}`,
+      );
+      return reply.code(500).send({
+        error: {
+          code: 'RENDER_FAILED',
+          message: err instanceof Error ? err.message : 'Unknown render error',
+        },
+      });
     }
   });
 }
@@ -201,11 +270,13 @@ function registerSowRoute(fastify: FastifyInstance): void {
 
     const firmId = request.jwtUser.firmId;
     try {
-      const pdf = await renderSowPdf({
-        firmId,
-        customer: parsed.data.customer,
-        sow: parsed.data.sow,
-      });
+      const pdf = await withRenderTimeout(() =>
+        renderSowPdf({
+          firmId,
+          customer: parsed.data.customer,
+          sow: parsed.data.sow,
+        }),
+      );
       const filename = buildFilename(parsed.data.customer.name, `${parsed.data.sow.title} (SOW)`);
       return reply
         .type('application/pdf')
@@ -219,7 +290,21 @@ function registerSowRoute(fastify: FastifyInstance): void {
           .header('Retry-After', '5')
           .send({ error: { code: 'QUEUE_FULL', message: err.message } });
       }
-      throw err;
+      if (err instanceof PdfRenderTimeoutError) {
+        request.log.error(`[exports.sow] timeout: ${err.message}`);
+        return reply
+          .code(504)
+          .send({ error: { code: 'RENDER_TIMEOUT', message: err.message } });
+      }
+      request.log.error(
+        `[exports.sow] render failed: ${err instanceof Error ? err.stack : String(err)}`,
+      );
+      return reply.code(500).send({
+        error: {
+          code: 'RENDER_FAILED',
+          message: err instanceof Error ? err.message : 'Unknown render error',
+        },
+      });
     }
   });
 }
