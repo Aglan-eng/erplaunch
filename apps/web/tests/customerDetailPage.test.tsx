@@ -286,19 +286,19 @@ describe('CustomerDetailPage — Overview tab', () => {
 // ─── Documents tab ─────────────────────────────────────────────────────────
 
 describe('CustomerDetailPage — Documents tab', () => {
-  // Phase 53.2 — Documents tab is stage-aware. Detailed assertions
-  // live in customerDetailDocuments.test.tsx; here we just pin that
-  // the tab still mounts and the empty-state card still renders.
+  // Phase 54.2 — Documents tab dropped the "All documents" dump in
+  // favour of a "Previously generated for this customer" history.
+  // Detailed assertions live in customerDetailDocuments.test.tsx.
   it('renders the stage-aware Documents tab shell', () => {
     const html = render({ detail: makeDetail(), tab: 'documents' });
     expect(html).toContain('data-testid="tab-documents"');
     expect(html).toContain('data-testid="documents-current-stage"');
-    expect(html).toContain('data-testid="documents-all-stages"');
+    expect(html).toContain('data-testid="documents-history"');
   });
 
-  it('renders the empty-state card for previously-generated documents', () => {
+  it('shows the "Previously generated" history section', () => {
     const html = render({ detail: makeDetail(), tab: 'documents' });
-    expect(html).toContain('data-testid="documents-history-empty"');
+    expect(html).toContain('Previously generated for this customer');
   });
 });
 

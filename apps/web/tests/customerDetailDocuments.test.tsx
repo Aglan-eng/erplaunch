@@ -190,14 +190,16 @@ describe('CustomerDetailPage — Documents tab is stage-aware', () => {
 
   it('GOLIVE current-stage group does NOT lead with Proposal or SOW', () => {
     const html = render({ stage: 'GOLIVE' });
-    // Extract just the current-stage section. It's a <section> wrapper.
+    // Extract just the current-stage section. Phase 54.2 dropped the
+    // "All documents" dump — the next section after current-stage is
+    // the "Previously generated" history.
     const match = html.match(
-      /data-testid="documents-current-stage"[\s\S]*?<details/,
+      /data-testid="documents-current-stage"[\s\S]*?data-testid="documents-history"/,
     );
     expect(match).not.toBeNull();
     const currentStageBlock = match![0];
-    // Proposal and SOW must not appear in the current-stage group for a
-    // GOLIVE customer — they only exist in the collapsible "All documents".
+    // Proposal and SOW must not appear anywhere on a GOLIVE customer's
+    // Documents tab — they live on PROPOSAL / WON customers only.
     expect(currentStageBlock).not.toContain('data-testid="documents-card-proposal"');
     expect(currentStageBlock).not.toContain('data-testid="documents-card-sow"');
   });
@@ -224,12 +226,12 @@ describe('CustomerDetailPage — Documents tab is stage-aware', () => {
     );
   });
 
-  it('"All documents" collapsible exists and groups by stage', () => {
+  it('"All documents" dump is gone; "Previously generated" history takes its place', () => {
     const html = render({ stage: 'GOLIVE' });
-    expect(html).toContain('data-testid="documents-all-stages"');
-    expect(html).toContain('data-testid="documents-stage-group-PROPOSAL"');
-    expect(html).toContain('data-testid="documents-stage-group-WON"');
-    expect(html).toContain('data-testid="documents-stage-group-GOLIVE"');
+    expect(html).not.toContain('data-testid="documents-all-stages"');
+    expect(html).not.toContain('data-testid="documents-stage-group-PROPOSAL"');
+    expect(html).toContain('data-testid="documents-history"');
+    expect(html).toContain('Previously generated for this customer');
   });
 
   it('current-stage group has a HelpTip explaining the grouping', () => {

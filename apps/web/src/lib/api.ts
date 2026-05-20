@@ -1700,14 +1700,69 @@ export interface SowExportBody {
   };
 }
 
+// Phase 54.2 — explicit 65s timeout on every PDF export. The server's
+// PDF_RENDER_TIMEOUT_MS is 60s; the client carries a 5s buffer so the
+// server's 504-with-JSON lands before axios aborts. Without this,
+// axios's default-no-timeout would still time out at the OS / proxy
+// layer and surface as "Network Error" with no useful diagnostic.
+const PDF_EXPORT_OPTS = { responseType: 'blob' as const, timeout: 65_000 };
+
+/**
+ * When an export endpoint returns a JSON error (504/500), axios sees
+ * it as a Blob payload — the caller can't read the message directly.
+ * `decodeExportBlobError` reads the blob as text, parses the JSON,
+ * and returns a clean Error message — falling back to the raw status
+ * text when the body isn't JSON.
+ */
+async function decodeExportBlobError(err: unknown): Promise<Error> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ax = err as any;
+  if (ax?.response?.data instanceof Blob) {
+    try {
+      const text = await ax.response.data.text();
+      try {
+        const json = JSON.parse(text) as { error?: { message?: string; code?: string } };
+        const msg = json?.error?.message;
+        if (msg) return new Error(msg);
+      } catch {
+        if (text) return new Error(text);
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+  if (ax?.code === 'ECONNABORTED') {
+    return new Error('PDF generation timed out — the server took too long. Please retry.');
+  }
+  if (ax?.message) return new Error(ax.message);
+  return new Error('PDF generation failed.');
+}
+
 export const exportsApi = {
   proposal: (body: ProposalExportBody): Promise<Blob> =>
     api
-      .post('/exports/proposal', body, { responseType: 'blob' })
-      .then((r) => r.data as Blob),
+      .post('/exports/proposal', body, PDF_EXPORT_OPTS)
+      .then((r) => r.data as Blob)
+      .catch(async (err) => {
+        throw await decodeExportBlobError(err);
+      }),
 
   sow: (body: SowExportBody): Promise<Blob> =>
-    api.post('/exports/sow', body, { responseType: 'blob' }).then((r) => r.data as Blob),
+    api
+      .post('/exports/sow', body, PDF_EXPORT_OPTS)
+      .then((r) => r.data as Blob)
+      .catch(async (err) => {
+        throw await decodeExportBlobError(err);
+      }),
+
+  /** Phase 54.2 — generic per-doc-id generator dispatch for the catalog. */
+  generate: (docId: string, customerId: string): Promise<Blob> =>
+    api
+      .post(`/exports/${docId}`, { customerId }, PDF_EXPORT_OPTS)
+      .then((r) => r.data as Blob)
+      .catch(async (err) => {
+        throw await decodeExportBlobError(err);
+      }),
 
   catalog: (): Promise<{ documents: DocumentDefinition[] }> =>
     api.get('/exports/catalog').then((r) => r.data),

@@ -21,6 +21,12 @@ import { renderProposalPdf } from '../services/exporters/templates/proposal/inde
 import { renderSowPdf } from '../services/exporters/templates/sow/index.js';
 import { RenderQueueFullError } from '../services/exporters/puppeteerBrowser.js';
 import { DOCUMENT_CATALOG } from '../services/exporters/documentCatalog.js';
+import { loadEngagementContext } from '../services/exporters/loadEngagementContext.js';
+import { markdownToPdf } from '../services/exporters/markdownToPdf.js';
+import { getFirmBrandingForExport } from '../db/firmBranding.js';
+import { getFirmTemplate } from '../db/firmTemplate.js';
+import { generateBRD } from '../services/generators/brdGenerator.js';
+import { generateKickoff } from '../services/generators/kickoffGenerator.js';
 
 /**
  * Phase-52.9.2 hotfix — hard timeout for any PDF render.
@@ -35,7 +41,12 @@ import { DOCUMENT_CATALOG } from '../services/exporters/documentCatalog.js';
 const PDF_RENDER_TIMEOUT_MS = (() => {
   const raw = process.env.PDF_RENDER_TIMEOUT_MS;
   const n = raw ? parseInt(raw, 10) : NaN;
-  return Number.isFinite(n) && n > 0 ? n : 30_000;
+  // Phase 54.2 — raised from 30s → 60s. On Render's 512MB tier a
+  // cold-start render of the landscape slide deck can run 20-40s; the
+  // 30s ceiling tripped legitimate renders and surfaced as "Network
+  // Error" in the client. The axios export call carries a matching
+  // 65s timeout so the server's 504 lands before the client aborts.
+  return Number.isFinite(n) && n > 0 ? n : 60_000;
 })();
 
 export class PdfRenderTimeoutError extends Error {
@@ -138,6 +149,7 @@ export async function exportsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.addHook('preHandler', authenticate);
 
   registerSowRoute(fastify);
+  registerGeneratorRoutes(fastify);
 
   // Phase 53.2 — per-stage document catalog. The frontend Documents
   // tab reads this to decide which docs belong to the customer's
@@ -307,6 +319,138 @@ const SowInputBodySchema = z.object({
   }),
   sow: SowContentSchema,
 });
+
+// ─── Phase 54.2 — markdown-generator-backed exports ────────────────────────
+//
+// Two real generators wired through to the Documents tab. Each
+// loads engagement context, runs the generator → markdown, then
+// markdownToPdf() with the firm's brand pack. The output mirrors
+// what `processJob` writes to disk during a full engagement
+// generation run.
+
+async function buildExportMeta(firmId: string, title: string, clientName: string) {
+  const branding = await getFirmBrandingForExport(firmId);
+  const template = (await getFirmTemplate(firmId)) ?? null;
+  return {
+    title,
+    firm: {
+      ...branding,
+      ...(template ?? {
+        tagline: null,
+        subtitle: null,
+        companyDescription: null,
+        whyUs: null,
+        methodology: [],
+        roadmap: [],
+        proposalStructure: [],
+        pricingTemplate: [],
+        industryVerticals: [],
+        voiceGuide: null,
+        ctaOptions: [],
+        themeFontFamily: null,
+        themeHeadlineCase: null,
+        themeAccentColor: null,
+        templateVersion: 1,
+      }),
+    },
+    engagement: { client: clientName, code: null as string | null },
+  };
+}
+
+const GeneratorExportBodySchema = z.object({
+  customerId: z.string().min(1).max(200),
+});
+
+function pdfFilename(prefix: string, clientName: string): string {
+  const safe = clientName.replace(/[^A-Za-z0-9._\- ]+/g, '_').trim() || 'document';
+  return `${safe} — ${prefix}.pdf`;
+}
+
+function registerGeneratorRoute(
+  fastify: FastifyInstance,
+  routeId: string,
+  pdfTitle: string,
+  generate: (ctx: Awaited<ReturnType<typeof loadEngagementContext>>) => string,
+): void {
+  fastify.post(`/exports/${routeId}`, async (request, reply) => {
+    const parsed = GeneratorExportBodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({
+        error: { code: 'VALIDATION_ERROR', message: parsed.error.message },
+      });
+    }
+    const firmId = request.jwtUser.firmId;
+    const ctx = await loadEngagementContext(parsed.data.customerId);
+    if (!ctx) {
+      return reply.code(404).send({
+        error: { code: 'NOT_FOUND', message: 'Customer / engagement not found for that id.' },
+      });
+    }
+    try {
+      const markdown = generate(ctx);
+      const meta = await buildExportMeta(firmId, pdfTitle, ctx.clientName);
+      const pdf = await withRenderTimeout(() => markdownToPdf(markdown, meta));
+      const filename = pdfFilename(pdfTitle, ctx.clientName);
+      return reply
+        .type('application/pdf')
+        .header('Content-Length', String(pdf.byteLength))
+        .header('Content-Disposition', contentDispositionForPdf(filename))
+        .send(pdf);
+    } catch (err) {
+      if (err instanceof PdfRenderTimeoutError) {
+        request.log.error(`[exports.${routeId}] timeout: ${err.message}`);
+        return reply
+          .code(504)
+          .send({ error: { code: 'RENDER_TIMEOUT', message: err.message } });
+      }
+      request.log.error(
+        `[exports.${routeId}] failed: ${err instanceof Error ? err.stack : String(err)}`,
+      );
+      return reply.code(500).send({
+        error: {
+          code: 'RENDER_FAILED',
+          message: err instanceof Error ? err.message : 'Unknown render error',
+        },
+      });
+    }
+  });
+}
+
+function registerGeneratorRoutes(fastify: FastifyInstance): void {
+  registerGeneratorRoute(
+    fastify,
+    'kickoff-deck',
+    'Kickoff Deck',
+    (ctx) => {
+      if (!ctx) throw new Error('Engagement context missing');
+      return generateKickoff({
+        clientName: ctx.clientName,
+        adaptor: ctx.adaptor,
+        answers: ctx.answers,
+        members: ctx.members.map((m) => ({
+          name: m.name,
+          role: m.role ?? '',
+          team: (m.team === 'CONSULTANT' ? 'CONSULTANT' : 'CLIENT') as 'CONSULTANT' | 'CLIENT',
+        })),
+      });
+    },
+  );
+
+  registerGeneratorRoute(
+    fastify,
+    'business-process-document',
+    'Business Process Document',
+    (ctx) => {
+      if (!ctx) throw new Error('Engagement context missing');
+      return generateBRD({
+        clientName: ctx.clientName,
+        adaptor: ctx.adaptor,
+        license: ctx.license,
+        answers: ctx.answers,
+      });
+    },
+  );
+}
 
 function registerSowRoute(fastify: FastifyInstance): void {
   fastify.post('/exports/sow', async (request, reply) => {

@@ -35,9 +35,11 @@ describe('DOCUMENT_CATALOG', () => {
     }
   });
 
-  it('only `proposal` and `sow` are available today', () => {
+  it('four generators are wired up today: proposal, sow, kickoff-deck, business-process-document', () => {
     const available = DOCUMENT_CATALOG.filter((d) => d.status === 'available').map((d) => d.id);
-    expect(available.sort()).toEqual(['proposal', 'sow']);
+    expect(available.sort()).toEqual(
+      ['business-process-document', 'kickoff-deck', 'proposal', 'sow'].sort(),
+    );
   });
 
   it('every non-terminal stage has at least one document defined', () => {
@@ -65,12 +67,13 @@ describe('DOCUMENT_CATALOG', () => {
     expect(docs[0].status).toBe('available');
   });
 
-  it('WON has both the SOW (available) and the kickoff deck (coming-soon)', () => {
+  it('WON has both the SOW and the kickoff deck — both wired up', () => {
     const docs = documentsForStage('WON');
     const sow = docs.find((d) => d.id === 'sow');
     const kickoff = docs.find((d) => d.id === 'kickoff-deck');
     expect(sow?.status).toBe('available');
-    expect(kickoff?.status).toBe('coming-soon');
+    expect(kickoff?.status).toBe('available');
+    expect(kickoff?.exportRoute).toBe('kickoff-deck');
   });
 
   it('findDocument returns the doc by id or undefined', () => {

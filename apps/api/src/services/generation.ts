@@ -143,7 +143,7 @@ type DbModule = typeof dbModule;
  *               registry; if the adaptor isn't registered we Capitalize
  *               the adaptorId so the prose still reads cleanly.
  */
-function buildAdaptorContext(adaptorId: string, editionId: string): AdaptorContext {
+export function buildAdaptorContext(adaptorId: string, editionId: string): AdaptorContext {
   const adaptor = getAdaptorRegistry().find(adaptorId);
   const adaptorName = adaptor?.manifest.name ?? capitalize(adaptorId.replace(/^custom:/, ''));
   const editionDef = adaptor?.license?.editions.find((e) => e.id === editionId);

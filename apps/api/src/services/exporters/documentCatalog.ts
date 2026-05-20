@@ -125,8 +125,8 @@ export const DOCUMENT_CATALOG: ReadonlyArray<DocumentDefinition> = [
     description: 'Project introduction slides for the kickoff meeting — team, plan, expectations.',
     stage: 'WON',
     category: 'delivery',
-    status: 'coming-soon',
-    exportRoute: null,
+    status: 'available',
+    exportRoute: 'kickoff-deck',
   },
 
   // ─── Delivery-stage docs ─────────────────────────────────────────
@@ -136,8 +136,8 @@ export const DOCUMENT_CATALOG: ReadonlyArray<DocumentDefinition> = [
     description: 'How the customer\'s real-world processes work today — feeds the configuration.',
     stage: 'DISCOVERY',
     category: 'delivery',
-    status: 'coming-soon',
-    exportRoute: null,
+    status: 'available',
+    exportRoute: 'business-process-document',
   },
   {
     id: 'requirements-document',

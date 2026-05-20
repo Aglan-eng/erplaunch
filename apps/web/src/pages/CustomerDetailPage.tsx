@@ -54,6 +54,7 @@ import { StageHistoryStrip } from '@/components/customers/StageHistoryStrip';
 import { StageWidget } from '@/components/customers/widgets';
 import { HelpTip } from '@/components/guidance/HelpTip';
 import type { DocumentDefinition } from '@/lib/api';
+import { generatedDocumentsApi } from '@/lib/api';
 import {
   STAGE_DETAILS_ORDERED,
   formatRelativeTime,
@@ -734,22 +735,53 @@ function DocumentsTab({ customer, onSuccess, onError }: DocumentsTabProps) {
     staleTime: 5 * 60 * 1000,
   });
 
-  const handleGenerate = (docId: string): void => {
-    if (docId === 'proposal') void generateProposal();
-    else if (docId === 'sow') void generateSow();
+  // Phase 54.2 — track which doc id is mid-generation for any of the
+  // four wired generators (proposal, sow, kickoff-deck, business-process-document).
+  const [genericPending, setGenericPending] = useState<string | null>(null);
+
+  const handleGenerate = async (docId: string): Promise<void> => {
+    if (docId === 'proposal') {
+      void generateProposal();
+      return;
+    }
+    if (docId === 'sow') {
+      void generateSow();
+      return;
+    }
+    // Generic generator dispatch — Phase 54.2 wires kickoff-deck and
+    // business-process-document; new entries flip from coming-soon →
+    // available as more generators are exposed.
+    setGenericPending(docId);
+    try {
+      const blob = await exportsApi.generate(docId, customer.id);
+      const docDef = catalogQuery.data?.documents.find((d) => d.id === docId);
+      const label = docDef?.name ?? docId;
+      triggerDownload(blob, `${customer.name} — ${label}.pdf`);
+      onSuccess(`${label} PDF generated`);
+    } catch (err) {
+      onError(err instanceof Error ? err.message : `${docId} generation failed`);
+    } finally {
+      setGenericPending(null);
+    }
   };
 
   const pendingDocId: string | null =
-    pending === 'proposal' ? 'proposal' : pending === 'sow' ? 'sow' : null;
+    pending === 'proposal'
+      ? 'proposal'
+      : pending === 'sow'
+        ? 'sow'
+        : genericPending;
 
   const allDocs = catalogQuery.data?.documents ?? [];
   const currentStageDocs = allDocs.filter((d) => d.stage === customer.currentStage);
-  const docsByStage = new Map<string, DocumentDefinition[]>();
-  for (const d of allDocs) {
-    const arr = docsByStage.get(d.stage) ?? [];
-    arr.push(d);
-    docsByStage.set(d.stage, arr);
-  }
+
+  // Phase 54.2 — pull real generated-document history. Customer.id ===
+  // Engagement.id, so the existing /engagements/:id/documents listing
+  // is the right source of truth.
+  const historyQuery = useQuery({
+    queryKey: ['customer-generated-documents', customer.id],
+    queryFn: () => generatedDocumentsApi.list(customer.id),
+  });
 
   return (
     <div className="space-y-4" data-testid="tab-documents">
@@ -793,44 +825,66 @@ function DocumentsTab({ customer, onSuccess, onError }: DocumentsTabProps) {
         )}
       </section>
 
-      <details
-        className="bg-white border border-gray-200 rounded-xl overflow-hidden"
-        data-testid="documents-all-stages"
+      <section
+        className="bg-white border border-gray-200 rounded-xl p-5"
+        data-testid="documents-history"
       >
-        <summary className="px-5 py-3 cursor-pointer text-sm font-semibold text-gray-700 hover:bg-gray-50">
-          All documents
-        </summary>
-        <div className="px-5 py-4 space-y-6 border-t border-gray-100">
-          {Array.from(docsByStage.entries()).map(([stage, docs]) => (
-            <div key={stage} data-testid={`documents-stage-group-${stage}`}>
-              <h3 className="text-[10px] uppercase tracking-wider font-semibold text-gray-500 mb-2">
-                {stageDetail(stage as CustomerStage).label}
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {docs.map((doc) => (
-                  <DocumentCard
-                    key={doc.id}
-                    doc={doc}
-                    pendingDocId={pendingDocId}
-                    onGenerate={handleGenerate}
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      </details>
-
-      <div
-        className="bg-white border border-gray-200 rounded-xl px-5 py-6 text-center"
-        data-testid="documents-history-empty"
-      >
-        <FileText className="h-7 w-7 text-gray-300 mx-auto mb-2" />
-        <p className="text-sm font-medium text-gray-900">No saved documents yet</p>
-        <p className="text-xs text-gray-500 mt-1">
-          Generated PDFs download to your machine. Stored-document history lands in a later phase.
-        </p>
-      </div>
+        <header className="flex items-center gap-2 mb-2">
+          <h2 className="text-sm font-semibold text-gray-900">
+            Previously generated for this customer
+          </h2>
+          <HelpTip
+            testid="documents-history-help"
+            label="Document history"
+            body="Every document you've generated for this customer, newest first. Click a name to open the saved markdown, or export it in another format from there."
+          />
+        </header>
+        {historyQuery.isLoading ? (
+          <p className="text-sm text-gray-500" data-testid="documents-history-loading">
+            Loading history…
+          </p>
+        ) : !historyQuery.data || historyQuery.data.length === 0 ? (
+          <div
+            className="rounded-lg border border-dashed border-gray-200 px-4 py-6 text-center"
+            data-testid="documents-history-empty"
+          >
+            <FileText className="h-6 w-6 text-gray-300 mx-auto mb-2" />
+            <p className="text-sm font-medium text-gray-900">No saved documents yet</p>
+            <p className="text-xs text-gray-500 mt-1 max-w-md mx-auto leading-relaxed">
+              Documents appear here once you generate one from a template or the Implementation
+              workspace. Direct PDF exports above also save to your machine.
+            </p>
+          </div>
+        ) : (
+          <ul
+            className="divide-y divide-gray-100 border border-gray-100 rounded-lg overflow-hidden"
+            data-testid="documents-history-list"
+          >
+            {historyQuery.data.map((d) => (
+              <li
+                key={d.id}
+                className="flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-gray-50"
+                data-testid={`documents-history-row-${d.id}`}
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-gray-900 truncate">{d.name}</p>
+                  <p className="text-[11px] text-gray-500">
+                    {formatRelativeTime(d.updatedAt ?? d.createdAt)}
+                  </p>
+                </div>
+                <a
+                  href={generatedDocumentsApi.exportUrl(customer.id, d.id, 'pdf')}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-semibold text-brand-700 hover:underline"
+                >
+                  Download PDF
+                </a>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </div>
   );
 }
