@@ -1,18 +1,19 @@
 /**
- * Phase 51.2 — Branded proposal PDF renderer.
+ * Phase 51.4 — Xelerate landscape slide deck (proposal) renderer.
  *
  * Pipeline:
- *   1. Resolve brand-pack tokens (colors / fonts / logo) via the
- *      shared `_shared/brandPackCss` helper (extracted in 51.3 so
- *      proposal + SOW + future templates agree on the contract).
- *   2. Render the input's markdown fields (summary, approach,
- *      terms) to HTML via the shared `renderMarkdown`.
- *   3. Pre-format pricing line items + totals into locale-aware
- *      currency strings so the Handlebars template stays dumb.
- *   4. Load + compile the template (cached at module load) and
- *      apply the assembled context.
- *   5. Drive the Phase 51.1 puppeteer singleton to convert the HTML
- *      to a PDF Buffer.
+ *   1. Resolve brand-pack tokens (Phase 51.3 helper) + load Firm
+ *      identity.
+ *   2. Build the slide list — content paginates across multiple
+ *      navy content slides when a section's items don't fit on one
+ *      720px slide. Per-slide caps live in CHUNK_LIMITS below.
+ *   3. Pre-format pricing line items into currency strings.
+ *   4. Compile the Handlebars template with the assembled context.
+ *   5. Drive the puppeteer singleton directly so we can render at
+ *      1280×720 with `printBackground: true` and zero margin, and
+ *      `await document.fonts.ready` before `page.pdf()` so the
+ *      Playfair / Lora TTFs land in the output instead of falling
+ *      back to Times/Georgia.
  */
 
 import { readFileSync } from 'fs';
@@ -21,27 +22,89 @@ import { fileURLToPath } from 'url';
 
 import Handlebars from 'handlebars';
 
-import { htmlToPdf } from '../../htmlToPdf.js';
+import { withPage } from '../../puppeteerBrowser.js';
 import {
   buildBrandTokens,
   formatDate,
   loadFirmIdentity,
   renderMarkdown,
 } from '../_shared/brandPackCss.js';
-import type { ProposalInput, ProposalPricing } from './types.js';
+import { ASSETS, fontFaceCss } from '../_assets/index.js';
+import type {
+  ProposalDeliverable,
+  ProposalInput,
+  ProposalPricing,
+  ProposalTimelinePhase,
+} from './types.js';
 
-// ─── Template asset loading (cached at module init) ─────────────────────────
+// ─── Handlebars registration ────────────────────────────────────────────────
+
+// `eq` helper for the slide-type discriminator switch in template.html.
+// Registered once at module init — Handlebars helpers are global.
+if (!Handlebars.helpers.eq) {
+  Handlebars.registerHelper('eq', function eq(a: unknown, b: unknown): boolean {
+    return a === b;
+  });
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-/** Compiled Handlebars template — cached at module load so renders don't pay
- *  the parse cost. The .html + .css files are read synchronously once;
- *  changes during a running process require a redeploy. */
 const TEMPLATE_HTML = readFileSync(join(__dirname, 'template.html'), 'utf8');
 const TEMPLATE_CSS = readFileSync(join(__dirname, 'template.css'), 'utf8');
 const compiledTemplate = Handlebars.compile(TEMPLATE_HTML, { noEscape: false });
 
-// ─── Pricing formatting (proposal-specific) ─────────────────────────────────
+// ─── Per-slide content caps ────────────────────────────────────────────────
+
+/**
+ * Maximum items that fit comfortably on one 720px navy slide given
+ * the Phase 51.4 type-size + padding choices. Tuned to leave the
+ * footer + corner-mark room. Slides past these caps split into
+ * "(cont.)" follow-ups.
+ */
+const CHUNK_LIMITS = {
+  scopePills: 8, // 2-column pill grid
+  deliverables: 4, // 2-column cards
+  timeline: 4, // 2-column cards (phase + weeks)
+  markdownChars: 1100, // approx; paragraphs are kept whole
+} as const;
+
+function chunk<T>(items: ReadonlyArray<T>, perChunk: number): T[][] {
+  if (perChunk <= 0) return [items.slice()];
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += perChunk) {
+    out.push(items.slice(i, i + perChunk));
+  }
+  return out.length > 0 ? out : [[]];
+}
+
+/**
+ * Split a markdown blob into N HTML chunks that each fit within the
+ * `markdownChars` budget. Splits on blank-line paragraph boundaries
+ * so a chunk never breaks mid-sentence. A single oversized paragraph
+ * still becomes one chunk (we accept overflow risk over breaking a
+ * thought) — callers are expected to keep prose tight.
+ */
+function chunkMarkdown(md: string): string[] {
+  const trimmed = md.trim();
+  if (trimmed.length === 0) return [];
+  const paragraphs = trimmed.split(/\n{2,}/g);
+  const chunks: string[] = [];
+  let buf: string[] = [];
+  let bufLen = 0;
+  for (const p of paragraphs) {
+    if (bufLen + p.length > CHUNK_LIMITS.markdownChars && buf.length > 0) {
+      chunks.push(buf.join('\n\n'));
+      buf = [];
+      bufLen = 0;
+    }
+    buf.push(p);
+    bufLen += p.length + 2;
+  }
+  if (buf.length > 0) chunks.push(buf.join('\n\n'));
+  return chunks.map((c) => renderMarkdown(c));
+}
+
+// ─── Pricing formatting ────────────────────────────────────────────────────
 
 interface FormattedPricing {
   lineItems: Array<{
@@ -53,6 +116,7 @@ interface FormattedPricing {
   subtotal: string;
   tax: string | null;
   total: string;
+  currency: string;
 }
 
 function formatPricing(pricing: ProposalPricing): FormattedPricing {
@@ -72,34 +136,355 @@ function formatPricing(pricing: ProposalPricing): FormattedPricing {
     subtotal: fmt.format(pricing.subtotal),
     tax: pricing.tax != null && pricing.tax > 0 ? fmt.format(pricing.tax) : null,
     total: fmt.format(pricing.total),
+    currency: pricing.currency,
   };
 }
 
+// ─── Slide model ───────────────────────────────────────────────────────────
+
+interface BaseSlide {
+  kind:
+    | 'cover'
+    | 'divider'
+    | 'content-markdown'
+    | 'content-pills'
+    | 'content-cards'
+    | 'pricing'
+    | 'signature';
+  firmName: string;
+  proposalTitle: string;
+  pageNumber: number;
+  pageTotal: number;
+}
+
+interface CoverSlide extends BaseSlide {
+  kind: 'cover';
+  customerName: string;
+  formattedDate: string;
+  preparedBy: string;
+}
+
+interface DividerSlide extends BaseSlide {
+  kind: 'divider';
+  sectionIndex: number;
+  title: string;
+}
+
+interface MarkdownContentSlide extends BaseSlide {
+  kind: 'content-markdown';
+  heading: string;
+  html: string;
+}
+
+interface PillsContentSlide extends BaseSlide {
+  kind: 'content-pills';
+  heading: string;
+  pills: string[];
+}
+
+interface CardsContentSlide extends BaseSlide {
+  kind: 'content-cards';
+  heading: string;
+  cards: Array<{ meta?: string; title: string; body: string }>;
+  singleColumn?: boolean;
+}
+
+interface PricingSlide extends BaseSlide {
+  kind: 'pricing';
+  heading: string;
+  lineItems: FormattedPricing['lineItems'];
+  subtotal: string;
+  tax: string | null;
+  total: string;
+  currency: string;
+}
+
+interface SignatureSlide extends BaseSlide {
+  kind: 'signature';
+  customerName: string;
+  customerContact: string;
+  preparedBy: string;
+}
+
+type Slide =
+  | CoverSlide
+  | DividerSlide
+  | MarkdownContentSlide
+  | PillsContentSlide
+  | CardsContentSlide
+  | PricingSlide
+  | SignatureSlide;
+
+interface BuildContext {
+  firmName: string;
+  proposalTitle: string;
+  preparedBy: string;
+  customerName: string;
+  customerContact: string;
+}
+
+function buildContentSection(
+  heading: string,
+  bodyChunks: string[],
+): MarkdownContentSlide[] {
+  if (bodyChunks.length === 0) {
+    return [
+      {
+        kind: 'content-markdown',
+        firmName: '',
+        proposalTitle: '',
+        pageNumber: 0,
+        pageTotal: 0,
+        heading,
+        html: '<p style="opacity:0.7">(no content provided)</p>',
+      },
+    ];
+  }
+  return bodyChunks.map((html, i) => ({
+    kind: 'content-markdown' as const,
+    firmName: '',
+    proposalTitle: '',
+    pageNumber: 0,
+    pageTotal: 0,
+    heading: i === 0 ? heading : `${heading} (cont.)`,
+    html,
+  }));
+}
+
+function buildScopeSection(scope: ReadonlyArray<string>): PillsContentSlide[] {
+  if (scope.length === 0) {
+    return [
+      {
+        kind: 'content-pills',
+        firmName: '',
+        proposalTitle: '',
+        pageNumber: 0,
+        pageTotal: 0,
+        heading: 'In scope',
+        pills: ['(no items provided)'],
+      },
+    ];
+  }
+  const chunks = chunk(scope, CHUNK_LIMITS.scopePills);
+  return chunks.map((items, i) => ({
+    kind: 'content-pills' as const,
+    firmName: '',
+    proposalTitle: '',
+    pageNumber: 0,
+    pageTotal: 0,
+    heading: i === 0 ? 'In scope' : 'In scope (cont.)',
+    pills: items.slice(),
+  }));
+}
+
+function buildDeliverablesSection(
+  deliverables: ReadonlyArray<ProposalDeliverable>,
+): CardsContentSlide[] {
+  if (deliverables.length === 0) {
+    return [
+      {
+        kind: 'content-cards',
+        firmName: '',
+        proposalTitle: '',
+        pageNumber: 0,
+        pageTotal: 0,
+        heading: 'Deliverables',
+        cards: [{ title: 'No deliverables listed', body: '' }],
+      },
+    ];
+  }
+  const chunks = chunk(deliverables, CHUNK_LIMITS.deliverables);
+  return chunks.map((items, i) => ({
+    kind: 'content-cards' as const,
+    firmName: '',
+    proposalTitle: '',
+    pageNumber: 0,
+    pageTotal: 0,
+    heading: i === 0 ? 'Deliverables' : 'Deliverables (cont.)',
+    cards: items.map((d) => ({ title: d.name, body: d.description })),
+  }));
+}
+
+function buildTimelineSection(
+  timeline: ReadonlyArray<ProposalTimelinePhase>,
+): CardsContentSlide[] {
+  if (timeline.length === 0) {
+    return [
+      {
+        kind: 'content-cards',
+        firmName: '',
+        proposalTitle: '',
+        pageNumber: 0,
+        pageTotal: 0,
+        heading: 'Timeline',
+        cards: [{ title: 'Timeline pending', body: '' }],
+      },
+    ];
+  }
+  const chunks = chunk(timeline, CHUNK_LIMITS.timeline);
+  return chunks.map((items, i) => ({
+    kind: 'content-cards' as const,
+    firmName: '',
+    proposalTitle: '',
+    pageNumber: 0,
+    pageTotal: 0,
+    heading: i === 0 ? 'Timeline' : 'Timeline (cont.)',
+    cards: items.map((t) => ({
+      meta: `${t.weeks} ${t.weeks === 1 ? 'week' : 'weeks'}`,
+      title: t.phase,
+      body: t.description,
+    })),
+  }));
+}
+
+function buildSlides(ctx: BuildContext, input: ProposalInput): Slide[] {
+  const slides: Slide[] = [];
+
+  // Cover.
+  slides.push({
+    kind: 'cover',
+    firmName: ctx.firmName,
+    proposalTitle: ctx.proposalTitle,
+    pageNumber: 0,
+    pageTotal: 0,
+    customerName: ctx.customerName,
+    formattedDate: formatDate(input.proposal.date),
+    preparedBy: ctx.preparedBy,
+  });
+
+  const summarySlides = buildContentSection(
+    'Executive Summary',
+    chunkMarkdown(input.proposal.summary),
+  );
+  const scopeSlides = buildScopeSection(input.proposal.scope);
+  const approachSlides = buildContentSection(
+    'Approach',
+    chunkMarkdown(input.proposal.approach),
+  );
+  const deliverableSlides = buildDeliverablesSection(input.proposal.deliverables);
+  const timelineSlides = buildTimelineSection(input.proposal.timeline);
+  const pricingSlide: PricingSlide = {
+    kind: 'pricing',
+    firmName: ctx.firmName,
+    proposalTitle: ctx.proposalTitle,
+    pageNumber: 0,
+    pageTotal: 0,
+    heading: 'Commercials',
+    ...formatPricing(input.proposal.pricing),
+  };
+  const termsSlides = buildContentSection('Terms', chunkMarkdown(input.proposal.terms));
+
+  const sections: Array<{ title: string; slides: Slide[] }> = [
+    { title: 'Executive Summary', slides: summarySlides },
+    { title: 'Scope', slides: scopeSlides },
+    { title: 'Approach', slides: approachSlides },
+    { title: 'Deliverables', slides: deliverableSlides },
+    { title: 'Timeline', slides: timelineSlides },
+    { title: 'Commercials', slides: [pricingSlide] },
+    { title: 'Terms', slides: termsSlides },
+  ];
+
+  let sectionIdx = 1;
+  for (const section of sections) {
+    slides.push({
+      kind: 'divider',
+      firmName: ctx.firmName,
+      proposalTitle: ctx.proposalTitle,
+      pageNumber: 0,
+      pageTotal: 0,
+      sectionIndex: sectionIdx++,
+      title: section.title,
+    });
+    slides.push(...section.slides);
+  }
+
+  // Signature close.
+  slides.push({
+    kind: 'signature',
+    firmName: ctx.firmName,
+    proposalTitle: ctx.proposalTitle,
+    pageNumber: 0,
+    pageTotal: 0,
+    customerName: ctx.customerName,
+    customerContact: ctx.customerContact,
+    preparedBy: ctx.preparedBy,
+  });
+
+  // Stamp firmName / title / page numbers on every slide.
+  const total = slides.length;
+  for (let i = 0; i < slides.length; i++) {
+    slides[i] = {
+      ...slides[i],
+      firmName: ctx.firmName,
+      proposalTitle: ctx.proposalTitle,
+      pageNumber: i + 1,
+      pageTotal: total,
+    };
+  }
+  return slides;
+}
+
 // ─── Public entrypoint ─────────────────────────────────────────────────────
+
+/**
+ * Brand palette specific to the Xelerate landscape deck. Falls back
+ * to the firm's brand-pack tokens where they're more specific (e.g.
+ * a non-Xelerate firm with a custom accent). For v1 we hardcode the
+ * green/navy/gold combination Hesham's deck uses — overriding per
+ * firm comes when we support custom backgrounds.
+ */
+function deckPalette(): { gold: string; green: string; navy: string } {
+  return {
+    gold: '#C9A84C',
+    green: '#2E5E3E',
+    navy: '#3D4566',
+  };
+}
 
 export async function renderProposalPdf(input: ProposalInput): Promise<Buffer> {
   const [brand, firm] = await Promise.all([
     buildBrandTokens(input.firmId),
     loadFirmIdentity(input.firmId),
   ]);
+  void brand; // reserved for per-firm overrides in a follow-up
 
-  const context = {
-    customer: input.customer,
-    proposal: input.proposal,
-    firm,
-    brand,
-    baseStyles: TEMPLATE_CSS,
-    summaryHtml: renderMarkdown(input.proposal.summary),
-    approachHtml: renderMarkdown(input.proposal.approach),
-    termsHtml: renderMarkdown(input.proposal.terms),
-    pricingFormatted: formatPricing(input.proposal.pricing),
-    formattedDate: formatDate(input.proposal.date),
+  const palette = deckPalette();
+  const firmName = firm.displayName || 'Xelerate';
+  const ctx: BuildContext = {
+    firmName,
+    proposalTitle: input.proposal.title,
+    preparedBy: input.proposal.preparedBy,
+    customerName: input.customer.name,
+    customerContact: input.customer.contactName ?? input.customer.name,
   };
+  const slides = buildSlides(ctx, input);
 
-  const html = compiledTemplate(context);
+  const html = compiledTemplate({
+    fontFaceCss: fontFaceCss(),
+    bgGreen: ASSETS.bgGreen,
+    bgNavy: ASSETS.bgNavy,
+    brand: palette,
+    firm: { displayName: firmName },
+    proposal: { title: input.proposal.title },
+    baseStyles: TEMPLATE_CSS,
+    slides,
+  });
 
-  // domcontentloaded is sufficient — all assets are inline (CSS in
-  // <style> blocks) except the optional logo URL. If logo loading
-  // ever blocks render quality we can switch to networkidle0.
-  return htmlToPdf(html, { waitUntil: 'domcontentloaded' });
+  return withPage(async (page) => {
+    await page.setContent(html, { waitUntil: 'domcontentloaded' });
+    // Wait for the bundled @font-face declarations to finish loading
+    // before pdf(). Without this Chromium may render the first frame
+    // in Times/Georgia fallback and bake that into the PDF.
+    await page.evaluate(() =>
+      (document as Document & { fonts: { ready: Promise<unknown> } }).fonts.ready,
+    );
+    const pdf = await page.pdf({
+      width: '1280px',
+      height: '720px',
+      printBackground: true,
+      preferCSSPageSize: true,
+      margin: { top: '0', right: '0', bottom: '0', left: '0' },
+    });
+    return Buffer.from(pdf);
+  });
 }

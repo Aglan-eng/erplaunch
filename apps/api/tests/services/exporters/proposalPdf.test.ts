@@ -149,14 +149,36 @@ function makeFixture(over: Partial<ProposalInput> = {}): ProposalInput {
 }
 
 describe.skipIf(skipReason !== null)(
-  'renderProposalPdf — Phase 51.2 branded proposal',
+  'renderProposalPdf — Phase 51.4 Xelerate landscape slide deck',
   () => {
     it('returns a non-empty PDF buffer with %PDF- magic bytes', async () => {
       const pdf = await renderProposalPdf(makeFixture());
       expect(pdf).toBeInstanceOf(Buffer);
-      expect(pdf.byteLength).toBeGreaterThan(50_000);
+      // Bundled fonts + textured backgrounds push the floor well above
+      // the Phase 51.2 50KB threshold. A render with no embedded
+      // assets would be ~120KB; with the deck assets we expect 1MB+.
+      expect(pdf.byteLength).toBeGreaterThan(500_000);
       expect(pdf.toString('ascii', 0, 5)).toBe('%PDF-');
     });
+
+    it('produces multiple landscape slides when scope is long', async () => {
+      const longScope: string[] = [];
+      for (let i = 1; i <= 24; i++) longScope.push(`Module ${i} — long scope item`);
+      const pdf = await renderProposalPdf(
+        makeFixture({
+          proposal: {
+            ...makeFixture().proposal,
+            scope: longScope,
+          },
+        }),
+      );
+      expect(pdf.toString('ascii', 0, 5)).toBe('%PDF-');
+      // ≥ 24 scope items at 8 per slide → ≥ 3 scope slides on top of
+      // cover + dividers + other sections. Total deck must be > 10
+      // pages by byte-size heuristic (each landscape slide adds a few
+      // KB of stream content even when assets are deduplicated).
+      expect(pdf.byteLength).toBeGreaterThan(600_000);
+    }, 60_000);
 
     it('renders without crashing when the firm has zero brand-pack values (unbranded fallback)', async () => {
       const db = getDb();

@@ -1,419 +1,392 @@
-/* Phase 51.2 — branded proposal stylesheet.
+/**
+ * Phase 51.4 — Xelerate landscape slide deck (proposal).
  *
- * All visual identity is driven by the CSS custom properties the
- * renderer injects into the page's `<style>` block at the top of
- * template.html. Anything not pulled from a firm's brand pack
- * resolves to neutral defaults defined inline in the renderer's
- * `buildBrandTokens` step.
- *
- * Print rules are scoped via `@page` + `@media print` so the same
- * HTML renders cleanly inside Chromium's headless print engine.
+ * 16:9 slides at 1280×720 — every <section class="slide"> is one PDF
+ * page. Full-bleed backgrounds come from the base64-injected
+ * `--bg-green` / `--bg-navy` CSS variables defined inline in the
+ * <style> block by index.ts. Headings = Playfair Display Bold; body
+ * = Lora. Gold (#C9A84C) accents the cover dash, divider dashes,
+ * and the pricing total row.
  */
-
-@page {
-  size: A4;
-  margin: 0;
-}
 
 * {
   box-sizing: border-box;
-}
-
-html,
-body {
   margin: 0;
   padding: 0;
-  color: var(--brand-text);
-  background: var(--brand-bg);
-  font-family: var(--brand-font-body);
-  font-size: 10.5pt;
-  line-height: 1.55;
+}
+
+@page {
+  size: 1280px 720px;
+  margin: 0;
+}
+
+html, body {
+  width: 1280px;
+  margin: 0;
+  padding: 0;
+  background: var(--brand-paper, #fff);
+  color: #fff;
+  font-family: 'Lora', Georgia, serif;
+  font-weight: 400;
+  font-size: 18px;
+  line-height: 1.5;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
 }
 
-/* ─── Cover page ─────────────────────────────────────────────────── */
-
-.cover {
+.slide {
+  position: relative;
+  width: 1280px;
+  height: 720px;
+  overflow: hidden;
   page-break-after: always;
-  break-after: page;
-  background: var(--brand-primary);
-  color: #ffffff;
-  min-height: 297mm;
-  padding: 25mm 22mm;
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat;
+  color: #fff;
+}
+.slide:last-child {
+  page-break-after: auto;
+}
+
+.slide-green {
+  background-image: var(--bg-green);
+}
+.slide-navy {
+  background-image: var(--bg-navy);
+}
+
+.slide-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  padding: 80px 96px;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
 }
 
-.cover__top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16mm;
+.gold-dash {
+  display: inline-block;
+  width: 64px;
+  height: 4px;
+  background: var(--brand-gold, #C9A84C);
+  margin-bottom: 24px;
+  border-radius: 2px;
 }
 
-.cover__logo {
-  max-width: 48mm;
-  max-height: 18mm;
-  display: block;
-}
-
-.cover__mark {
-  width: 18mm;
-  height: 18mm;
-  border-radius: 4mm;
-  background: var(--brand-accent);
-  color: #ffffff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--brand-font-heading);
-  font-weight: 700;
-  font-size: 22pt;
-}
-
-.cover__partner-tag {
-  margin: 0;
-  font-size: 9pt;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.78);
-  text-align: right;
-  max-width: 90mm;
-}
-
-.cover__title-block {
-  margin-top: 28mm;
-}
-
-.cover__eyebrow {
-  margin: 0 0 6mm 0;
-  font-size: 9pt;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: var(--brand-accent);
-}
-
-.cover__customer {
-  margin: 0;
-  font-family: var(--brand-font-heading);
-  font-size: 36pt;
-  line-height: 1.05;
-  font-weight: 700;
-  color: #ffffff;
-}
-
-.cover__title {
-  margin: 6mm 0 0 0;
-  font-family: var(--brand-font-heading);
-  font-size: 22pt;
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.92);
-  max-width: 140mm;
-  line-height: 1.25;
-}
-
-.cover__meta {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10mm;
-  border-top: 1px solid rgba(255, 255, 255, 0.25);
-  padding-top: 10mm;
-}
-
-.cover__meta-label {
-  margin: 0;
-  font-size: 8pt;
+.eyebrow {
+  font-family: 'Lora', Georgia, serif;
+  font-weight: 600;
+  font-size: 14px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.65);
-  margin-bottom: 2mm;
+  color: var(--brand-gold, #C9A84C);
+  margin-bottom: 16px;
 }
 
-.cover__meta-value {
-  margin: 0;
-  font-size: 12pt;
-  font-weight: 500;
-  color: #ffffff;
+/* ─── Cover slide ────────────────────────────────────────────────── */
+
+.cover-inner {
+  justify-content: center;
 }
-
-/* ─── Generic content sections ───────────────────────────────────── */
-
-.section {
-  page-break-inside: avoid;
-  break-inside: avoid;
-  padding: 20mm 22mm 12mm 22mm;
-}
-
-.section + .section {
-  padding-top: 8mm;
-}
-
-.section__title {
-  margin: 0 0 8mm 0;
-  font-family: var(--brand-font-heading);
-  font-size: 22pt;
+.cover-title {
+  font-family: 'Playfair Display', 'Times New Roman', serif;
   font-weight: 700;
-  color: var(--brand-primary);
-  border-left: 3mm solid var(--brand-accent);
-  padding-left: 6mm;
-  line-height: 1.15;
+  font-size: 96px;
+  line-height: 1.05;
+  color: #fff;
+  margin-bottom: 24px;
+  letter-spacing: -0.01em;
 }
-
-.prose h2,
-.prose h3 {
-  font-family: var(--brand-font-heading);
-  color: var(--brand-primary);
+.cover-subtitle {
+  font-family: 'Lora', Georgia, serif;
+  font-weight: 400;
+  font-size: 28px;
+  color: rgba(255, 255, 255, 0.92);
+  margin-bottom: 12px;
 }
-
-.prose h2 {
-  font-size: 14pt;
-  margin: 6mm 0 3mm 0;
-}
-
-.prose h3 {
-  font-size: 12pt;
-  color: var(--brand-accent);
-  margin: 5mm 0 2mm 0;
-}
-
-.prose p {
-  margin: 0 0 3mm 0;
-}
-
-.prose ul,
-.prose ol {
-  margin: 0 0 4mm 0;
-  padding-left: 6mm;
-}
-
-.prose li {
-  margin: 0 0 1.5mm 0;
-}
-
-.prose strong {
-  color: var(--brand-primary);
-}
-
-.prose blockquote {
-  margin: 4mm 0;
-  padding: 2mm 0 2mm 6mm;
-  border-left: 1mm solid var(--brand-accent);
-  color: var(--brand-secondary);
-  font-style: italic;
-}
-
-/* ─── Bullet list (scope) ────────────────────────────────────────── */
-
-.bullets {
-  margin: 0;
-  padding-left: 6mm;
-}
-
-.bullets li {
-  margin: 0 0 2.5mm 0;
-}
-
-.bullets li::marker {
-  color: var(--brand-accent);
-}
-
-/* ─── Deliverables card grid ─────────────────────────────────────── */
-
-.deliverables {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 5mm;
-}
-
-.deliverable {
-  border: 0.5mm solid rgba(0, 0, 0, 0.08);
-  border-left: 1.5mm solid var(--brand-accent);
-  border-radius: 1.5mm;
-  padding: 5mm;
-  background: #ffffff;
-  page-break-inside: avoid;
-}
-
-.deliverable__name {
-  margin: 0 0 2mm 0;
-  font-family: var(--brand-font-heading);
-  font-size: 12pt;
-  color: var(--brand-primary);
-}
-
-.deliverable__description {
-  margin: 0;
-  font-size: 10pt;
-  color: var(--brand-text);
-}
-
-/* ─── Timeline table ─────────────────────────────────────────────── */
-
-.timeline {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.timeline__th {
-  background: var(--brand-primary);
-  color: #ffffff;
-  padding: 3mm 4mm;
-  text-align: left;
-  font-size: 10pt;
-  font-weight: 600;
+.cover-meta {
+  font-family: 'Lora', Georgia, serif;
+  font-weight: 400;
+  font-size: 16px;
+  color: rgba(255, 255, 255, 0.78);
   letter-spacing: 0.04em;
 }
-
-.timeline__th--weeks {
-  text-align: center;
-  width: 24mm;
-}
-
-.timeline__td {
-  padding: 3mm 4mm;
-  border-bottom: 0.3mm solid rgba(0, 0, 0, 0.08);
-  font-size: 10pt;
-  vertical-align: top;
-}
-
-.timeline tbody tr:nth-child(odd) .timeline__td {
-  background: #f8f9fa;
-}
-
-.timeline__td--phase {
-  font-weight: 600;
-  color: var(--brand-primary);
-}
-
-.timeline__td--weeks {
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-}
-
-/* ─── Pricing table ──────────────────────────────────────────────── */
-
-.pricing {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.pricing__th {
-  background: var(--brand-primary);
-  color: #ffffff;
-  padding: 3mm 4mm;
-  text-align: left;
-  font-size: 10pt;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-}
-
-.pricing__th--num {
-  text-align: right;
-}
-
-.pricing__td {
-  padding: 3mm 4mm;
-  border-bottom: 0.3mm solid rgba(0, 0, 0, 0.08);
-  font-size: 10pt;
-  vertical-align: top;
-}
-
-.pricing tbody tr:nth-child(odd) .pricing__td {
-  background: #f8f9fa;
-}
-
-.pricing__td--num {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-.pricing__total-label {
-  padding: 3mm 4mm;
-  text-align: right;
-  font-size: 10pt;
-  color: var(--brand-secondary);
-  font-weight: 500;
-}
-
-.pricing__grand-row td {
-  border-top: 0.6mm solid var(--brand-primary);
-  padding-top: 4mm;
-}
-
-.pricing__grand-label {
-  padding: 4mm 4mm;
-  text-align: right;
-  font-size: 11pt;
-  font-weight: 700;
-  color: var(--brand-primary);
-}
-
-.pricing__grand-value {
-  padding: 4mm 4mm;
-  text-align: right;
-  font-size: 13pt;
-  font-weight: 700;
-  color: var(--brand-primary);
-  font-variant-numeric: tabular-nums;
-}
-
-/* ─── Signature block ────────────────────────────────────────────── */
-
-.signatures__grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12mm;
-  margin-top: 4mm;
-}
-
-.signatures__col {
-  display: flex;
-  flex-direction: column;
-}
-
-.signatures__label {
-  margin: 0 0 4mm 0;
-  font-size: 9pt;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--brand-secondary);
-}
-
-.signatures__line {
-  height: 0.4mm;
-  background: rgba(0, 0, 0, 0.35);
-  margin: 16mm 0 2mm 0;
-}
-
-.signatures__caption {
+.cover-footer {
+  position: absolute;
+  left: 96px;
+  bottom: 64px;
+  right: 96px;
   display: flex;
   justify-content: space-between;
-  font-size: 8.5pt;
-  color: var(--brand-secondary);
+  align-items: flex-end;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 14px;
+  letter-spacing: 0.06em;
+}
+.cover-firm {
+  font-family: 'Playfair Display', 'Times New Roman', serif;
+  font-weight: 700;
+  font-size: 22px;
+  letter-spacing: 0.03em;
+}
+.cover-prepared {
+  text-align: right;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ─── Section divider slide ──────────────────────────────────────── */
+
+.divider-inner {
+  justify-content: center;
+}
+.divider-eyebrow {
+  font-family: 'Lora', Georgia, serif;
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--brand-gold, #C9A84C);
+  margin-bottom: 18px;
+}
+.divider-title {
+  font-family: 'Playfair Display', 'Times New Roman', serif;
+  font-weight: 700;
+  font-size: 76px;
+  line-height: 1.05;
+  color: #fff;
+  letter-spacing: -0.005em;
+  max-width: 920px;
+}
+
+/* ─── Content slide ──────────────────────────────────────────────── */
+
+.content-inner {
+  padding: 72px 96px 88px;
+}
+.content-heading {
+  font-family: 'Playfair Display', 'Times New Roman', serif;
+  font-weight: 700;
+  font-size: 42px;
+  line-height: 1.1;
+  color: #fff;
+  margin-bottom: 28px;
+  letter-spacing: -0.005em;
+}
+.content-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  font-size: 18px;
+  color: rgba(255, 255, 255, 0.92);
+  line-height: 1.55;
+}
+.content-body p {
+  margin-bottom: 14px;
+}
+.content-body p:last-child { margin-bottom: 0; }
+.content-body strong { font-weight: 600; color: #fff; }
+.content-body em { font-style: italic; color: var(--brand-gold, #C9A84C); }
+.content-body a { color: var(--brand-gold, #C9A84C); text-decoration: underline; }
+.content-body ul, .content-body ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.content-body li {
+  position: relative;
+  padding-left: 24px;
+  margin-bottom: 10px;
+  color: rgba(255, 255, 255, 0.92);
+}
+.content-body li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 12px;
+  width: 10px;
+  height: 2px;
+  background: var(--brand-gold, #C9A84C);
+}
+
+/* Pill-list — the deck's signature white-outlined rounded item. */
+.pill-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px 18px;
+}
+.pill {
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: 999px;
+  padding: 12px 22px;
+  font-family: 'Lora', Georgia, serif;
+  font-weight: 400;
+  font-size: 16px;
+  color: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.04);
+  line-height: 1.3;
+}
+
+/* Deliverables / timeline as cards. */
+.card-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+.card-list-single {
+  grid-template-columns: 1fr;
+  max-width: 820px;
+}
+.card {
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  border-radius: 12px;
+  padding: 18px 22px;
+  background: rgba(255, 255, 255, 0.04);
+}
+.card-title {
+  font-family: 'Playfair Display', 'Times New Roman', serif;
+  font-weight: 700;
+  font-size: 19px;
+  color: #fff;
+  margin-bottom: 6px;
+  letter-spacing: 0;
+}
+.card-meta {
+  font-family: 'Lora', Georgia, serif;
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--brand-gold, #C9A84C);
+  margin-bottom: 6px;
+}
+.card-body {
+  font-size: 14px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* ─── Pricing slide ──────────────────────────────────────────────── */
+
+.pricing-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 4px;
+  font-size: 16px;
+  color: rgba(255, 255, 255, 0.95);
+}
+.pricing-table th,
+.pricing-table td {
+  text-align: left;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+}
+.pricing-table th {
+  font-family: 'Lora', Georgia, serif;
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.65);
+}
+.pricing-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.pricing-totals td {
+  border-bottom: none;
+  font-weight: 600;
+  padding-top: 16px;
+}
+.pricing-total-row td {
+  border-top: 2px solid var(--brand-gold, #C9A84C);
+  color: var(--brand-gold, #C9A84C);
+  font-family: 'Playfair Display', 'Times New Roman', serif;
+  font-weight: 700;
+  font-size: 22px;
+  padding-top: 16px;
+  padding-bottom: 16px;
+}
+
+/* ─── Signature / close slide ────────────────────────────────────── */
+
+.signature-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 64px;
+  margin-top: 32px;
+}
+.signature-block {
+  border-top: 1px solid rgba(255, 255, 255, 0.45);
+  padding-top: 18px;
+}
+.signature-role {
+  font-family: 'Lora', Georgia, serif;
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--brand-gold, #C9A84C);
+  margin-bottom: 8px;
+}
+.signature-name {
+  font-family: 'Playfair Display', 'Times New Roman', serif;
+  font-weight: 700;
+  font-size: 22px;
+  color: #fff;
+  margin-bottom: 6px;
+}
+.signature-line {
+  margin-top: 36px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.5);
+  height: 36px;
+}
+.signature-caption {
+  margin-top: 8px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
-.signatures__name {
-  margin: 4mm 0 0 0;
-  font-size: 10pt;
-  font-weight: 500;
-  color: var(--brand-primary);
+/* ─── Footer strip on content / divider slides ───────────────────── */
+
+.slide-footer {
+  position: absolute;
+  left: 96px;
+  right: 96px;
+  bottom: 32px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.slide-footer .firm-mark {
+  font-family: 'Playfair Display', 'Times New Roman', serif;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 12px;
+  text-transform: none;
+}
+.slide-footer .page-number {
+  font-variant-numeric: tabular-nums;
 }
 
-/* ─── Print-specific overrides ──────────────────────────────────── */
-
-@media print {
-  .section {
-    break-inside: avoid;
-  }
-  .timeline,
-  .pricing {
-    break-inside: avoid;
-  }
-  .deliverables {
-    break-inside: avoid;
-  }
+.slide-corner-mark {
+  position: absolute;
+  top: 36px;
+  right: 64px;
+  font-family: 'Playfair Display', 'Times New Roman', serif;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.78);
 }
