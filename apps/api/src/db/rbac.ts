@@ -80,7 +80,7 @@ export interface GrantFirmRoleArgs {
 export async function grantFirmRole(args: GrantFirmRoleArgs): Promise<void> {
   if (!isFirmLevelRole(args.role)) {
     throw new Error(
-      `grantFirmRole: '${args.role}' is not a firm-level role (allowed: APP_ADMIN, SALES_MANAGER, SUPPORT_LEAD, INTERNAL_ACCOUNTANT)`,
+      `grantFirmRole: '${args.role}' is not a firm-level role (allowed: APP_ADMIN, CEO, SALES_MANAGER, SUPPORT_LEAD, INTERNAL_ACCOUNTANT)`,
     );
   }
   const db = getDb();

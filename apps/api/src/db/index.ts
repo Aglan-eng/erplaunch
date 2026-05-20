@@ -286,6 +286,9 @@ async function createTables(db: Client) {
   // the link, unlike matching on email). Indexed for the lookup hot path.
   try { await db.execute(`ALTER TABLE User ADD COLUMN googleSub TEXT`); } catch { /* swallow — idempotent migration / parse fallback */ }
   try { await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS idx_user_googleSub ON User(googleSub) WHERE googleSub IS NOT NULL`); } catch { /* swallow — idempotent migration / parse fallback */ }
+  // Phase 53.3 — flag for demo / seeded users so the first login can
+  // force a password reset. Non-demo users carry 0/null and bypass.
+  try { await db.execute(`ALTER TABLE User ADD COLUMN mustResetPassword INTEGER DEFAULT 0`); } catch { /* idempotent */ }
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS Engagement (

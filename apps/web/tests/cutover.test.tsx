@@ -80,7 +80,10 @@ function renderSettings(entry: string): string {
 
 describe('Phase 52.8 — legacy URL redirects (App.tsx route table)', () => {
   const cases: ReadonlyArray<{ from: string; to: string }> = [
-    { from: '/', to: '/inbox' },
+    // Phase 53.3 — `/` now resolves via <RoleAwareHome /> so it can
+    // route CEO users to /executive; the role-aware redirect is
+    // covered in executiveDashboard.test.tsx. The redirect contract
+    // for non-CEO users still lands on /inbox at runtime.
     { from: '/dashboard', to: '/inbox' },
     { from: '/dashboard/archived', to: '/customers?archived=true' },
     { from: '/archived', to: '/customers?archived=true' },
@@ -107,7 +110,9 @@ describe('Phase 52.8 — legacy URL redirects (App.tsx route table)', () => {
   }
 
   it('legacy DashboardPage import is gone from App.tsx', () => {
-    expect(APP_TSX).not.toContain('DashboardPage');
+    // Phase 53.3 introduced ExecutiveDashboardPage which legitimately
+    // contains "DashboardPage" — match the legacy import path instead.
+    expect(APP_TSX).not.toContain("./pages/DashboardPage");
     expect(APP_TSX).not.toContain('ArchivedDashboardPage');
     expect(APP_TSX).not.toContain('SalesPipelinePage');
     expect(APP_TSX).not.toContain('SlaPortfolioPage');

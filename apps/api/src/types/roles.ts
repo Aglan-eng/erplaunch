@@ -18,10 +18,23 @@
 
 export const FIRM_LEVEL_ROLES = [
   'APP_ADMIN',
+  'CEO',
   'SALES_MANAGER',
   'SUPPORT_LEAD',
   'INTERNAL_ACCOUNTANT',
 ] as const;
+
+/**
+ * Phase 53.3 — Technical-consultant tracks. Each TC works one
+ * discipline. EngagementRole.assignedModules carries the track id.
+ */
+export const TECHNICAL_TRACKS = [
+  'integration',
+  'data-migration',
+  'customization',
+  'reporting',
+] as const;
+export type TechnicalTrack = (typeof TECHNICAL_TRACKS)[number];
 
 export const ENGAGEMENT_LEVEL_ROLES = [
   'SALES_REP',

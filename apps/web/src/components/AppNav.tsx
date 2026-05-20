@@ -25,7 +25,7 @@
  */
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Inbox, Users, BarChart3, Settings, LogOut, Search, Menu, X, HelpCircle } from 'lucide-react';
+import { Inbox, Users, BarChart3, Settings, LogOut, Search, Menu, X, HelpCircle, Crown } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { cn } from '../lib/utils';
 import { OnboardingTour } from './guidance/OnboardingTour';
@@ -39,12 +39,27 @@ interface NavLink {
   icon: React.ComponentType<{ className?: string }>;
 }
 
-const NAV_LINKS: ReadonlyArray<NavLink> = [
+const BASE_NAV_LINKS: ReadonlyArray<NavLink> = [
   { label: 'Inbox', to: '/inbox', matchPrefix: '/inbox', icon: Inbox },
   { label: 'Customers', to: '/customers', matchPrefix: '/customers', icon: Users },
   { label: 'Reports', to: '/reports', matchPrefix: '/reports', icon: BarChart3 },
   { label: 'Settings', to: '/settings', matchPrefix: '/settings', icon: Settings },
 ];
+
+/** Phase 53.3 — CEO + APP_ADMIN see the Executive Dashboard link. */
+const EXECUTIVE_LINK: NavLink = {
+  label: 'Executive',
+  to: '/executive',
+  matchPrefix: '/executive',
+  icon: Crown,
+};
+
+function buildNavLinks(role: string | undefined): ReadonlyArray<NavLink> {
+  if (role === 'CEO' || role === 'APP_ADMIN') {
+    return [EXECUTIVE_LINK, ...BASE_NAV_LINKS];
+  }
+  return BASE_NAV_LINKS;
+}
 
 function isActive(pathname: string, link: NavLink): boolean {
   // Exact match OR pathname starts with `${matchPrefix}/`. The
@@ -59,6 +74,7 @@ export function AppNav() {
   const forceTour =
     typeof window !== 'undefined' &&
     new URLSearchParams(window.location.search).get('welcome') === '1';
+  const NAV_LINKS = buildNavLinks(user?.role);
 
   return (
     <>

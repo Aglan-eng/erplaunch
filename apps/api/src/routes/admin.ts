@@ -25,6 +25,7 @@ import {
 } from '../services/customer/reconcile.js';
 import { seedLifecycleForFirm } from '../../scripts/seed-lifecycle.js';
 import { cleanLifecycleDemoCustomers } from '../../scripts/clean-lifecycle.js';
+import { seedRoleUsersForFirm } from '../../scripts/seed-role-users.js';
 
 const ReconcileBody = z.object({
   firmId: z.string().optional(),
@@ -127,6 +128,37 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
         const message = err instanceof Error ? err.message : String(err);
         return reply.code(500).send({
           error: { code: 'CLEAN_FAILED', message },
+        });
+      }
+    },
+  );
+
+  // Phase 53.3 — Seed the demo role users + per-stage engagement-role
+  // grants. APP_ADMIN-gated; firmId optional (defaults to caller's firm).
+  const SeedRoleUsersBody = z.object({
+    firmId: z.string().optional(),
+  });
+  fastify.post(
+    '/admin/seed-role-users',
+    { preHandler: requirePermission('WRITE', 'ROLES') },
+    async (request, reply) => {
+      const parsed = SeedRoleUsersBody.safeParse(request.body ?? {});
+      if (!parsed.success) {
+        return reply.code(400).send({
+          error: { code: 'VALIDATION_ERROR', message: parsed.error.message },
+        });
+      }
+      const firmId = parsed.data.firmId ?? request.jwtUser.firmId;
+      if (firmId !== request.jwtUser.firmId) {
+        return reply.code(403).send({ error: { code: 'FORBIDDEN' } });
+      }
+      try {
+        const result = await seedRoleUsersForFirm(firmId);
+        return reply.send(result);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return reply.code(500).send({
+          error: { code: 'SEED_FAILED', message },
         });
       }
     },

@@ -64,6 +64,23 @@ const APP_ADMIN_POLICY: RolePolicy = {
   default: 'WRITE',
 };
 
+/**
+ * Phase 53.3 — CEO. Read-only firm-wide. Sees the executive
+ * dashboard, every customer, every report, every activity row.
+ * Cannot drive operational changes — no stage transitions, no owner
+ * edits, no document generation, no billing actions. The role exists
+ * for executive visibility, not execution.
+ */
+const CEO_POLICY: RolePolicy = {
+  default: 'READ',
+  resources: {
+    BILLING: 'READ',
+    GENERATORS: 'NONE',
+    ROLES: 'READ',
+    INTEGRATIONS: 'READ',
+  },
+};
+
 // Sales: write during sales stages, read afterwards. Cannot touch
 // billing (accountant) or generators (consultants).
 function salesPolicy(): RolePolicy {
@@ -301,6 +318,7 @@ const CLIENT_REVIEWER_POLICY: RolePolicy = {
 
 const MATRIX: Record<Role, RolePolicy> = {
   APP_ADMIN: APP_ADMIN_POLICY,
+  CEO: CEO_POLICY,
   SALES_MANAGER: SALES_MANAGER_POLICY,
   SUPPORT_LEAD: SUPPORT_LEAD_POLICY,
   INTERNAL_ACCOUNTANT: INTERNAL_ACCOUNTANT_POLICY,

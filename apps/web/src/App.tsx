@@ -32,6 +32,9 @@ const CustomersPage = lazy(() => import('./pages/CustomersPage').then(m => ({ de
 const CustomerDetailPage = lazy(() => import('./pages/CustomerDetailPage').then(m => ({ default: m.CustomerDetailPage })));
 const ReportsPage = lazy(() => import('./pages/ReportsPage').then(m => ({ default: m.ReportsPage })));
 const HelpPage = lazy(() => import('./pages/HelpPage').then(m => ({ default: m.HelpPage })));
+const ExecutiveDashboardPage = lazy(() =>
+  import('./pages/ExecutiveDashboardPage').then((m) => ({ default: m.ExecutiveDashboardPage })),
+);
 
 function PageLoader() {
   return (
@@ -42,6 +45,27 @@ function PageLoader() {
       </div>
     </div>
   );
+}
+
+/**
+ * Phase 53.3 — Role-aware home redirect. CEO lands on the
+ * executive dashboard; everyone else (including APP_ADMIN) on the
+ * Inbox. Unauthenticated users are pushed to /login via RequireAuth
+ * after first being routed through here.
+ */
+function RoleAwareHome() {
+  const { user, loading } = useAuth();
+  if (loading) {
+    return <PageLoader />;
+  }
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+  const role = user.role;
+  if (role === 'CEO') {
+    return <Navigate to="/executive" replace />;
+  }
+  return <Navigate to="/inbox" replace />;
 }
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -106,6 +130,14 @@ function AppRoutes() {
           element={
             <RequireAuth>
               <ErrorBoundary><HelpPage /></ErrorBoundary>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/executive"
+          element={
+            <RequireAuth>
+              <ErrorBoundary><ExecutiveDashboardPage /></ErrorBoundary>
             </RequireAuth>
           }
         />
@@ -250,9 +282,9 @@ function AppRoutes() {
         <Route path="/custom-adaptors" element={<Navigate to="/settings?tab=adaptors" replace />} />
         <Route path="/wizard/:id" element={<Navigate to="/inbox" replace />} />
 
-        {/* Home + catch-all */}
-        <Route path="/" element={<Navigate to="/inbox" replace />} />
-        <Route path="*" element={<Navigate to="/inbox" replace />} />
+        {/* Home + catch-all. Phase 53.3 — CEO lands on /executive. */}
+        <Route path="/" element={<RoleAwareHome />} />
+        <Route path="*" element={<RoleAwareHome />} />
       </Routes>
     </Suspense>
   );

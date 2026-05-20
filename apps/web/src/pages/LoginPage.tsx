@@ -40,7 +40,7 @@ export function LoginPage() {
     setLoading(true);
     try {
       await login(email, password);
-      navigate('/inbox');
+      navigate('/'); // role-aware redirect — CEO lands on /executive, others on /inbox
     } catch {
       setError('Invalid email or password');
     } finally {
