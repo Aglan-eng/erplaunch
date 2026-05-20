@@ -162,7 +162,7 @@ export async function exportsRoutes(fastify: FastifyInstance): Promise<void> {
       return reply
         .type('application/pdf')
         .header('Content-Length', String(pdf.byteLength))
-        .header('Content-Disposition', `attachment; filename="${filename}"`)
+        .header('Content-Disposition', contentDispositionForPdf(filename))
         .send(pdf);
     } catch (err) {
       if (err instanceof RenderQueueFullError) {
@@ -193,7 +193,48 @@ export async function exportsRoutes(fastify: FastifyInstance): Promise<void> {
 function buildFilename(customerName: string, proposalTitle: string): string {
   const safe = (s: string): string =>
     s.replace(/[^A-Za-z0-9._\- ]+/g, '_').trim() || 'document';
+  // Note: the joining em-dash is intentional for the *display* name —
+  // contentDispositionForPdf() strips non-ASCII before it lands in the
+  // HTTP header and surfaces the original via `filename*=UTF-8''…` so
+  // modern browsers still see the pretty version.
   return `${safe(customerName)} — ${safe(proposalTitle)}.pdf`;
+}
+
+/**
+ * Build a valid RFC-6266 / RFC-5987 `Content-Disposition` header for a
+ * PDF download.
+ *
+ * Bug being fixed: Node's HTTP layer is Latin-1 only for header values
+ * (`ERR_INVALID_CHAR` is thrown by `storeHeader` the moment any byte
+ * sits outside 0x20–0x7E). Customer names like `[DEMO] Gamma Proposal`
+ * are fine, but document titles that include em-dashes (—), smart
+ * quotes (‘ ’ “ ”), non-breaking spaces, or non-Latin scripts blow
+ * the response up with a 500 *after* the PDF has already rendered.
+ *
+ * Strategy:
+ *   - Produce an ASCII-only fallback `filename="…"` for HTTP/1.1
+ *     compliance and any client that doesn't grok RFC 5987.
+ *   - Always also emit `filename*=UTF-8''<percent-encoded>` so modern
+ *     browsers display the original (em-dashes, accents, etc.) intact.
+ *
+ * The function never throws — empty/all-stripped names fall back to
+ * `"document.pdf"`.
+ */
+export function contentDispositionForPdf(rawName: string): string {
+  const trimmed = rawName.trim();
+  const ascii =
+    trimmed
+      .normalize('NFKD')
+      // eslint-disable-next-line no-control-regex
+      .replace(/[^\x20-\x7E]/g, '') // drop non-ASCII (em-dash, smart quotes, nbsp, …)
+      .replace(/["\\]/g, '') // drop quotes/backslashes — break the header otherwise
+      .replace(/\s+/g, ' ')
+      .trim() || 'document';
+  const ensurePdf = (s: string): string => (s.toLowerCase().endsWith('.pdf') ? s : `${s}.pdf`);
+  const asciiFile = ensurePdf(ascii);
+  const utf8Source = ensurePdf(trimmed || 'document');
+  const utf8File = encodeURIComponent(utf8Source);
+  return `attachment; filename="${asciiFile}"; filename*=UTF-8''${utf8File}`;
 }
 
 // ─── Phase 51.3 — SOW endpoint ─────────────────────────────────────────────
@@ -281,7 +322,7 @@ function registerSowRoute(fastify: FastifyInstance): void {
       return reply
         .type('application/pdf')
         .header('Content-Length', String(pdf.byteLength))
-        .header('Content-Disposition', `attachment; filename="${filename}"`)
+        .header('Content-Disposition', contentDispositionForPdf(filename))
         .send(pdf);
     } catch (err) {
       if (err instanceof RenderQueueFullError) {
