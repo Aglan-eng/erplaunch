@@ -31,6 +31,12 @@ COPY packages/adaptor-odoo ./packages/adaptor-odoo
 # Build workspace packages — api imports from their dist/ outputs
 RUN pnpm --filter "./packages/**" -r run build
 
+# Phase 51.4 hotfix — inline export-template assets so the rendered
+# proposal PDF never depends on the binary PNG/TTF files being on disk
+# at runtime. Regenerates the committed `assets.generated.ts` from the
+# real .png/.ttf sources before the image freezes.
+RUN pnpm --filter @ofoq/api run build:assets
+
 # Prepare data dirs (Render mounts the persistent disk here)
 RUN mkdir -p /data/db /data/uploads /data/outputs
 

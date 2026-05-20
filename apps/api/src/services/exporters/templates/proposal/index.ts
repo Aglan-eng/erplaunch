@@ -471,13 +471,21 @@ export async function renderProposalPdf(input: ProposalInput): Promise<Buffer> {
   });
 
   return withPage(async (page) => {
-    await page.setContent(html, { waitUntil: 'domcontentloaded' });
-    // Wait for the bundled @font-face declarations to finish loading
-    // before pdf(). Without this Chromium may render the first frame
-    // in Times/Georgia fallback and bake that into the PDF.
-    await page.evaluate(() =>
-      (document as Document & { fonts: { ready: Promise<unknown> } }).fonts.ready,
-    );
+    // `load` (vs `domcontentloaded`) waits until every <img>, font,
+    // and CSS-referenced resource finishes — including the data:
+    // URI backgrounds we embed. Without `load` Chromium may fire
+    // pdf() before the background-image is painted and the result
+    // is a blank deck (Phase 51.4 prod regression).
+    await page.setContent(html, { waitUntil: 'load' });
+    // Belt + braces: explicitly await fonts.ready AND force a paint
+    // tick so the data-URI backgrounds are fully decoded into the
+    // composited frame the PDF stream captures.
+    await page.evaluate(async () => {
+      await (document as Document & { fonts: { ready: Promise<unknown> } }).fonts.ready;
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+    });
     const pdf = await page.pdf({
       width: '1280px',
       height: '720px',

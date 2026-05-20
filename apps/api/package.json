@@ -11,6 +11,8 @@
     "seed:lifecycle": "tsx scripts/seed-lifecycle.ts",
     "clean:lifecycle": "tsx scripts/clean-lifecycle.ts",
     "verify:personas": "tsx scripts/verify-personas.ts",
+    "build:assets": "tsx scripts/inline-export-assets.ts",
+    "prestart": "tsx scripts/inline-export-assets.ts",
     "test": "rimraf tsconfig.tsbuildinfo && tsc --noEmit && vitest run",
     "test:notypecheck": "vitest run"
   },
