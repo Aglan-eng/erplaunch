@@ -56,6 +56,10 @@ import { HelpTip } from '@/components/guidance/HelpTip';
 import type { DocumentDefinition } from '@/lib/api';
 import { generatedDocumentsApi } from '@/lib/api';
 import {
+  focusForStage,
+  type WorkspaceEntryId,
+} from '@/components/customers/implementationFocus';
+import {
   STAGE_DETAILS_ORDERED,
   formatRelativeTime,
   ownerInitials,
@@ -167,7 +171,7 @@ export function CustomerDetailPage() {
               />
             )}
             {tab === 'implementation' && (
-              <ImplementationTab customer={detailQuery.data.customer} />
+              <ImplementationTab customer={detailQuery.data.customer} onChangeTab={setTab} />
             )}
             {tab === 'activity' && (
               <ActivityTab customerId={detailQuery.data.customer.id} />
@@ -456,16 +460,15 @@ function OverviewTab({ customer }: { customer: CustomerDetail }) {
 
 interface ImplementationTabProps {
   customer: CustomerDetail;
+  onChangeTab: (next: Tab) => void;
 }
 
 interface WorkspaceEntry {
-  id: string;
+  id: WorkspaceEntryId;
   title: string;
   description: string;
   icon: React.ComponentType<{ className?: string }>;
   to: string;
-  /** When true, the card surfaces the muted "pre-implementation" hint. */
-  preImplementation?: boolean;
 }
 
 const PRE_WON_STAGES: ReadonlyArray<string> = [
@@ -475,10 +478,12 @@ const PRE_WON_STAGES: ReadonlyArray<string> = [
   'NEGOTIATION',
 ];
 
-function ImplementationTab({ customer }: ImplementationTabProps) {
+function ImplementationTab({ customer, onChangeTab }: ImplementationTabProps) {
   const isPreWon = PRE_WON_STAGES.includes(customer.currentStage);
   const id = customer.id;
   const back = `from=customer&customerId=${id}`;
+  const focus = focusForStage(customer.currentStage);
+  const isTerminal = focus.tone === 'muted';
 
   const entries: WorkspaceEntry[] = [
     {
@@ -523,42 +528,117 @@ function ImplementationTab({ customer }: ImplementationTabProps) {
     },
   ];
 
+  // Phase 54.3 — re-order so the stage's relevant tools surface first.
+  const relevant = new Set<string>(focus.relevantTools);
+  const sortedEntries = [...entries].sort((a, b) => {
+    const aR = relevant.has(a.id);
+    const bR = relevant.has(b.id);
+    if (aR && !bR) return -1;
+    if (!aR && bR) return 1;
+    return 0;
+  });
+
+  const handlePrimaryAction = (): void => {
+    if (focus.primaryAction.targetTab) {
+      onChangeTab(focus.primaryAction.targetTab);
+      return;
+    }
+    // (targetRoute lands as a Link below — handlePrimaryAction is only
+    // wired to targetTab actions for v1.)
+  };
+
   return (
     <div className="space-y-4" data-testid="tab-implementation">
-      <section className="bg-white border border-gray-200 rounded-xl p-5">
-        <header className="flex items-start gap-3 mb-2">
-          <Wrench className="h-5 w-5 text-brand-600 mt-0.5 flex-shrink-0" />
-          <div className="flex-1">
-            <h2 className="text-sm font-semibold text-gray-900">
-              Implementation workspace
+      {/* Phase 54.3 — stage-focus panel. */}
+      <section
+        className={cn(
+          'border rounded-xl p-5',
+          isTerminal
+            ? 'bg-gray-50 border-gray-200'
+            : 'bg-gradient-to-br from-brand-50 to-white border-brand-200',
+        )}
+        data-testid="implementation-focus"
+        data-stage={customer.currentStage}
+      >
+        <header className="flex items-start gap-3">
+          <div
+            className={cn(
+              'flex-shrink-0 h-9 w-9 rounded-lg flex items-center justify-center',
+              isTerminal ? 'bg-gray-100 text-gray-500' : 'bg-brand-100 text-brand-700',
+            )}
+          >
+            <Wrench className="h-4 w-4" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5">
+              <p className="text-[10px] uppercase tracking-wider font-semibold text-gray-500">
+                Your focus at this stage — {stageDetail(customer.currentStage).label}
+              </p>
+              <HelpTip
+                testid="helptip-implementation-focus"
+                label="Stage-aware implementation focus"
+                body="Every customer moves through the same lifecycle — this panel shows the implementation work that matters at the customer's current stage. The full toolset is always reachable below."
+              />
+            </div>
+            <h2
+              data-testid="implementation-focus-headline"
+              className="text-base font-bold text-gray-900 mt-1"
+            >
+              {focus.focusHeadline}
             </h2>
-            <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
-              Discovery, document generation, and delivery tooling for{' '}
-              <span className="font-semibold text-gray-700">{customer.name}</span>. Everything
-              here is scoped to this customer.
+            <p
+              data-testid="implementation-focus-body"
+              className="text-sm text-gray-600 mt-1 leading-relaxed"
+            >
+              {focus.focusBody}
             </p>
+            {focus.primaryAction.targetTab && (
+              <button
+                type="button"
+                onClick={handlePrimaryAction}
+                data-testid="implementation-focus-primary-action"
+                className={cn(
+                  'mt-3 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold',
+                  isTerminal
+                    ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    : 'bg-brand-600 text-white hover:bg-brand-700',
+                )}
+              >
+                {focus.primaryAction.label}
+                <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
         </header>
-        {isPreWon && (
-          <div
-            className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"
-            data-testid="implementation-prewon-note"
-          >
-            This customer is still at the{' '}
-            <span className="font-semibold">{stageDetail(customer.currentStage).label}</span>{' '}
-            stage. Implementation tooling unlocks fully once the deal moves to Won — but
-            you can still poke around below.
-          </div>
-        )}
       </section>
+
+      {isPreWon && (
+        <div
+          className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"
+          data-testid="implementation-prewon-note"
+        >
+          This customer is still at the{' '}
+          <span className="font-semibold">{stageDetail(customer.currentStage).label}</span>{' '}
+          stage. Implementation tooling unlocks fully once the deal moves to Won — but
+          you can still poke around below.
+        </div>
+      )}
 
       <div
         className="grid grid-cols-1 md:grid-cols-2 gap-3"
         data-testid="implementation-entries"
       >
-        {entries.map((entry) => (
-          <WorkspaceCard key={entry.id} entry={entry} muted={isPreWon} />
-        ))}
+        {sortedEntries.map((entry) => {
+          const isRelevant = relevant.has(entry.id);
+          return (
+            <WorkspaceCard
+              key={entry.id}
+              entry={entry}
+              highlighted={isRelevant}
+              muted={!isRelevant && (isPreWon || isTerminal)}
+            />
+          );
+        })}
       </div>
     </div>
   );
@@ -566,9 +646,11 @@ function ImplementationTab({ customer }: ImplementationTabProps) {
 
 function WorkspaceCard({
   entry,
+  highlighted,
   muted,
 }: {
   entry: WorkspaceEntry;
+  highlighted: boolean;
   muted: boolean;
 }) {
   const Icon = entry.icon;
@@ -576,12 +658,21 @@ function WorkspaceCard({
     <Link
       to={entry.to}
       data-testid={`implementation-entry-${entry.id}`}
+      data-relevant={highlighted}
       className={cn(
-        'group flex items-start gap-3 rounded-xl border border-gray-200 bg-white p-4 transition-colors hover:border-brand-300 hover:bg-brand-50/30',
-        muted && 'opacity-90',
+        'group flex items-start gap-3 rounded-xl border p-4 transition-colors',
+        highlighted
+          ? 'border-brand-300 bg-brand-50/40 hover:bg-brand-50'
+          : 'border-gray-200 bg-white hover:border-brand-300 hover:bg-brand-50/30',
+        muted && 'opacity-60',
       )}
     >
-      <div className="flex-shrink-0 h-9 w-9 rounded-lg bg-brand-50 text-brand-700 flex items-center justify-center group-hover:bg-brand-100">
+      <div
+        className={cn(
+          'flex-shrink-0 h-9 w-9 rounded-lg flex items-center justify-center group-hover:bg-brand-100',
+          highlighted ? 'bg-brand-100 text-brand-700' : 'bg-brand-50 text-brand-700',
+        )}
+      >
         <Icon className="h-4 w-4" />
       </div>
       <div className="flex-1 min-w-0">
