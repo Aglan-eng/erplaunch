@@ -286,10 +286,14 @@ describe('CustomerDetailPage — Overview tab', () => {
 // ─── Documents tab ─────────────────────────────────────────────────────────
 
 describe('CustomerDetailPage — Documents tab', () => {
-  it('renders Generate Proposal + Generate SOW buttons', () => {
+  // Phase 53.2 — Documents tab is stage-aware. Detailed assertions
+  // live in customerDetailDocuments.test.tsx; here we just pin that
+  // the tab still mounts and the empty-state card still renders.
+  it('renders the stage-aware Documents tab shell', () => {
     const html = render({ detail: makeDetail(), tab: 'documents' });
-    expect(html).toContain('data-testid="documents-generate-proposal"');
-    expect(html).toContain('data-testid="documents-generate-sow"');
+    expect(html).toContain('data-testid="tab-documents"');
+    expect(html).toContain('data-testid="documents-current-stage"');
+    expect(html).toContain('data-testid="documents-all-stages"');
   });
 
   it('renders the empty-state card for previously-generated documents', () => {

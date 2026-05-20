@@ -20,6 +20,7 @@ import { authenticate } from '../middleware/auth.js';
 import { renderProposalPdf } from '../services/exporters/templates/proposal/index.js';
 import { renderSowPdf } from '../services/exporters/templates/sow/index.js';
 import { RenderQueueFullError } from '../services/exporters/puppeteerBrowser.js';
+import { DOCUMENT_CATALOG } from '../services/exporters/documentCatalog.js';
 
 /**
  * Phase-52.9.2 hotfix — hard timeout for any PDF render.
@@ -137,6 +138,13 @@ export async function exportsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.addHook('preHandler', authenticate);
 
   registerSowRoute(fastify);
+
+  // Phase 53.2 — per-stage document catalog. The frontend Documents
+  // tab reads this to decide which docs belong to the customer's
+  // current stage + which already have a working generator.
+  fastify.get('/exports/catalog', async (_request, reply) => {
+    return reply.send({ documents: DOCUMENT_CATALOG });
+  });
 
   fastify.post('/exports/proposal', async (request, reply) => {
     const parsed = ProposalInputBodySchema.safeParse(request.body);

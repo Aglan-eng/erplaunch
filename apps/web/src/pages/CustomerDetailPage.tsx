@@ -47,6 +47,7 @@ import { OwnerBadge } from '@/components/customers/OwnerBadge';
 import { StageHistoryStrip } from '@/components/customers/StageHistoryStrip';
 import { StageWidget } from '@/components/customers/widgets';
 import { HelpTip } from '@/components/guidance/HelpTip';
+import type { DocumentDefinition } from '@/lib/api';
 import {
   STAGE_DETAILS_ORDERED,
   formatRelativeTime,
@@ -567,47 +568,170 @@ function DocumentsTab({ customer, onSuccess, onError }: DocumentsTabProps) {
     }
   };
 
+  const catalogQuery = useQuery({
+    queryKey: ['exports-catalog'],
+    queryFn: () => exportsApi.catalog(),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const handleGenerate = (docId: string): void => {
+    if (docId === 'proposal') void generateProposal();
+    else if (docId === 'sow') void generateSow();
+  };
+
+  const pendingDocId: string | null =
+    pending === 'proposal' ? 'proposal' : pending === 'sow' ? 'sow' : null;
+
+  const allDocs = catalogQuery.data?.documents ?? [];
+  const currentStageDocs = allDocs.filter((d) => d.stage === customer.currentStage);
+  const docsByStage = new Map<string, DocumentDefinition[]>();
+  for (const d of allDocs) {
+    const arr = docsByStage.get(d.stage) ?? [];
+    arr.push(d);
+    docsByStage.set(d.stage, arr);
+  }
+
   return (
     <div className="space-y-4" data-testid="tab-documents">
-      <div className="flex flex-wrap gap-3">
-        <button
-          type="button"
-          onClick={generateProposal}
-          disabled={pending !== null}
-          data-testid="documents-generate-proposal"
-          className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
-        >
-          {pending === 'proposal' ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Download className="h-4 w-4" />
-          )}
-          Generate Proposal PDF
-        </button>
-        <button
-          type="button"
-          onClick={generateSow}
-          disabled={pending !== null}
-          data-testid="documents-generate-sow"
-          className="inline-flex items-center gap-2 rounded-lg bg-white border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-        >
-          {pending === 'sow' ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Download className="h-4 w-4" />
-          )}
-          Generate SOW PDF
-        </button>
-      </div>
+      <section
+        className="bg-white border border-gray-200 rounded-xl p-5"
+        data-testid="documents-current-stage"
+      >
+        <header className="flex items-center gap-2 mb-1">
+          <h2 className="text-sm font-semibold text-gray-900">
+            For this stage — {stageDetail(customer.currentStage).label}
+          </h2>
+          <HelpTip
+            testid="documents-current-stage-help"
+            label="Why these documents?"
+            body={`These are the documents typically produced during the ${stageDetail(customer.currentStage).label} stage. Documents not yet built will show a "Coming soon" badge.`}
+          />
+        </header>
+        {catalogQuery.isLoading ? (
+          <p className="text-sm text-gray-500" data-testid="documents-current-stage-loading">
+            Loading catalog…
+          </p>
+        ) : currentStageDocs.length === 0 ? (
+          <p
+            className="text-sm text-gray-500 mt-2"
+            data-testid="documents-current-stage-empty"
+          >
+            No documents are defined for this stage. Terminal stages (Lost, Churned, Renewed)
+            and post-go-live stages without a doc template fall here for now.
+          </p>
+        ) : (
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+            {currentStageDocs.map((doc) => (
+              <DocumentCard
+                key={doc.id}
+                doc={doc}
+                pendingDocId={pendingDocId}
+                onGenerate={handleGenerate}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
+      <details
+        className="bg-white border border-gray-200 rounded-xl overflow-hidden"
+        data-testid="documents-all-stages"
+      >
+        <summary className="px-5 py-3 cursor-pointer text-sm font-semibold text-gray-700 hover:bg-gray-50">
+          All documents
+        </summary>
+        <div className="px-5 py-4 space-y-6 border-t border-gray-100">
+          {Array.from(docsByStage.entries()).map(([stage, docs]) => (
+            <div key={stage} data-testid={`documents-stage-group-${stage}`}>
+              <h3 className="text-[10px] uppercase tracking-wider font-semibold text-gray-500 mb-2">
+                {stageDetail(stage as CustomerStage).label}
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {docs.map((doc) => (
+                  <DocumentCard
+                    key={doc.id}
+                    doc={doc}
+                    pendingDocId={pendingDocId}
+                    onGenerate={handleGenerate}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </details>
+
       <div
-        className="bg-white border border-gray-200 rounded-xl px-5 py-8 text-center"
+        className="bg-white border border-gray-200 rounded-xl px-5 py-6 text-center"
         data-testid="documents-history-empty"
       >
-        <FileText className="h-8 w-8 text-gray-300 mx-auto mb-2" />
+        <FileText className="h-7 w-7 text-gray-300 mx-auto mb-2" />
         <p className="text-sm font-medium text-gray-900">No saved documents yet</p>
         <p className="text-xs text-gray-500 mt-1">
           Generated PDFs download to your machine. Stored-document history lands in a later phase.
         </p>
+      </div>
+    </div>
+  );
+}
+
+interface DocumentCardProps {
+  doc: DocumentDefinition;
+  pendingDocId: string | null;
+  onGenerate: (docId: string) => void;
+}
+
+function DocumentCard({ doc, pendingDocId, onGenerate }: DocumentCardProps) {
+  const isAvailable = doc.status === 'available';
+  const isPending = pendingDocId === doc.id;
+  return (
+    <div
+      className={cn(
+        'rounded-lg border p-3 flex items-start gap-3',
+        isAvailable ? 'border-gray-200 bg-white' : 'border-gray-150 bg-gray-50',
+      )}
+      data-testid={`documents-card-${doc.id}`}
+      data-doc-status={doc.status}
+    >
+      <FileText
+        className={cn('h-4 w-4 mt-0.5 flex-shrink-0', isAvailable ? 'text-brand-600' : 'text-gray-400')}
+      />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <p
+            className={cn(
+              'text-sm font-semibold',
+              isAvailable ? 'text-gray-900' : 'text-gray-500',
+            )}
+          >
+            {doc.name}
+          </p>
+          {!isAvailable && (
+            <span
+              className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-gray-500"
+              data-testid={`documents-card-${doc.id}-badge`}
+            >
+              Coming soon
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{doc.description}</p>
+        {isAvailable && (
+          <button
+            type="button"
+            onClick={() => onGenerate(doc.id)}
+            disabled={pendingDocId !== null}
+            data-testid={`documents-card-${doc.id}-generate`}
+            className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+          >
+            {isPending ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Download className="h-3 w-3" />
+            )}
+            Generate PDF
+          </button>
+        )}
       </div>
     </div>
   );

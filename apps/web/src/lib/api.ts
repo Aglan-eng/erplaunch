@@ -1632,6 +1632,21 @@ export interface CustomerPatch {
   arOwnerUserId?: string | null;
 }
 
+// ─── Phase 53.2 — per-stage document catalog ───────────────────────────────
+
+export type DocumentStatus = 'available' | 'coming-soon';
+export type DocumentCategory = 'sales' | 'delivery' | 'support' | 'renewal';
+
+export interface DocumentDefinition {
+  id: string;
+  name: string;
+  description: string;
+  stage: CustomerStage;
+  category: DocumentCategory;
+  status: DocumentStatus;
+  exportRoute: string | null;
+}
+
 // ─── Exports (Phase 51.2/51.3 — now mounted under /api/v1) ─────────────────
 
 export interface ProposalExportBody {
@@ -1693,6 +1708,9 @@ export const exportsApi = {
 
   sow: (body: SowExportBody): Promise<Blob> =>
     api.post('/exports/sow', body, { responseType: 'blob' }).then((r) => r.data as Blob),
+
+  catalog: (): Promise<{ documents: DocumentDefinition[] }> =>
+    api.get('/exports/catalog').then((r) => r.data),
 };
 
 // ─── Phase 52.5 — Inbox (role-based home) ──────────────────────────────────
