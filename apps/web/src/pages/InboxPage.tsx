@@ -39,6 +39,7 @@ import {
 type InboxSeverity = InboxItem['severity'];
 import { formatRelativeTime } from '@/components/customers/stageMetadata';
 import { cn } from '@/lib/utils';
+import { HelpTip } from '@/components/guidance/HelpTip';
 
 type SeverityFilter = 'all' | InboxSeverity;
 
@@ -218,6 +219,8 @@ export function InboxPage() {
               icon={InboxIcon}
               items={forYou}
               onDismiss={(id) => dismiss.mutate(id)}
+              helpLabel="Why is this in For You?"
+              helpBody="Alerts on customers where the current lifecycle stage matches a role you own (Sales / Project Lead / CSM / AR). These need your action today."
             />
             <InboxBucket
               testid="inbox-bucket-watching"
@@ -226,6 +229,8 @@ export function InboxPage() {
               icon={Eye}
               items={watching}
               onDismiss={(id) => dismiss.mutate(id)}
+              helpLabel="Why is this in Watching?"
+              helpBody="You own a different role on this customer (for example, Sales sees a customer they once owned now in Build). Keep an eye, but it's not your action — it belongs to whoever owns the current stage."
             />
             {firmWide !== null && (
               <InboxBucket
@@ -235,6 +240,8 @@ export function InboxPage() {
                 icon={Crown}
                 items={firmWide}
                 onDismiss={(id) => dismiss.mutate(id)}
+                helpLabel="Why am I seeing Firm-wide?"
+                helpBody="Admins see every alert in the firm regardless of ownership. Use it to spot patterns or step in when nobody else has."
               />
             )}
           </div>
@@ -327,24 +334,47 @@ interface InboxBucketProps {
   icon: React.ComponentType<{ className?: string }>;
   items: InboxItem[];
   onDismiss: (id: string) => void;
+  helpLabel?: string;
+  helpBody?: string;
 }
 
-function InboxBucket({ testid, title, subtitle, icon: Icon, items, onDismiss }: InboxBucketProps) {
+function InboxBucket({
+  testid,
+  title,
+  subtitle,
+  icon: Icon,
+  items,
+  onDismiss,
+  helpLabel,
+  helpBody,
+}: InboxBucketProps) {
   return (
     <section data-testid={testid}>
       <header className="mb-2 flex items-center gap-2">
         <Icon className="h-4 w-4 text-gray-500" />
         <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
+        {helpLabel && helpBody && (
+          <HelpTip
+            testid={`${testid}-help`}
+            label={helpLabel}
+            body={helpBody}
+          />
+        )}
         <span className="text-xs text-gray-400 tabular-nums">{items.length}</span>
       </header>
       <p className="text-xs text-gray-500 mb-2">{subtitle}</p>
       {items.length === 0 ? (
         <div
-          className="bg-white border border-gray-200 rounded-xl py-10 text-center"
+          className="bg-white border border-gray-200 rounded-xl py-10 px-6 text-center"
           data-testid={`${testid}-empty`}
         >
           <p className="text-sm font-medium text-gray-900">
-            Nothing for you right now — 🎉
+            Nothing here right now — 🎉
+          </p>
+          <p className="mt-1 text-xs text-gray-500 max-w-md mx-auto leading-relaxed">
+            Items appear when a customer needs your attention — an overdue
+            stage, an open blocker, a pending decision, an incoming handoff,
+            or a renewal coming due in the next 90 days.
           </p>
         </div>
       ) : (

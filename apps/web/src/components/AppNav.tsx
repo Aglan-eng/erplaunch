@@ -25,9 +25,10 @@
  */
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Inbox, Users, BarChart3, Settings, LogOut, Search, Menu, X } from 'lucide-react';
+import { Inbox, Users, BarChart3, Settings, LogOut, Search, Menu, X, HelpCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { cn } from '../lib/utils';
+import { OnboardingTour } from './guidance/OnboardingTour';
 
 interface NavLink {
   label: string;
@@ -55,8 +56,13 @@ export function AppNav() {
   const location = useLocation();
   const { user, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const forceTour =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('welcome') === '1';
 
   return (
+    <>
+    <OnboardingTour forceShow={forceTour} />
     <header
       className="bg-white border-b border-gray-200 sticky top-0 z-30"
       data-testid="app-nav"
@@ -117,6 +123,14 @@ export function AppNav() {
 
           {/* Right-side: user identity + logout (md+) and hamburger (mobile). */}
           <div className="flex items-center gap-2 flex-shrink-0">
+            <Link
+              to="/help"
+              data-testid="app-nav-help"
+              title="How ERPLaunch works"
+              className="text-gray-500 hover:text-brand-700 p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+            >
+              <HelpCircle className="h-4 w-4" />
+            </Link>
             <span
               className="text-sm text-gray-600 hidden sm:inline font-medium"
               data-testid="app-nav-user"
@@ -178,5 +192,6 @@ export function AppNav() {
         )}
       </div>
     </header>
+    </>
   );
 }

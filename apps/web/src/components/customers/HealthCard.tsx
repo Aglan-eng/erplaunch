@@ -9,6 +9,7 @@
 import React from 'react';
 import type { CustomerHealthBreakdown } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { HelpTip } from '@/components/guidance/HelpTip';
 
 interface HealthCardProps {
   breakdown: CustomerHealthBreakdown;
@@ -72,8 +73,13 @@ export function HealthCard({ breakdown }: HealthCardProps) {
     >
       <div className="flex items-start justify-between mb-4">
         <div>
-          <p className="text-[10px] uppercase tracking-wider font-semibold text-gray-500">
+          <p className="text-[10px] uppercase tracking-wider font-semibold text-gray-500 flex items-center gap-1">
             Health score
+            <HelpTip
+              testid="helptip-health"
+              label="What the health score means"
+              body="0–100 score combining questionnaire completion, open blockers, time stuck in stage, and pending decisions. Red under 30 (act now), yellow 30–69 (watch), green 70+ (healthy)."
+            />
           </p>
           <p
             className={cn('text-4xl font-bold tabular-nums mt-1', BAND_TEXT[band])}

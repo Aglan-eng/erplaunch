@@ -46,6 +46,7 @@ import { HealthCard } from '@/components/customers/HealthCard';
 import { OwnerBadge } from '@/components/customers/OwnerBadge';
 import { StageHistoryStrip } from '@/components/customers/StageHistoryStrip';
 import { StageWidget } from '@/components/customers/widgets';
+import { HelpTip } from '@/components/guidance/HelpTip';
 import {
   STAGE_DETAILS_ORDERED,
   formatRelativeTime,
@@ -241,6 +242,11 @@ function CustomerHeader({ customer, onAdvanced, onSuccess, onError }: CustomerHe
             >
               {stage.label}
             </span>
+            <HelpTip
+              testid="helptip-stage"
+              label="Customer lifecycle stage"
+              body="Every customer flows through 14 stages, left-to-right: Lead → Qualified → Proposal → Negotiation → Won → Discovery → Scoping → Build → UAT → Go-live → Hypercare → Live SLA → Renewal Due → Renewed. Use Advance to move them forward or Roll back to step them back; every change is logged."
+            />
             {customer.renewalCount > 0 && (
               <span
                 className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700"
@@ -285,6 +291,16 @@ function CustomerHeader({ customer, onAdvanced, onSuccess, onError }: CustomerHe
         </div>
       </div>
 
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-[10px] uppercase tracking-wider font-semibold text-gray-500">
+          Owners
+        </span>
+        <HelpTip
+          testid="helptip-owners"
+          label="The four owner roles"
+          body="Each customer has four owners. Sales owns Lead→Won. Project Lead owns Discovery→Go-live. CSM owns Hypercare→Renewed. AR owns invoicing the whole time. The highlighted badge is whoever's currently in charge based on the stage."
+        />
+      </div>
       <div
         className="grid grid-cols-2 lg:grid-cols-4 gap-2"
         data-testid="customer-header-owners"

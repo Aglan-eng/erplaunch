@@ -31,6 +31,7 @@ const InboxPage = lazy(() => import('./pages/InboxPage').then(m => ({ default: m
 const CustomersPage = lazy(() => import('./pages/CustomersPage').then(m => ({ default: m.CustomersPage })));
 const CustomerDetailPage = lazy(() => import('./pages/CustomerDetailPage').then(m => ({ default: m.CustomerDetailPage })));
 const ReportsPage = lazy(() => import('./pages/ReportsPage').then(m => ({ default: m.ReportsPage })));
+const HelpPage = lazy(() => import('./pages/HelpPage').then(m => ({ default: m.HelpPage })));
 
 function PageLoader() {
   return (
@@ -97,6 +98,14 @@ function AppRoutes() {
           element={
             <RequireAuth>
               <ErrorBoundary><ReportsPage /></ErrorBoundary>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/help"
+          element={
+            <RequireAuth>
+              <ErrorBoundary><HelpPage /></ErrorBoundary>
             </RequireAuth>
           }
         />

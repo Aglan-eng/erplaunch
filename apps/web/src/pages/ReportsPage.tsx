@@ -32,12 +32,14 @@ const TABS: Array<{
   key: Tab;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
+  /** Phase 53.1 — plain-English "this answers" subtitle. */
+  answers: string;
 }> = [
-  { key: 'pipeline', label: 'Pipeline', icon: BarChart3 },
-  { key: 'delivery', label: 'Delivery', icon: Briefcase },
-  { key: 'health', label: 'Customer Health', icon: Heart },
-  { key: 'renewals', label: 'Renewals', icon: RefreshCcw },
-  { key: 'utilization', label: 'Utilization', icon: Users },
+  { key: 'pipeline', label: 'Pipeline', icon: BarChart3, answers: 'Are we filling the funnel?' },
+  { key: 'delivery', label: 'Delivery', icon: Briefcase, answers: 'Who is slipping vs on-track?' },
+  { key: 'health', label: 'Customer Health', icon: Heart, answers: 'Who is at risk of churning?' },
+  { key: 'renewals', label: 'Renewals', icon: RefreshCcw, answers: "What's at risk in the next 90 days?" },
+  { key: 'utilization', label: 'Utilization', icon: Users, answers: 'Who is overloaded?' },
 ];
 
 function readTab(params: URLSearchParams): Tab {
@@ -105,6 +107,16 @@ export function ReportsPage() {
             );
           })}
         </nav>
+
+        <p
+          className="text-xs text-gray-500 mb-4 -mt-2"
+          data-testid="reports-tab-answers"
+        >
+          This dashboard answers:{' '}
+          <span className="font-semibold text-gray-700">
+            {TABS.find((t) => t.key === tab)?.answers}
+          </span>
+        </p>
 
         {tab === 'pipeline' && <PipelineDashboard />}
         {tab === 'delivery' && <DeliveryDashboard />}
