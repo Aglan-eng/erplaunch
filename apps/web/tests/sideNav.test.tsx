@@ -51,7 +51,8 @@ describe('SideNav — primary navigation', () => {
   });
 
   it('marks the active route via aria-current=page', () => {
-    const html = render('/customers');
+    // Phase 56.2 — Customers nav now points at /accounts.
+    const html = render('/accounts');
     expect(html).toMatch(
       /<a[^>]*data-testid="side-nav-link-customers"[^>]*aria-current="page"/,
     );

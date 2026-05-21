@@ -35,6 +35,8 @@ const ReportsPage = lazy(() => import('./pages/ReportsPage').then(m => ({ defaul
 const HelpPage = lazy(() => import('./pages/HelpPage').then(m => ({ default: m.HelpPage })));
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then((m) => ({ default: m.DashboardPage })));
 const ProjectsPage = lazy(() => import('./pages/ProjectsPage').then((m) => ({ default: m.ProjectsPage })));
+const AccountsPage = lazy(() => import('./pages/AccountsPage').then((m) => ({ default: m.AccountsPage })));
+const AccountDetailPage = lazy(() => import('./pages/AccountDetailPage').then((m) => ({ default: m.AccountDetailPage })));
 
 function PageLoader() {
   return (
@@ -96,6 +98,34 @@ function AppRoutes() {
           element={
             <RequireAuth>
               <ErrorBoundary><InboxPage /></ErrorBoundary>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/accounts"
+          element={
+            <RequireAuth>
+              <ErrorBoundary><AccountsPage /></ErrorBoundary>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/accounts/:id"
+          element={
+            <RequireAuth>
+              <ErrorBoundary><AccountDetailPage /></ErrorBoundary>
+            </RequireAuth>
+          }
+        />
+        {/* Phase 56.2 — the legacy "Customers" flat-list lives under
+            /customers/list so users can still reach the project-level
+            kanban + list view. The sidebar's "Customers" link now
+            points at /accounts (the company-level view). */}
+        <Route
+          path="/customers/list"
+          element={
+            <RequireAuth>
+              <ErrorBoundary><CustomersPage /></ErrorBoundary>
             </RequireAuth>
           }
         />

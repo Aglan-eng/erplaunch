@@ -57,7 +57,11 @@ interface NavItem {
 const NAV_ITEMS: ReadonlyArray<NavItem> = [
   { label: 'Dashboard', to: '/dashboard', matchPrefix: '/dashboard', icon: Home },
   { label: 'Inbox', to: '/inbox', matchPrefix: '/inbox', icon: Inbox },
-  { label: 'Customers', to: '/customers', matchPrefix: '/customers', icon: Users },
+  // Phase 56.2 — Customers nav lands on the Accounts list (companies).
+  // The matchPrefix covers both /accounts and the project-detail
+  // pages at /customers/* so the link stays highlighted across the
+  // company → project drill-down.
+  { label: 'Customers', to: '/accounts', matchPrefix: '/accounts', icon: Users },
   { label: 'Projects', to: '/projects', matchPrefix: '/projects', icon: Briefcase },
   { label: 'Reports', to: '/reports', matchPrefix: '/reports', icon: BarChart3 },
 ];

@@ -82,6 +82,8 @@ import { customersRoutes } from './routes/customers.js';
 import { adminRoutes } from './routes/admin.js';
 // Phase 55.2 — context-aware AI assistant.
 import { assistantRoutes } from './routes/assistant.js';
+// Phase 56.2 — Account / Project routes.
+import { accountsRoutes } from './routes/accounts.js';
 // Phase 52.5 — role-based Inbox.
 import { inboxRoutes } from './routes/inbox.js';
 // Phase 52.6 — Reports tab (five dashboards).
@@ -282,6 +284,8 @@ export async function buildServer() {
   await fastify.register(adminRoutes, { prefix: '/api/v1' });
   // Phase 55.2 — POST /api/v1/assistant/chat + GET /assistant/conversations.
   await fastify.register(assistantRoutes, { prefix: '/api/v1' });
+  // Phase 56.2 — GET/POST /api/v1/accounts(/…) + POST /api/v1/leads.
+  await fastify.register(accountsRoutes, { prefix: '/api/v1' });
   // Phase 52.5 — GET /api/v1/inbox + POST /api/v1/inbox/dismiss.
   await fastify.register(inboxRoutes, { prefix: '/api/v1' });
   // Phase 52.6 — GET /api/v1/reports/{pipeline|delivery|health|renewals|utilization}.

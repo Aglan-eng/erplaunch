@@ -1768,6 +1768,97 @@ export const exportsApi = {
     api.get('/exports/catalog').then((r) => r.data),
 };
 
+// ─── Phase 56.2 — Account → Project model ──────────────────────────────────
+
+export type ProjectKind =
+  | 'INITIAL_IMPLEMENTATION'
+  | 'PHASE_2'
+  | 'MODULE_ROLLOUT'
+  | 'OTHER';
+
+export interface AccountSummary {
+  id: string;
+  name: string;
+  address: string | null;
+  primaryContactName: string | null;
+  primaryContactEmail: string | null;
+  primaryContactPhone: string | null;
+  archived: boolean;
+  projectCount: number;
+  worstHealth: number | null;
+  worstHealthBand: 'red' | 'yellow' | 'green' | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AccountDetail {
+  id: string;
+  name: string;
+  address: string | null;
+  primaryContactName: string | null;
+  primaryContactEmail: string | null;
+  primaryContactPhone: string | null;
+  archived: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectInAccount {
+  id: string;
+  projectName: string;
+  projectKind: ProjectKind;
+  currentStage: CustomerStage;
+  health: number | null;
+  healthBand: 'red' | 'yellow' | 'green' | null;
+  isArchived: boolean;
+  createdAt: string;
+}
+
+export interface CreateAccountBody {
+  name: string;
+  address?: string | null;
+  primaryContactName?: string | null;
+  primaryContactEmail?: string | null;
+  primaryContactPhone?: string | null;
+}
+
+export interface CreateProjectBody {
+  projectName: string;
+  projectKind?: ProjectKind;
+  startStage?: CustomerStage;
+  salesOwnerUserId?: string | null;
+  projectLeadUserId?: string | null;
+  csmUserId?: string | null;
+  arOwnerUserId?: string | null;
+}
+
+export interface NewLeadBody {
+  projectName: string;
+  accountId?: string;
+  newAccount?: CreateAccountBody;
+}
+
+export const accountsApi = {
+  list: (): Promise<{ accounts: AccountSummary[] }> =>
+    api.get('/accounts').then((r) => r.data),
+  get: (id: string): Promise<{ account: AccountDetail; projects: ProjectInAccount[] }> =>
+    api.get(`/accounts/${id}`).then((r) => r.data),
+  create: (body: CreateAccountBody): Promise<{ account: AccountDetail }> =>
+    api.post('/accounts', body).then((r) => r.data),
+  createProject: (
+    accountId: string,
+    body: CreateProjectBody,
+  ): Promise<{ projectId: string; accountId: string }> =>
+    api.post(`/accounts/${accountId}/projects`, body).then((r) => r.data),
+};
+
+export const leadsApi = {
+  create: (
+    body: NewLeadBody,
+  ): Promise<{ accountId: string; projectId: string; createdNewAccount: boolean }> =>
+    api.post('/leads', body).then((r) => r.data),
+};
+
 // ─── Phase 55.2 — Context-aware AI assistant ───────────────────────────────
 
 export type AssistantActionKind = 'navigate' | 'info';
