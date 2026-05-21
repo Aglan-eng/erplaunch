@@ -1399,6 +1399,12 @@ async function createTables(db: Client) {
       updatedAt              TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
+
+  // Phase 56.1 — Account → Project schema split. Runs at the end of
+  // initDb so the Customer table (which is now also the Project
+  // layer) is already in place. Idempotent on every boot.
+  const { runAccountMigrationOnce } = await import('./account.js');
+  await runAccountMigrationOnce();
 }
 
 // ─── Helper types ─────────────────────────────────────────────────────────────
