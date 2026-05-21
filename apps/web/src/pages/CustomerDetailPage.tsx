@@ -36,7 +36,7 @@ import {
   Folder,
 } from 'lucide-react';
 
-import { AppNav } from '../components/AppNav';
+import { AppShell } from '../components/SideNav';
 import {
   CUSTOMER_STAGES,
   customersApi,
@@ -118,9 +118,11 @@ export function CustomerDetailPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50" data-testid="customer-detail-page">
-      <AppNav />
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <AppShell>
+      <main
+        className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"
+        data-testid="customer-detail-page"
+      >
         <Link
           to="/customers"
           className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900 mb-3"
@@ -212,7 +214,7 @@ export function CustomerDetailPage() {
           </div>
         )}
       </main>
-    </div>
+    </AppShell>
   );
 }
 

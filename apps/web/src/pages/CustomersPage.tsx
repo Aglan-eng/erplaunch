@@ -14,7 +14,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { LayoutGrid, List, Search, X } from 'lucide-react';
 
-import { AppNav } from '../components/AppNav';
+import { AppShell } from '../components/SideNav';
 import {
   CUSTOMER_STAGES,
   customersApi,
@@ -227,9 +227,8 @@ export function CustomersPage() {
   const activeFilterCount = stages.length + healthBands.length + (debouncedSearch.trim() ? 1 : 0);
 
   return (
-    <div className="min-h-screen bg-gray-50" data-testid="customers-page">
-      <AppNav />
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <AppShell>
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6" data-testid="customers-page">
         <header className="mb-4 flex items-center justify-between gap-4">
           <div>
             <h1 className="text-xl font-bold text-gray-900">Customers</h1>
@@ -408,6 +407,6 @@ export function CustomersPage() {
           </div>
         )}
       </main>
-    </div>
+    </AppShell>
   );
 }

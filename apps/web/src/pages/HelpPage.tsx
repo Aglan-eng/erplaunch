@@ -6,7 +6,7 @@
  * the OnboardingTour final step, and from a Settings sidebar entry.
  */
 import React from 'react';
-import { AppNav } from '../components/AppNav';
+import { AppShell } from '../components/SideNav';
 import { replayTour } from '../components/guidance/OnboardingTour';
 
 interface Section {
@@ -160,9 +160,8 @@ const SECTIONS: Section[] = [
 
 export function HelpPage() {
   return (
-    <div className="min-h-screen bg-gray-50" data-testid="help-page">
-      <AppNav />
-      <main className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <AppShell>
+      <main className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8" data-testid="help-page">
         <header className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900">How ERPLaunch works</h1>
           <p className="text-sm text-gray-500 mt-1">
@@ -212,6 +211,6 @@ export function HelpPage() {
           ))}
         </div>
       </main>
-    </div>
+    </AppShell>
   );
 }

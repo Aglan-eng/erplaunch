@@ -18,7 +18,7 @@ import {
   Users,
 } from 'lucide-react';
 
-import { AppNav } from '../components/AppNav';
+import { AppShell } from '../components/SideNav';
 import { PipelineDashboard } from '@/components/reports/PipelineDashboard';
 import { DeliveryDashboard } from '@/components/reports/DeliveryDashboard';
 import { HealthDashboard } from '@/components/reports/HealthDashboard';
@@ -68,9 +68,8 @@ export function ReportsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50" data-testid="reports-page">
-      <AppNav />
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <AppShell>
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6" data-testid="reports-page">
         <header className="mb-4">
           <h1 className="text-xl font-bold text-gray-900">Reports</h1>
           <p className="text-xs text-gray-500 mt-0.5">
@@ -124,6 +123,6 @@ export function ReportsPage() {
         {tab === 'renewals' && <RenewalsDashboard />}
         {tab === 'utilization' && <UtilizationDashboard />}
       </main>
-    </div>
+    </AppShell>
   );
 }

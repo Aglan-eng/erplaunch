@@ -145,7 +145,7 @@ describe('CustomerDetailPage — loading + error', () => {
   it('renders the loading state when no data is in the cache', () => {
     const html = render({ loading: true });
     expect(html).toContain('data-testid="customer-detail-loading"');
-    expect(html).toContain('data-testid="app-nav"');
+    expect(html).toContain('data-testid="side-nav"');
   });
 });
 

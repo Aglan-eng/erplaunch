@@ -23,7 +23,7 @@ import {
   Mail,
 } from 'lucide-react';
 
-import { AppNav } from '../components/AppNav';
+import { AppShell } from '../components/SideNav';
 import { api, authApi } from '../lib/api';
 import { PortalPreviewPanel } from '../components/settings/PortalPreviewPanel';
 import { CustomAdaptorsPage } from './CustomAdaptorsPage';
@@ -61,9 +61,8 @@ export function SettingsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50" data-testid="settings-page">
-      <AppNav />
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <AppShell>
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6" data-testid="settings-page">
         <header className="mb-4">
           <h1 className="text-xl font-bold text-gray-900">Settings</h1>
           <p className="text-xs text-gray-500 mt-0.5">
@@ -118,7 +117,7 @@ export function SettingsPage() {
           </div>
         )}
       </main>
-    </div>
+    </AppShell>
   );
 }
 

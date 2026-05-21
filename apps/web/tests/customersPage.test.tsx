@@ -111,7 +111,7 @@ describe('CustomersPage — layout + chrome (Phase 52.3)', () => {
   it('renders the page shell with AppNav + page title', () => {
     const html = render({ customers: [] });
     expect(html).toContain('data-testid="customers-page"');
-    expect(html).toContain('data-testid="app-nav"');
+    expect(html).toContain('data-testid="side-nav"');
     expect(html).toContain('Customers');
   });
 

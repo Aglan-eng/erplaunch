@@ -85,7 +85,7 @@ function render(opts: RenderOpts = {}): string {
 describe('InboxPage — shell + loading', () => {
   it('renders the AppNav + page title', () => {
     const html = render({ data: { forYou: [], watching: [], firmWide: null } });
-    expect(html).toContain('data-testid="app-nav"');
+    expect(html).toContain('data-testid="side-nav"');
     expect(html).toContain('data-testid="inbox-page"');
     expect(html).toContain('Inbox');
   });

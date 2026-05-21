@@ -109,10 +109,11 @@ describe('Phase 52.8 — legacy URL redirects (App.tsx route table)', () => {
     });
   }
 
-  it('legacy DashboardPage import is gone from App.tsx', () => {
-    // Phase 53.3 introduced ExecutiveDashboardPage which legitimately
-    // contains "DashboardPage" — match the legacy import path instead.
-    expect(APP_TSX).not.toContain("./pages/DashboardPage");
+  it('legacy page imports are gone from App.tsx', () => {
+    // Phase 55.1 re-introduced DashboardPage as a different,
+    // sidebar-shell-aware home — so we cannot guard on the
+    // "DashboardPage" substring anymore. The original 52.8 deletes
+    // (Archived/SalesPipeline/SlaPortfolio) are still gone.
     expect(APP_TSX).not.toContain('ArchivedDashboardPage');
     expect(APP_TSX).not.toContain('SalesPipelinePage');
     expect(APP_TSX).not.toContain('SlaPortfolioPage');
@@ -123,7 +124,10 @@ describe('Phase 52.8 — legacy URL redirects (App.tsx route table)', () => {
 
 describe('Phase 52.8 — legacy files removed', () => {
   const removed = [
-    '../src/pages/DashboardPage.tsx',
+    // Phase 55.1 brought back a NEW DashboardPage at the same path —
+    // the legacy one was deleted in 52.8 and this assertion is now
+    // obsolete; the 52.8 cutover semantics are still satisfied by
+    // the other deletions below.
     '../src/pages/ArchivedDashboardPage.tsx',
     '../src/pages/SalesPipelinePage.tsx',
     '../src/pages/SlaPortfolioPage.tsx',
@@ -184,6 +188,6 @@ describe('Phase 52.8 — Settings tabbed shell', () => {
 
   it('renders the unified AppNav (Phase 52.2 chrome)', () => {
     const html = renderSettings('/settings');
-    expect(html).toContain('data-testid="app-nav"');
+    expect(html).toContain('data-testid="side-nav"');
   });
 });

@@ -32,9 +32,8 @@ const CustomersPage = lazy(() => import('./pages/CustomersPage').then(m => ({ de
 const CustomerDetailPage = lazy(() => import('./pages/CustomerDetailPage').then(m => ({ default: m.CustomerDetailPage })));
 const ReportsPage = lazy(() => import('./pages/ReportsPage').then(m => ({ default: m.ReportsPage })));
 const HelpPage = lazy(() => import('./pages/HelpPage').then(m => ({ default: m.HelpPage })));
-const ExecutiveDashboardPage = lazy(() =>
-  import('./pages/ExecutiveDashboardPage').then((m) => ({ default: m.ExecutiveDashboardPage })),
-);
+const DashboardPage = lazy(() => import('./pages/DashboardPage').then((m) => ({ default: m.DashboardPage })));
+const ProjectsPage = lazy(() => import('./pages/ProjectsPage').then((m) => ({ default: m.ProjectsPage })));
 
 function PageLoader() {
   return (
@@ -61,11 +60,9 @@ function RoleAwareHome() {
   if (!user) {
     return <Navigate to="/login" replace />;
   }
-  const role = user.role;
-  if (role === 'CEO') {
-    return <Navigate to="/executive" replace />;
-  }
-  return <Navigate to="/inbox" replace />;
+  // Phase 55.1 — everyone lands on /dashboard. Role-aware data
+  // scope happens inside the dashboard component, not via routing.
+  return <Navigate to="/dashboard" replace />;
 }
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -134,13 +131,23 @@ function AppRoutes() {
           }
         />
         <Route
-          path="/executive"
+          path="/dashboard"
           element={
             <RequireAuth>
-              <ErrorBoundary><ExecutiveDashboardPage /></ErrorBoundary>
+              <ErrorBoundary><DashboardPage /></ErrorBoundary>
             </RequireAuth>
           }
         />
+        <Route
+          path="/projects"
+          element={
+            <RequireAuth>
+              <ErrorBoundary><ProjectsPage /></ErrorBoundary>
+            </RequireAuth>
+          }
+        />
+        {/* Phase 55.1 — /executive is folded into /dashboard. */}
+        <Route path="/executive" element={<Navigate to="/dashboard" replace />} />
 
         {/* ── Settings (tabbed in Phase 52.8: firm/brand-pack/adaptors/tickets/email) ─ */}
         <Route
