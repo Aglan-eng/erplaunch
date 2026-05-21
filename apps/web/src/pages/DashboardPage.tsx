@@ -40,13 +40,6 @@ import { AppShell } from '../components/SideNav';
 import { reportsApi, inboxApi } from '../lib/api';
 import { cn } from '@/lib/utils';
 
-function fmtCurrencyCents(cents: number | null | undefined): string {
-  if (cents == null) return '—';
-  const dollars = cents / 100;
-  if (dollars >= 1_000_000) return `$${(dollars / 1_000_000).toFixed(1)}M`;
-  if (dollars >= 1_000) return `$${(dollars / 1_000).toFixed(0)}K`;
-  return `$${dollars.toFixed(0)}`;
-}
 function fmtArr(value: number | null | undefined): string {
   if (value == null) return '—';
   if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
@@ -109,7 +102,14 @@ export function DashboardPage() {
     [util.data?.byUser],
   );
 
-  const totalPipelineCents = (pipeline.data?.funnel ?? []).reduce((a, s) => a + (s.totalArr ?? 0), 0);
+  // Hotfix: funnel.totalArr is in DOLLARS (the API divides dealValue/100
+  // before returning it). The original `fmtCurrencyCents` formatter
+  // divided by 100 again, turning $610K into $6K. Sum stays in dollars
+  // and we render via `fmtArr`, which is what Reports → Pipeline uses.
+  const totalPipelineArr = (pipeline.data?.funnel ?? []).reduce(
+    (a, s) => a + (s.totalArr ?? 0),
+    0,
+  );
   const activeImpls = delivery.data?.activeProjects ?? 0;
   const atRisk = health.data?.distribution?.red ?? 0;
   const renewalExposure = renewals.data?.totalArrAtRisk ?? 0;
@@ -134,7 +134,7 @@ export function DashboardPage() {
           <KpiCard
             testid="dash-kpi-pipeline"
             label="Pipeline Value"
-            value={fmtCurrencyCents(totalPipelineCents)}
+            value={fmtArr(totalPipelineArr)}
             icon={DollarSign}
             tone="brand"
           />
@@ -221,25 +221,52 @@ export function DashboardPage() {
           <DashboardCard title="Health distribution" testid="dash-chart-health" link="/reports?tab=health">
             {health.isLoading ? (
               <SkeletonChart />
-            ) : !health.data || health.data.totalManagedCustomers === 0 ? (
+            ) : !health.data ||
+              health.data.totalManagedCustomers === 0 ||
+              healthPieData.every((slice) => slice.value === 0) ? (
               <EmptyChart label="No managed customers yet." />
             ) : (
-              <ResponsiveContainer width="100%" height={180}>
-                <PieChart>
-                  <Tooltip />
-                  <Pie
-                    data={healthPieData}
-                    dataKey="value"
-                    innerRadius={42}
-                    outerRadius={70}
-                    paddingAngle={2}
-                  >
-                    <Cell fill={CHART_COLORS.red} />
-                    <Cell fill={CHART_COLORS.yellow} />
-                    <Cell fill={CHART_COLORS.green} />
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
+              // Hotfix: Pie was missing `nameKey` + `cx`/`cy`, which
+              // recharts needs to render an actual slice. Without them
+              // the slices fell off-canvas (the card rendered blank
+              // even though the data was present). Added a small
+              // colour legend so red/yellow/green is self-explanatory.
+              <div className="flex flex-col items-center" data-testid="dash-chart-health-body">
+                <ResponsiveContainer width="100%" height={160}>
+                  <PieChart>
+                    <Tooltip />
+                    <Pie
+                      data={healthPieData}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={42}
+                      outerRadius={70}
+                      paddingAngle={2}
+                      isAnimationActive={false}
+                    >
+                      <Cell fill={CHART_COLORS.red} />
+                      <Cell fill={CHART_COLORS.yellow} />
+                      <Cell fill={CHART_COLORS.green} />
+                    </Pie>
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="flex items-center gap-3 text-[10px] text-gray-600">
+                  <span className="inline-flex items-center gap-1">
+                    <span className="h-2 w-2 rounded-full" style={{ background: CHART_COLORS.red }} />
+                    Red {health.data.distribution.red}
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="h-2 w-2 rounded-full" style={{ background: CHART_COLORS.yellow }} />
+                    Yellow {health.data.distribution.yellow}
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="h-2 w-2 rounded-full" style={{ background: CHART_COLORS.green }} />
+                    Green {health.data.distribution.green}
+                  </span>
+                </div>
+              </div>
             )}
           </DashboardCard>
         </section>
