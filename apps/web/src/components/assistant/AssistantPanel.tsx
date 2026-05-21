@@ -18,7 +18,7 @@
  *   - Conversation persists per (user, customer) — on next open the
  *     latest conversation for the current context is restored.
  */
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Bot, X, ArrowRight, Send, Loader2 } from 'lucide-react';
 import {
@@ -60,7 +60,13 @@ export function AssistantProvider({
    *  can verify the open-state DOM without exercising click events. */
   initialOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(initialOpen);
+  const [open, setOpenState] = useState(initialOpen);
+
+  // Stable setter — `setOpenState` is itself stable from useState, but
+  // wrapping in useCallback makes the intent explicit and lets us pass
+  // it through useMemo'd context without React triggering re-renders
+  // of every consumer on every parent render.
+  const setOpen = useCallback((next: boolean) => setOpenState(next), []);
 
   // Cmd/Ctrl+J global shortcut. Only registers on the client.
   useEffect(() => {
@@ -68,15 +74,24 @@ export function AssistantProvider({
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'j') {
         e.preventDefault();
-        setOpen((v) => !v);
+        setOpenState((v) => !v);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // Phase 55.2 hotfix — memoize the context value. Without this, every
+  // re-render of AssistantProvider creates a new {open, setOpen} object,
+  // which invalidates every consumer of useAssistantPanel() and ripples
+  // re-renders into the sidebar trigger + the panel itself. The Phase
+  // 55.1 sidebar + 6-useQuery dashboard rendered AssistantProvider on
+  // every page mount; combined with the unmemoized context, this
+  // produced a render storm that pegged the main thread.
+  const value = useMemo(() => ({ open, setOpen }), [open, setOpen]);
+
   return (
-    <AssistantPanelContext.Provider value={{ open, setOpen }}>
+    <AssistantPanelContext.Provider value={value}>
       {children}
       <AssistantPanel />
     </AssistantPanelContext.Provider>

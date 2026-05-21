@@ -11,7 +11,7 @@
  *   - Charts row (3 recharts cards)
  *   - Two-column lower section: "Needs your attention" + "Recent activity"
  */
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -68,6 +68,46 @@ export function DashboardPage() {
   const renewals = useQuery({ queryKey: ['report-renewals'], queryFn: () => reportsApi.renewals() });
   const util = useQuery({ queryKey: ['report-utilization'], queryFn: () => reportsApi.utilization() });
   const inbox = useQuery({ queryKey: ['inbox'], queryFn: () => inboxApi.get() });
+
+  // Phase 55.2 hotfix — memoize all derived arrays so chart data
+  // references are stable across renders. recharts re-animates when
+  // its `data` prop changes by reference; without useMemo each
+  // re-render produced a new `.map(...)` array, fed back into
+  // ResizeObserver-driven ResponsiveContainer, which contributed to
+  // the /dashboard render storm.
+  const funnelData = useMemo(
+    () => (pipeline.data?.funnel ?? []).map((s) => ({ stage: s.stage, count: s.count })),
+    [pipeline.data?.funnel],
+  );
+  const deliveryByStage = useMemo(
+    () =>
+      (delivery.data?.byStage ?? []).map((s) => ({
+        stage: s.stage,
+        onTrack: s.onTrack,
+        slipping: s.slipping,
+      })),
+    [delivery.data?.byStage],
+  );
+  const healthPieData = useMemo(
+    () => [
+      { name: 'Red', value: health.data?.distribution?.red ?? 0 },
+      { name: 'Yellow', value: health.data?.distribution?.yellow ?? 0 },
+      { name: 'Green', value: health.data?.distribution?.green ?? 0 },
+    ],
+    [
+      health.data?.distribution?.red,
+      health.data?.distribution?.yellow,
+      health.data?.distribution?.green,
+    ],
+  );
+  const attentionItems = useMemo(
+    () => (inbox.data?.forYou ?? []).slice(0, 5),
+    [inbox.data?.forYou],
+  );
+  const utilRows = useMemo(
+    () => (util.data?.byUser ?? []).slice(0, 6),
+    [util.data?.byUser],
+  );
 
   const totalPipelineCents = (pipeline.data?.funnel ?? []).reduce((a, s) => a + (s.totalArr ?? 0), 0);
   const activeImpls = delivery.data?.activeProjects ?? 0;
@@ -147,7 +187,7 @@ export function DashboardPage() {
               <EmptyChart label="No pre-Won customers yet." />
             ) : (
               <ResponsiveContainer width="100%" height={180}>
-                <BarChart data={(pipeline.data?.funnel ?? []).map((s) => ({ stage: s.stage, count: s.count }))} margin={{ top: 5, right: 5, bottom: 0, left: 0 }}>
+                <BarChart data={funnelData} margin={{ top: 5, right: 5, bottom: 0, left: 0 }}>
                   <XAxis dataKey="stage" tick={{ fontSize: 10 }} stroke="#94a3b8" />
                   <YAxis allowDecimals={false} tick={{ fontSize: 10 }} stroke="#94a3b8" />
                   <Tooltip />
@@ -165,7 +205,7 @@ export function DashboardPage() {
             ) : (
               <ResponsiveContainer width="100%" height={180}>
                 <BarChart
-                  data={delivery.data.byStage.map((s) => ({ stage: s.stage, onTrack: s.onTrack, slipping: s.slipping }))}
+                  data={deliveryByStage}
                   margin={{ top: 5, right: 5, bottom: 0, left: 0 }}
                 >
                   <XAxis dataKey="stage" tick={{ fontSize: 10 }} stroke="#94a3b8" />
@@ -188,11 +228,7 @@ export function DashboardPage() {
                 <PieChart>
                   <Tooltip />
                   <Pie
-                    data={[
-                      { name: 'Red', value: health.data.distribution.red },
-                      { name: 'Yellow', value: health.data.distribution.yellow },
-                      { name: 'Green', value: health.data.distribution.green },
-                    ]}
+                    data={healthPieData}
                     dataKey="value"
                     innerRadius={42}
                     outerRadius={70}
@@ -217,7 +253,7 @@ export function DashboardPage() {
               <EmptyChart label="Nothing for you right now — 🎉" />
             ) : (
               <ul className="divide-y divide-gray-100">
-                {(inbox.data?.forYou ?? []).slice(0, 5).map((it) => (
+                {attentionItems.map((it) => (
                   <li
                     key={it.id}
                     className="py-2 flex items-start justify-between gap-2"
@@ -246,7 +282,7 @@ export function DashboardPage() {
               <EmptyChart label="No owners assigned yet." />
             ) : (
               <ul className="divide-y divide-gray-100">
-                {(util.data?.byUser ?? []).slice(0, 6).map((u) => (
+                {utilRows.map((u) => (
                   <li
                     key={u.userId}
                     className="py-2 flex items-center justify-between gap-2"

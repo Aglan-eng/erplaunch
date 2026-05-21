@@ -41,7 +41,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { OnboardingTour } from './guidance/OnboardingTour';
-import { AssistantProvider, AssistantTrigger } from './assistant/AssistantPanel';
+import { AssistantTrigger } from './assistant/AssistantPanel';
 import { cn } from '../lib/utils';
 
 const COLLAPSE_KEY = 'erplaunch.sidenav.collapsed';
@@ -325,25 +325,29 @@ function SideNavLink({ to, label, icon: Icon, active, collapsed, testid }: SideN
  * (always-rendered at 256/64).
  */
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const forceTour =
-    typeof window !== 'undefined' &&
-    new URLSearchParams(window.location.search).get('welcome') === '1';
-  const collapsed = readBool(COLLAPSE_KEY, false);
+  // Phase 55.2 hotfix — read `collapsed` via useState so the value is
+  // pinned per-render (rather than re-reading localStorage every render,
+  // which gave the AppShell and the SideNav two different sources of
+  // truth and contributed to the /dashboard render storm).
+  const [forceTour] = useState(() =>
+    typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('welcome') === '1'
+      : false,
+  );
+  const [collapsed] = useState(() => readBool(COLLAPSE_KEY, false));
   return (
-    <AssistantProvider>
-      <div className="min-h-screen bg-gray-50" data-testid="app-shell">
-        <OnboardingTour forceShow={forceTour} />
-        <SideNav />
-        <div
-          className={cn(
-            'transition-[padding] duration-150',
-            collapsed ? 'pl-16' : 'pl-64',
-          )}
-          data-testid="app-shell-content"
-        >
-          {children}
-        </div>
+    <div className="min-h-screen bg-gray-50" data-testid="app-shell">
+      <OnboardingTour forceShow={forceTour} />
+      <SideNav />
+      <div
+        className={cn(
+          'transition-[padding] duration-150',
+          collapsed ? 'pl-16' : 'pl-64',
+        )}
+        data-testid="app-shell-content"
+      >
+        {children}
       </div>
-    </AssistantProvider>
+    </div>
   );
 }

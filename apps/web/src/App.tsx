@@ -2,6 +2,7 @@ import React, { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { AssistantProvider } from './components/assistant/AssistantPanel';
 
 // Lazy-loaded pages — each becomes its own JS chunk
 const LoginPage = lazy(() => import('./pages/LoginPage').then(m => ({ default: m.LoginPage })));
@@ -302,7 +303,12 @@ export default function App() {
     <ErrorBoundary>
       <BrowserRouter>
         <AuthProvider>
-          <AppRoutes />
+          {/* Phase 55.2 hotfix — single AssistantProvider at the app
+              root so navigating between pages doesn't unmount/remount
+              the provider tree on every transition. */}
+          <AssistantProvider>
+            <AppRoutes />
+          </AssistantProvider>
         </AuthProvider>
       </BrowserRouter>
     </ErrorBoundary>
