@@ -415,6 +415,33 @@ async function createTables(db: Client) {
   `);
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_InboxDismissal_user_ts ON InboxDismissal(userId, dismissedAt)`);
 
+  // Phase 55.2 — Context-aware AI assistant conversation history.
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS AssistantConversation (
+      id          TEXT PRIMARY KEY,
+      firmId      TEXT NOT NULL,
+      userId      TEXT NOT NULL,
+      customerId  TEXT,
+      title       TEXT NOT NULL DEFAULT 'Conversation',
+      createdAt   TEXT NOT NULL DEFAULT (datetime('now')),
+      updatedAt   TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_AssistantConversation_firm_user ON AssistantConversation(firmId, userId, updatedAt)`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_AssistantConversation_customer ON AssistantConversation(customerId, updatedAt)`);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS AssistantMessage (
+      id              TEXT PRIMARY KEY,
+      conversationId  TEXT NOT NULL REFERENCES AssistantConversation(id) ON DELETE CASCADE,
+      role            TEXT NOT NULL,
+      content         TEXT NOT NULL,
+      suggestedActions TEXT,
+      createdAt       TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_AssistantMessage_conv ON AssistantMessage(conversationId, createdAt)`);
+
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS ProjectMember (

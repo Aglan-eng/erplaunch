@@ -1768,6 +1768,60 @@ export const exportsApi = {
     api.get('/exports/catalog').then((r) => r.data),
 };
 
+// ─── Phase 55.2 — Context-aware AI assistant ───────────────────────────────
+
+export type AssistantActionKind = 'navigate' | 'info';
+
+export interface AssistantSuggestedAction {
+  label: string;
+  kind: AssistantActionKind;
+  target: string;
+}
+
+export interface AssistantChatRequest {
+  message: string;
+  conversationId?: string;
+  context: {
+    page?: string;
+    customerId?: string;
+  };
+}
+
+export interface AssistantChatResponse {
+  conversationId: string;
+  reply: string;
+  suggestedActions: AssistantSuggestedAction[];
+}
+
+export interface AssistantConversationSummary {
+  id: string;
+  customerId: string | null;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AssistantMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  suggestedActions: AssistantSuggestedAction[];
+  createdAt: string;
+}
+
+export const assistantApi = {
+  chat: (body: AssistantChatRequest): Promise<AssistantChatResponse> =>
+    api.post('/assistant/chat', body).then((r) => r.data),
+
+  listConversations: (): Promise<{ conversations: AssistantConversationSummary[] }> =>
+    api.get('/assistant/conversations').then((r) => r.data),
+
+  getConversation: (
+    id: string,
+  ): Promise<{ conversation: AssistantConversationSummary; messages: AssistantMessage[] }> =>
+    api.get(`/assistant/conversations/${id}`).then((r) => r.data),
+};
+
 // ─── Phase 52.5 — Inbox (role-based home) ──────────────────────────────────
 
 export type InboxItemType =

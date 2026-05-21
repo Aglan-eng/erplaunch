@@ -41,6 +41,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { OnboardingTour } from './guidance/OnboardingTour';
+import { AssistantProvider, AssistantTrigger } from './assistant/AssistantPanel';
 import { cn } from '../lib/utils';
 
 const COLLAPSE_KEY = 'erplaunch.sidenav.collapsed';
@@ -249,6 +250,9 @@ export function SideNav() {
           collapsed={collapsed}
           testid="side-nav-link-help"
         />
+
+        {/* Phase 55.2 — AI assistant trigger. */}
+        <AssistantTrigger collapsed={collapsed} />
       </nav>
 
       {/* ── User card ────────────────────────────────────────────── */}
@@ -326,18 +330,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     new URLSearchParams(window.location.search).get('welcome') === '1';
   const collapsed = readBool(COLLAPSE_KEY, false);
   return (
-    <div className="min-h-screen bg-gray-50" data-testid="app-shell">
-      <OnboardingTour forceShow={forceTour} />
-      <SideNav />
-      <div
-        className={cn(
-          'transition-[padding] duration-150',
-          collapsed ? 'pl-16' : 'pl-64',
-        )}
-        data-testid="app-shell-content"
-      >
-        {children}
+    <AssistantProvider>
+      <div className="min-h-screen bg-gray-50" data-testid="app-shell">
+        <OnboardingTour forceShow={forceTour} />
+        <SideNav />
+        <div
+          className={cn(
+            'transition-[padding] duration-150',
+            collapsed ? 'pl-16' : 'pl-64',
+          )}
+          data-testid="app-shell-content"
+        >
+          {children}
+        </div>
       </div>
-    </div>
+    </AssistantProvider>
   );
 }
